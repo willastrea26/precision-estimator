@@ -126,7 +126,13 @@ function AuthInvalidator() {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = supabase.auth.onAuthStateChange((event) => {
+      // Ignore noisy events that don't change auth identity.
+      // INITIAL_SESSION fires on every mount; TOKEN_REFRESHED fires periodically
+      // and on tab focus. Invalidating on those causes the whole tree to remount.
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") {
+        return;
+      }
       router.invalidate();
       queryClient.invalidateQueries();
     });
