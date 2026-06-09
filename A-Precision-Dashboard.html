@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A-Precision — Lovable Build Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0A0E1A;
+    --surface: #131826;
+    --surface2: #1a2235;
+    --border: #1F2937;
+    --border-hover: #2d3f55;
+    --blue: #3B82F6;
+    --blue-dim: rgba(59,130,246,0.15);
+    --green: #10B981;
+    --green-dim: rgba(16,185,129,0.15);
+    --amber: #F59E0B;
+    --amber-dim: rgba(245,158,11,0.15);
+    --red: #EF4444;
+    --red-dim: rgba(239,68,68,0.15);
+    --purple: #8B5CF6;
+    --purple-dim: rgba(139,92,246,0.15);
+    --cyan: #06B6D4;
+    --cyan-dim: rgba(6,182,212,0.15);
+    --text: #F8FAFC;
+    --muted: #94A3B8;
+    --muted2: #64748B;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Blueprint grid background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 40px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 36px;
+  }
+  .hero-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .logo-block .logo-name {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .logo-block .logo-tag {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--blue);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-top: 2px;
+  }
+  .hero-meta {
+    text-align: right;
+  }
+  .hero-meta .report-label {
+    font-size: 0.75rem;
+    color: var(--muted2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .hero-meta .report-version {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .hero-purpose {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 0.875rem;
+    max-width: 760px;
+    line-height: 1.7;
+  }
+
+  /* ── Nav tabs ── */
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .nav-tab {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+  /* ── Section headings ── */
+  .section { margin-bottom: 40px; }
+  .section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted2);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card:hover {
+    border-color: var(--border-hover);
+  }
+  .card-title {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+
+  /* ── KPI Grid ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .kpi-grid { grid-template-columns: 1fr; } }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  }
+  .kpi-card:hover {
+    transform: translateY(-2px);
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+    border-radius: 12px;
+  }
+  .kpi-card:hover::before { opacity: 1; }
+  .kpi-card.blue { border-color: rgba(59,130,246,0.3); }
+  .kpi-card.blue:hover { box-shadow: 0 0 20px rgba(59,130,246,0.12); }
+  .kpi-card.green { border-color: rgba(16,185,129,0.3); }
+  .kpi-card.green:hover { box-shadow: 0 0 20px rgba(16,185,129,0.12); }
+  .kpi-card.amber { border-color: rgba(245,158,11,0.3); }
+  .kpi-card.amber:hover { box-shadow: 0 0 20px rgba(245,158,11,0.12); }
+  .kpi-card.purple { border-color: rgba(139,92,246,0.3); }
+  .kpi-card.purple:hover { box-shadow: 0 0 20px rgba(139,92,246,0.12); }
+
+  .kpi-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+    font-size: 18px;
+  }
+  .kpi-icon.blue { background: var(--blue-dim); color: var(--blue); }
+  .kpi-icon.green { background: var(--green-dim); color: var(--green); }
+  .kpi-icon.amber { background: var(--amber-dim); color: var(--amber); }
+  .kpi-icon.purple { background: var(--purple-dim); color: var(--purple); }
+
+  .kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .kpi-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+  .kpi-sub {
+    font-size: 0.78rem;
+    color: var(--muted2);
+  }
+
+  /* ── Small KPI row ── */
+  .kpi-sm-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+  @media (max-width: 900px) { .kpi-sm-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .kpi-sm {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .kpi-sm-icon {
+    width: 32px; height: 32px;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .kpi-sm-value { font-size: 1.3rem; font-weight: 700; }
+  .kpi-sm-label { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+
+  /* ── Charts row ── */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+  .chart-header-title { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+  .chart-header-sub { font-size: 0.75rem; color: var(--muted2); margin-top: 2px; }
+  .chart-wrap { position: relative; }
+
+  /* ── Phases table ── */
+  .phases-wrap {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 1100px) { .phases-wrap { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 660px) { .phases-wrap { grid-template-columns: 1fr; } }
+
+  .phase-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: default;
+  }
+  .phase-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+  }
+  .phase-card.free { border-left: 3px solid var(--green); }
+  .phase-card.low { border-left: 3px solid var(--blue); }
+  .phase-card.mid { border-left: 3px solid var(--amber); }
+  .phase-card.high { border-left: 3px solid var(--red); }
+  .phase-card.ai { border-left: 3px solid var(--purple); }
+
+  .phase-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .phase-num {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--muted2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .phase-credits-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+  .badge-free { background: var(--green-dim); color: var(--green); }
+  .badge-low { background: var(--blue-dim); color: var(--blue); }
+  .badge-mid { background: var(--amber-dim); color: var(--amber); }
+  .badge-high { background: var(--red-dim); color: var(--red); }
+  .badge-ai { background: var(--purple-dim); color: var(--purple); }
+
+  .phase-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .phase-detail {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .phase-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .phase-prompts {
+    font-size: 0.72rem;
+    color: var(--muted2);
+  }
+  .phase-cumulative {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .phase-cumulative span { color: var(--text); font-weight: 600; }
+
+  /* ── Modules grid ── */
+  .modules-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 1000px) { .modules-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .modules-grid { grid-template-columns: 1fr; } }
+
+  .module-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    transition: border-color 0.2s;
+  }
+  .module-card:hover { border-color: var(--border-hover); }
+  .module-icon {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .module-name { font-size: 0.875rem; font-weight: 600; margin-bottom: 3px; }
+  .module-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── Build order table ── */
+  .build-table-wrap { overflow-x: auto; border-radius: 12px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    font-size: 0.83rem;
+  }
+  thead tr {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    white-space: nowrap;
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+  }
+  td:first-child { color: var(--muted2); font-weight: 500; }
+  td.bold { color: var(--text); font-weight: 600; }
+  td.credit { font-weight: 600; color: var(--blue); }
+  td.cumulative { font-weight: 600; color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .total-row td {
+    background: var(--surface2);
+    color: var(--text) !important;
+    font-weight: 700;
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+  }
+
+  /* ── Tips list ── */
+  .tips-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 700px) { .tips-grid { grid-template-columns: 1fr; } }
+
+  .tip-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .tip-num {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: var(--blue-dim);
+    color: var(--blue);
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .tip-text { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+  .tip-text strong { color: var(--text); }
+
+  /* ── Reserve table ── */
+  .reserve-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 700px) { .reserve-grid { grid-template-columns: 1fr; } }
+
+  .reserve-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .reserve-item-left .reserve-name { font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .reserve-item-left .reserve-desc { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .reserve-credits {
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 99px;
+    background: var(--amber-dim);
+    color: var(--amber);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .reserve-item.top-pick { border-color: rgba(245,158,11,0.35); }
+
+  /* ── Progress bar ── */
+  .budget-progress {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .progress-title { font-size: 0.875rem; font-weight: 600; }
+  .progress-pct { font-size: 0.875rem; color: var(--muted); }
+  .progress-track {
+    height: 8px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 1s ease;
+  }
+  .progress-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Schema section ── */
+  .schema-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 900px) { .schema-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .schema-grid { grid-template-columns: 1fr; } }
+
+  .schema-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .schema-name { font-size: 0.875rem; font-weight: 600; margin-bottom: 4px; }
+  .schema-module { font-size: 0.75rem; color: var(--muted2); }
+  .schema-badge {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: var(--blue-dim);
+    color: var(--blue);
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 32px 0;
+    margin-top: 48px;
+    border-top: 1px solid var(--border);
+    color: var(--muted2);
+    font-size: 0.78rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Badge component ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-amber { background: var(--amber-dim); color: var(--amber); }
+  .badge-purple { background: var(--purple-dim); color: var(--purple); }
+  .badge-red { background: var(--red-dim); color: var(--red); }
+  .badge-grey { background: rgba(100,116,139,0.15); color: var(--muted2); }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ══ HERO ══ -->
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="logo-block">
+        <div class="logo-name">A-Precision</div>
+        <div class="logo-tag">Civil Estimating Intelligence</div>
+      </div>
+      <div class="hero-meta">
+        <div class="report-label">Lovable Build Report</div>
+        <div class="report-version">v4 · Fresh-project build · Two-layer takeoff · Full AI integration</div>
+      </div>
+    </div>
+    <p class="hero-purpose">
+      A staged, credit-aware build plan for constructing the A-Precision civil estimating SaaS platform on Lovable.
+      Every prompt has been re-engineered for Lovable's prompt-driven workflow and Supabase-backed architecture.
+      Use this as a working build sheet — copy each prompt directly into Lovable when you reach that phase.
+    </p>
+  </div>
+
+  <!-- ══ NAV TABS ══ -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="showSection('overview')">Overview</button>
+    <button class="nav-tab" onclick="showSection('phases')">Build Phases</button>
+    <button class="nav-tab" onclick="showSection('modules')">Modules</button>
+    <button class="nav-tab" onclick="showSection('schema')">Database Schema</button>
+    <button class="nav-tab" onclick="showSection('tips')">Credit Tips</button>
+    <button class="nav-tab" onclick="showSection('reserve')">Reserve Strategy</button>
+  </nav>
+
+  <!-- ══════════════════════════════════════════
+       SECTION: OVERVIEW
+  ══════════════════════════════════════════ -->
+  <div id="sec-overview">
+
+    <!-- Budget KPIs -->
+    <div class="section">
+      <div class="section-title">Credit Budget</div>
+      <div class="kpi-grid">
+        <div class="kpi-card blue">
+          <div class="kpi-icon blue">💰</div>
+          <div class="kpi-value">~244</div>
+          <div class="kpi-label">Core Build Cost</div>
+          <div class="kpi-sub">Estimated base across all 17 phases</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-icon amber">🛡️</div>
+          <div class="kpi-value">~293</div>
+          <div class="kpi-label">With 20% Buffer</div>
+          <div class="kpi-sub">Includes retries and unexpected issues</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-icon green">💎</div>
+          <div class="kpi-value">400</div>
+          <div class="kpi-label">Total Budget</div>
+          <div class="kpi-sub">Lovable Builder plan · $50/mo · 250 credits</div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-icon purple">⭐</div>
+          <div class="kpi-value">~107</div>
+          <div class="kpi-label">Reserve Credits</div>
+          <div class="kpi-sub">For quality upgrades & post-launch polish</div>
+        </div>
+      </div>
+
+      <!-- Small KPIs -->
+      <div class="kpi-sm-grid">
+        <div class="kpi-sm">
+          <div class="kpi-sm-icon" style="background:var(--blue-dim);color:var(--blue)">📋</div>
+          <div>
+            <div class="kpi-sm-value">17</div>
+            <div class="kpi-sm-label">Build Phases</div>
+          </div>
+        </div>
+        <div class="kpi-sm">
+          <div class="kpi-sm-icon" style="background:var(--green-dim);color:var(--green)">🗄️</div>
+          <div>
+            <div class="kpi-sm-value">12</div>
+            <div class="kpi-sm-label">Database Tables</div>
+          </div>
+        </div>
+        <div class="kpi-sm">
+          <div class="kpi-sm-icon" style="background:var(--purple-dim);color:var(--purple)">🤖</div>
+          <div>
+            <div class="kpi-sm-value">6</div>
+            <div class="kpi-sm-label">AI Sub-Prompts</div>
+          </div>
+        </div>
+        <div class="kpi-sm">
+          <div class="kpi-sm-icon" style="background:var(--amber-dim);color:var(--amber)">⏱️</div>
+          <div>
+            <div class="kpi-sm-value">~20m</div>
+            <div class="kpi-sm-label">Pre-flight Setup</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Budget Progress -->
+    <div class="section">
+      <div class="section-title">Budget Allocation</div>
+      <div class="budget-progress">
+        <div class="progress-header">
+          <span class="progress-title">Core Build vs. Buffer vs. Reserve</span>
+          <span class="progress-pct">400 credits total</span>
+        </div>
+        <div class="progress-track">
+          <div style="display:flex;height:100%">
+            <div class="progress-fill" style="width:61%;background:var(--blue)"></div>
+            <div class="progress-fill" style="width:12.25%;background:var(--amber)"></div>
+            <div class="progress-fill" style="width:26.75%;background:var(--purple)"></div>
+          </div>
+        </div>
+        <div class="progress-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Core build ~244cr (61%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> 20% buffer ~49cr (12%)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Reserve ~107cr (27%)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="section">
+      <div class="section-title">Credit Distribution</div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <div class="chart-header-title">Credits Per Phase</div>
+              <div class="chart-header-sub">Estimated credit spend across all build phases</div>
+            </div>
+          </div>
+          <div class="chart-wrap" style="height:260px">
+            <canvas id="creditChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <div class="chart-header-title">Budget Breakdown</div>
+              <div class="chart-header-sub">How your 400 credits are allocated</div>
+            </div>
+          </div>
+          <div class="chart-wrap" style="height:260px">
+            <canvas id="budgetDonut"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Build Order Summary Table -->
+    <div class="section">
+      <div class="section-title">Build Order Summary</div>
+      <div class="build-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Phase</th>
+              <th>Module</th>
+              <th>Est. Credits</th>
+              <th>Cumulative</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody id="buildOrderBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /sec-overview -->
+
+
+  <!-- ══════════════════════════════════════════
+       SECTION: PHASES
+  ══════════════════════════════════════════ -->
+  <div id="sec-phases" style="display:none">
+    <div class="section">
+      <div class="section-title">All Build Phases — click a card for details</div>
+      <div class="phases-wrap" id="phasesGrid"></div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       SECTION: MODULES
+  ══════════════════════════════════════════ -->
+  <div id="sec-modules" style="display:none">
+    <div class="section">
+      <div class="section-title">App Modules &amp; Capabilities</div>
+      <div class="modules-grid" id="modulesGrid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Technology Stack</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px" id="techStack"></div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       SECTION: SCHEMA
+  ══════════════════════════════════════════ -->
+  <div id="sec-schema" style="display:none">
+    <div class="section">
+      <div class="section-title">Supabase Database Schema — 12 Tables</div>
+      <div class="schema-grid" id="schemaGrid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Row-Level Security Policies</div>
+      <div class="card">
+        <p style="color:var(--muted);font-size:0.875rem;line-height:1.7">
+          All 12 tables have <strong style="color:var(--text)">RLS enabled</strong>. Every table includes
+          <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:0.8rem">user_id uuid REFERENCES auth.users</code>
+          and timestamps (<code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:0.8rem">created_at</code>,
+          <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:0.8rem">updated_at</code>).
+          The RLS policy ensures users can <strong style="color:var(--green)">only see and edit their own rows</strong> — no cross-user data leakage.
+          The <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:0.8rem">projects</code> table cascades deletes down to
+          work_packages, boq_items, documents, quote_requests, risks, variations, programme_items, activity_log and takeoff_items.
+        </p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       SECTION: TIPS
+  ══════════════════════════════════════════ -->
+  <div id="sec-tips" style="display:none">
+    <div class="section">
+      <div class="section-title">Credit-Saving Rules — typically save 30–50% over a full build</div>
+      <div class="tips-grid" id="tipsGrid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Connectors Policy — only these three in v1</div>
+      <div class="build-table-wrap">
+        <table>
+          <thead>
+            <tr><th>Connector</th><th>When</th><th>Why</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="bold">GitHub</td>
+              <td>Phase 0</td>
+              <td style="color:var(--muted)">Auto-commits all code — code ownership & disaster recovery.</td>
+            </tr>
+            <tr>
+              <td class="bold">Supabase</td>
+              <td>Phase 0</td>
+              <td style="color:var(--muted)">Database, auth, file storage, edge functions — entire backend.</td>
+            </tr>
+            <tr>
+              <td class="bold">Anthropic</td>
+              <td>Phase 12</td>
+              <td style="color:var(--muted)">AI document analysis, quantity extraction, supplier email drafting.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       SECTION: RESERVE
+  ══════════════════════════════════════════ -->
+  <div id="sec-reserve" style="display:none">
+    <div class="section">
+      <div class="section-title">Reserve Strategy — ~107 credits remaining after core build</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <p style="color:var(--muted);font-size:0.875rem;line-height:1.8">
+          Build the core with all enhancements (~293 credits), pick <strong style="color:var(--text)">1–2 high-value upgrades</strong>
+          (~10–20 credits) only if needed, and keep approximately <strong style="color:var(--green)">85–95 credits in reserve</strong>
+          for post-launch refinement. You will discover real-world needs only after using the app for actual tenders.
+          <br><br>
+          <span style="color:var(--amber)">★ Top two recommendations:</span>
+          <strong style="color:var(--text)">Project duplication</strong> (pays for itself the second time you start a similar tender) and
+          <strong style="color:var(--text)">Saved email templates per trade</strong> (makes the AI drafter even tighter as you accumulate house style).
+        </p>
+      </div>
+      <div class="reserve-grid" id="reserveGrid"></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<footer>
+  <div class="container">
+    A-Precision &nbsp;·&nbsp; Lovable Build Report v4 &nbsp;·&nbsp; Fresh-project build, two-layer takeoff, full AI integration.
+  </div>
+</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   DATA
+═══════════════════════════════════════════════════ */
+const phases = [
+  { id:'Pre-0', name:'Account Setup', detail:'GitHub · Supabase · Lovable accounts', credits:'0 (free)', min:0, max:0, cumulative:0, type:'free', prompts:4 },
+  { id:'0',    name:'Project Creation & Connectors', detail:'Knowledge base · GitHub · Supabase · Lovable project', credits:'0 (free)', min:0, max:0, cumulative:0, type:'free', prompts:6 },
+  { id:'1',    name:'Foundation & App Shell', detail:'Dark theme · Auth · Sidebar · Routing · Empty pages', credits:'8 – 14cr', min:8, max:14, cumulative:11, type:'low', prompts:2 },
+  { id:'2',    name:'Supabase Schema', detail:'12 tables + RLS + TypeScript types · Lifecycle support', credits:'6 – 12cr', min:6, max:12, cumulative:20, type:'low', prompts:3 },
+  { id:'3',    name:'Dashboard & Analytics', detail:'6 charts · 8 KPIs · 3 feed panels · Real-time Supabase data', credits:'20 – 32cr', min:20, max:32, cumulative:46, type:'mid', prompts:5 },
+  { id:'4',    name:'Projects + Lifecycle', detail:'List · Detail routing · Archive · Soft-delete · Trash recovery', credits:'13 – 21cr', min:13, max:21, cumulative:63, type:'mid', prompts:4 },
+  { id:'5',    name:'Project Detail Tabs', detail:'11 tabs: Summary · Geotech · Volumes · Materials · Productivity · BOQ · Risk · Variations · Program · Documents', credits:'35 – 55cr', min:35, max:55, cumulative:108, type:'high', prompts:9 },
+  { id:'5.5',  name:'Quantities Calculation Sheet', detail:'Layer-1 takeoff · 7 measurement types · Formula engine · Excel export · BOQ linking', credits:'13 – 19cr', min:13, max:19, cumulative:124, type:'mid', prompts:3 },
+  { id:'6',    name:'Rate Library', detail:'CRUD · CSV import · BOQ integration · Category breakdown', credits:'6 – 10cr', min:6, max:10, cumulative:132, type:'low', prompts:2 },
+  { id:'7',    name:'Productivity Library', detail:'Activity assumptions · BOQ duration calculation · Overrides', credits:'5 – 8cr', min:5, max:8, cumulative:138, type:'low', prompts:2 },
+  { id:'8',    name:'Quote Requests', detail:'All-quotes page · Status workflow · Overdue logic · Dashboard wiring', credits:'8 – 12cr', min:8, max:12, cumulative:148, type:'low', prompts:2 },
+  { id:'9',    name:'Contacts', detail:'Grid + table view · Quote history · Trade categories · Status tracking', credits:'5 – 8cr', min:5, max:8, cumulative:154, type:'low', prompts:1 },
+  { id:'10',   name:'Risk Register + Variations', detail:'Cross-project risk view · Risk matrix · Variation status workflow', credits:'8 – 12cr', min:8, max:12, cumulative:164, type:'low', prompts:2 },
+  { id:'11',   name:'Programme / Gantt Polish', detail:'Today line · Dependency arrows · Zoom · Upcoming Milestones dashboard panel', credits:'6 – 12cr', min:6, max:12, cumulative:173, type:'low', prompts:2 },
+  { id:'12',   name:'AI Analyser + Quantity Extractor', detail:'Edge functions · Tender Overview · Supplier Engine · Excel exports', credits:'25 – 45cr', min:25, max:45, cumulative:208, type:'ai', prompts:6 },
+  { id:'13',   name:'AI Quote Email Drafter', detail:'Single + batch · Tailored per supplier · mailto: send · Copy & Mark Sent', credits:'10 – 16cr', min:10, max:16, cumulative:221, type:'ai', prompts:3 },
+  { id:'14',   name:'Settings & Preferences', detail:'Profile · Estimating defaults · Dashboard prefs · Danger zone', credits:'4 – 7cr', min:4, max:7, cumulative:226, type:'low', prompts:1 },
+  { id:'15',   name:'Final UI Polish', detail:'Shared component sweep · Mobile responsiveness audit', credits:'6 – 12cr', min:6, max:12, cumulative:235, type:'low', prompts:2 },
+  { id:'16',   name:'QA Pass & Bug Fixes', detail:'Full audit checklist · Chat mode review · End-to-end smoke test', credits:'6 – 12cr', min:6, max:12, cumulative:244, type:'low', prompts:3 },
+  { id:'17',   name:'Publish & Custom Domain', detail:'Live URL · Custom domain · SSL · Billing alerts · GitHub backup', credits:'0 (free)', min:0, max:0, cumulative:244, type:'free', prompts:3 },
+];
+
+const modules = [
+  { icon:'📊', name:'Dashboard', desc:'Summarise active projects, pipeline value, awarded value, quotes, risks, deadlines and recent activity with rich analytics charts.', color:'blue' },
+  { icon:'📁', name:'Projects', desc:'Create and manage tender packages with client, location, value, status, risk and due date data.', color:'blue' },
+  { icon:'🔄', name:'Project Lifecycle', desc:'Archive completed/lost/not-submitted projects, soft-delete with 30-day trash recovery, restore from archive or trash.', color:'green' },
+  { icon:'🗂️', name:'Project Detail Tabs', desc:'Manage Summary, Geotech, Volumes, Materials, Quantities, Productivity, Draft Estimate, Risk, Variations, Program and Documents per project (11 tabs).', color:'blue' },
+  { icon:'📄', name:'Documents', desc:'Upload and categorise SOWs, drawings, geotech reports, specifications, addenda, schedules and quotes.', color:'amber' },
+  { icon:'🔍', name:'Tender Overview Panel', desc:'AI-generated top-of-project summary showing scope, key dates, risks and missing information at a glance.', color:'purple' },
+  { icon:'🤖', name:'AI Package Analyser', desc:'Extract scope, exclusions, risks, quote requirements, missing information and high-level summary from tender documents.', color:'purple' },
+  { icon:'📐', name:'AI Quantity Extractor', desc:'Separate analysis pass that extracts measurements and formulas from documents to populate the Quantities calculation sheet.', color:'purple' },
+  { icon:'📦', name:'Work Packages', desc:'Break the tender into estimating packages such as prelims, earthworks, drainage, conduits, pits and QA.', color:'blue' },
+  { icon:'🧮', name:'Quantities Calculation Sheet', desc:'Layer 1 of the takeoff system. Stores raw measurements, inputs and formulas, calculates output quantities, links each row back to the BOQ.', color:'amber' },
+  { icon:'💲', name:'BOQ / Estimate Builder', desc:'Layer 2 of the takeoff system. Priced bill of quantities with rates, totals, margin, sell value and traceable link to Quantities.', color:'green' },
+  { icon:'📚', name:'Rate Library', desc:'Store reusable civil estimating rates for labour, plant, material, subcontractor and combined rates.', color:'blue' },
+  { icon:'⚡', name:'Productivity Library', desc:'Store construction productivity assumptions and link them to BOQ duration calculations.', color:'blue' },
+  { icon:'💬', name:'Quote Requests', desc:'Track supplier/subcontractor quotes with AI-suggested recommendations from your Contacts table.', color:'amber' },
+  { icon:'✉️', name:'AI Quote Email Drafter', desc:'Generate professional supplier RFQ emails in batch, ready for estimator review and one-click send via mailto:.', color:'purple' },
+  { icon:'👥', name:'Contacts', desc:'Manage suppliers, subcontractors, clients and linked quote history.', color:'blue' },
+  { icon:'⚠️', name:'Risks and Variations', desc:'Track tender risks, mitigations, cost/program impacts and variation items.', color:'red' },
+  { icon:'📅', name:'Program', desc:'Track tender milestones, construction activities, dependencies and critical path notes with Gantt view.', color:'blue' },
+];
+
+const tables = [
+  { name:'projects', module:'Core', note:'12 columns + lifecycle fields + project_meta jsonb' },
+  { name:'work_packages', module:'Estimating', note:'Breaks tender into scoped packages' },
+  { name:'contacts', module:'CRM', note:'Suppliers, subcontractors, clients' },
+  { name:'rate_library', module:'Estimating', note:'Reusable civil rates with component breakdown' },
+  { name:'productivity_library', module:'Estimating', note:'Activity output rates per day' },
+  { name:'boq_items', module:'Estimating', note:'Priced bill of quantities — Layer 2' },
+  { name:'documents', module:'Documents', note:'Supabase Storage + AI analysis status' },
+  { name:'quote_requests', module:'Quotes', note:'Supplier RFQ tracking + email drafts' },
+  { name:'risks', module:'Risk', note:'5×5 likelihood/consequence matrix' },
+  { name:'variations', module:'Variations', note:'Scope changes with approval workflow' },
+  { name:'programme_items', module:'Program', note:'Gantt items with dependency links' },
+  { name:'activity_log', module:'Audit', note:'Event stream across all project actions' },
+  { name:'takeoff_items', module:'Quantities', note:'Layer-1 takeoff with formula engine' },
+  { name:'ai_review_decisions', module:'AI', note:'Accepted/ignored AI suggestion audit trail' },
+  { name:'user_preferences', module:'Settings', note:'Per-user defaults and dashboard config' },
+];
+
+const tips = [
+  { text:'<strong>One focused change per prompt.</strong> Mega-prompts cause Lovable to half-finish tasks and burn credits on cleanup.' },
+  { text:'<strong>Always tell Lovable what NOT to touch.</strong> "Do not change auth, do not modify schema, do not restyle other pages" prevents collateral damage.' },
+  { text:'<strong>Reference shadcn/ui components by name.</strong> "Use the shadcn Card, Badge, Tabs and Table components" produces tighter code.' },
+  { text:'<strong>Connect Supabase before building data features.</strong> Lovable\'s Supabase integration handles auth and RLS automatically.' },
+  { text:'<strong>For UI tweaks, use Visual Edit (free).</strong> Spacing, colour swaps, font sizes, button text — all free, no prompts needed.' },
+  { text:'<strong>Use the "Try to fix" button before re-prompting.</strong> Auto-fix is often free or 1 credit and works ~70% of the time.' },
+  { text:'<strong>Pin the working version after each phase.</strong> If a later prompt breaks things, revert instantly — no credits wasted.' },
+  { text:'<strong>Plan in Chat mode (free), build in Build mode.</strong> Use Chat mode to review prompts before spending credits.' },
+];
+
+const reserve = [
+  { name:'Project duplication / templating', desc:'Time-saver for similar tenders', credits:'4 – 6cr', top:true },
+  { name:'Saved email templates per trade', desc:'Claude starts from your house style', credits:'4 – 6cr', top:true },
+  { name:'Dashboard customisation in Settings', desc:'Toggle charts/panels visible per user', credits:'5 – 8cr', top:false },
+  { name:'Bulk actions on Quotes', desc:'Select multiple, mark received, follow up all', credits:'4 – 6cr', top:false },
+  { name:'Print-friendly Project Summary view', desc:'One-pager A4 for the whole estimate', credits:'5 – 8cr', top:false },
+  { name:'Activity feed filtering and search', desc:'Once activity grows, you need to find things', credits:'3 – 5cr', top:false },
+  { name:'AI decision audit log', desc:'Defensible record of accepted AI suggestions', credits:'4 – 6cr', top:false },
+  { name:'CSV export for Rate Library', desc:'Backup and share rates with team', credits:'3 – 4cr', top:false },
+  { name:'Mobile-optimised quick views', desc:'Site-walk friendly screens for senior staff', credits:'5 – 8cr', top:false },
+];
+
+const tech = ['React 18', 'TypeScript', 'Tailwind CSS', 'shadcn/ui', 'Supabase', 'React Router', 'Recharts', 'lucide-react', 'Supabase Auth', 'Supabase Storage', 'Edge Functions', 'Anthropic Claude API', 'mathjs', 'SheetJS / xlsx', 'jsPDF', 'date-fns', 'react-hook-form', 'Zod', 'papaparse'];
+
+/* ═══════════════════════════════════════════════════
+   RENDER FUNCTIONS
+═══════════════════════════════════════════════════ */
+function typeClass(t) {
+  return { free:'free', low:'low', mid:'mid', high:'high', ai:'ai' }[t] || 'low';
+}
+function badgeClass(t) {
+  return { free:'badge-free', low:'badge-low', mid:'badge-mid', high:'badge-high', ai:'badge-ai' }[t] || 'badge-low';
+}
+function typeLabel(t) {
+  return { free:'Free', low:'Low spend', mid:'Mid spend', high:'High spend', ai:'AI phase' }[t] || '';
+}
+
+// Build order table
+(function renderBuildTable() {
+  const tbody = document.getElementById('buildOrderBody');
+  const rows = phases.map(p => {
+    const cum = p.cumulative > 0 ? `~${p.cumulative}` : '—';
+    const typeTag = `<span class="badge badge-${typeClass(p.type) === 'free' ? 'green' : typeClass(p.type) === 'ai' ? 'purple' : typeClass(p.type) === 'high' ? 'red' : typeClass(p.type) === 'mid' ? 'amber' : 'blue'}">${typeLabel(p.type)}</span>`;
+    return `<tr>
+      <td>Phase ${p.id}</td>
+      <td class="bold">${p.name}</td>
+      <td class="credit">${p.credits}</td>
+      <td class="cumulative">${cum}</td>
+      <td>${typeTag}</td>
+    </tr>`;
+  });
+  rows.push(`<tr class="total-row">
+    <td colspan="2">TOTAL — Core Build</td>
+    <td>~184 – 307cr</td>
+    <td>~244</td>
+    <td><span class="badge badge-blue">With 20% buffer ~293</span></td>
+  </tr>`);
+  tbody.innerHTML = rows.join('');
+})();
+
+// Phases grid
+(function renderPhases() {
+  const grid = document.getElementById('phasesGrid');
+  grid.innerHTML = phases.map(p => `
+    <div class="phase-card ${typeClass(p.type)}">
+      <div class="phase-header">
+        <div class="phase-num">Phase ${p.id}</div>
+        <span class="phase-credits-badge ${badgeClass(p.type)}">${p.credits}</span>
+      </div>
+      <div class="phase-name">${p.name}</div>
+      <div class="phase-detail">${p.detail}</div>
+      <div class="phase-footer">
+        <span class="phase-prompts">${p.prompts} prompt${p.prompts !== 1 ? 's' : ''}</span>
+        <span class="phase-cumulative">Cumulative: <span>${p.cumulative > 0 ? '~' + p.cumulative + 'cr' : '—'}</span></span>
+      </div>
+    </div>
+  `).join('');
+})();
+
+// Modules grid
+(function renderModules() {
+  const colorMap = {
+    blue: { bg:'var(--blue-dim)', color:'var(--blue)' },
+    green: { bg:'var(--green-dim)', color:'var(--green)' },
+    amber: { bg:'var(--amber-dim)', color:'var(--amber)' },
+    purple: { bg:'var(--purple-dim)', color:'var(--purple)' },
+    red: { bg:'var(--red-dim)', color:'var(--red)' },
+  };
+  document.getElementById('modulesGrid').innerHTML = modules.map(m => {
+    const c = colorMap[m.color] || colorMap.blue;
+    return `<div class="module-card">
+      <div class="module-icon" style="background:${c.bg};color:${c.color}">${m.icon}</div>
+      <div>
+        <div class="module-name">${m.name}</div>
+        <div class="module-desc">${m.desc}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('techStack').innerHTML = tech.map(t =>
+    `<span class="badge badge-blue" style="font-size:0.78rem;padding:4px 12px">${t}</span>`
+  ).join('');
+})();
+
+// Schema grid
+(function renderSchema() {
+  document.getElementById('schemaGrid').innerHTML = tables.map(t => `
+    <div class="schema-card">
+      <div class="schema-name">${t.name}</div>
+      <div class="schema-module">${t.module}</div>
+      <div class="schema-badge">${t.note}</div>
+    </div>
+  `).join('');
+})();
+
+// Tips grid
+(function renderTips() {
+  document.getElementById('tipsGrid').innerHTML = tips.map((t, i) => `
+    <div class="tip-item">
+      <div class="tip-num">${i + 1}</div>
+      <div class="tip-text">${t.text}</div>
+    </div>
+  `).join('');
+})();
+
+// Reserve grid
+(function renderReserve() {
+  document.getElementById('reserveGrid').innerHTML = reserve.map(r => `
+    <div class="reserve-item ${r.top ? 'top-pick' : ''}">
+      <div class="reserve-item-left">
+        <div class="reserve-name">${r.top ? '★ ' : ''}${r.name}</div>
+        <div class="reserve-desc">${r.desc}</div>
+      </div>
+      <div class="reserve-credits">${r.credits}</div>
+    </div>
+  `).join('');
+})();
+
+/* ═══════════════════════════════════════════════════
+   CHARTS
+═══════════════════════════════════════════════════ */
+Chart.defaults.color = '#94A3B8';
+Chart.defaults.borderColor = '#1F2937';
+Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+
+// Credit bar chart
+(function renderCreditChart() {
+  const data = phases.filter(p => p.min > 0 || p.max > 0);
+  const labels = data.map(p => `Ph ${p.id}`);
+  const mid = data.map(p => Math.round((p.min + p.max) / 2));
+  const buffer = data.map(p => Math.round((p.min + p.max) / 2 * 0.2));
+
+  new Chart(document.getElementById('creditChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Core Credits',
+          data: mid,
+          backgroundColor: 'rgba(59,130,246,0.7)',
+          borderColor: 'rgba(59,130,246,1)',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: '20% Buffer',
+          data: buffer,
+          backgroundColor: 'rgba(245,158,11,0.4)',
+          borderColor: 'rgba(245,158,11,0.7)',
+          borderWidth: 1,
+          borderRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, padding: 16, font: { size: 11 } } },
+        tooltip: {
+          backgroundColor: '#131826',
+          borderColor: '#1F2937',
+          borderWidth: 1,
+          callbacks: {
+            title: (ctx) => {
+              const p = data[ctx[0].dataIndex];
+              return `Phase ${p.id}: ${p.name}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { color: 'rgba(31,41,55,0.8)' }, ticks: { font: { size: 10 } } },
+        y: { stacked: true, grid: { color: 'rgba(31,41,55,0.8)' }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+})();
+
+// Budget donut
+(function renderBudgetDonut() {
+  new Chart(document.getElementById('budgetDonut'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Core Build (~244cr)', '20% Buffer (~49cr)', 'Reserve (~107cr)'],
+      datasets: [{
+        data: [244, 49, 107],
+        backgroundColor: ['rgba(59,130,246,0.75)', 'rgba(245,158,11,0.75)', 'rgba(139,92,246,0.75)'],
+        borderColor: ['#3B82F6', '#F59E0B', '#8B5CF6'],
+        borderWidth: 1.5,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 10, padding: 12, font: { size: 11 } }
+        },
+        tooltip: {
+          backgroundColor: '#131826',
+          borderColor: '#1F2937',
+          borderWidth: 1,
+          callbacks: {
+            label: (ctx) => ` ${ctx.label}: ${ctx.raw}cr (${Math.round(ctx.raw/400*100)}%)`
+          }
+        }
+      }
+    }
+  });
+})();
+
+/* ═══════════════════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════════════════ */
+const sections = ['overview', 'phases', 'modules', 'schema', 'tips', 'reserve'];
+function showSection(id) {
+  sections.forEach(s => {
+    document.getElementById(`sec-${s}`).style.display = s === id ? '' : 'none';
+  });
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.textContent.toLowerCase().replace(/\s+/g,'').includes(id.replace('-','')) ||
+      (id === 'overview' && tab.textContent === 'Overview') ||
+      (id === 'phases' && tab.textContent === 'Build Phases') ||
+      (id === 'modules' && tab.textContent === 'Modules') ||
+      (id === 'schema' && tab.textContent === 'Database Schema') ||
+      (id === 'tips' && tab.textContent === 'Credit Tips') ||
+      (id === 'reserve' && tab.textContent === 'Reserve Strategy')
+    );
+  });
+}
+</script>
+</body>
+</html>

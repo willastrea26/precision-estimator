@@ -1,0 +1,29 @@
+﻿{
+    "icons":  [
+                  {
+                      "purpose":  "any maskable",
+                      "type":  "image/png",
+                      "sizes":  "192x192",
+                      "src":  "/assets/icon-192.png"
+                  },
+                  {
+                      "purpose":  "any",
+                      "type":  "image/png",
+                      "sizes":  "256x256",
+                      "src":  "/assets/icon-256.png"
+                  },
+                  {
+                      "purpose":  "any",
+                      "type":  "image/png",
+                      "sizes":  "512x512",
+                      "src":  "/assets/icon-512.png"
+                  }
+              ],
+    "description":  "Civil estimating, project management and site tools",
+    "background_color":  "#070C18",
+    "theme_color":  "#3B82F6",
+    "name":  "A Civil — Estimating Intelligence",
+    "start_url":  "/A-Precision.html",
+    "display":  "standalone",
+    "short_name":  "A Civil"
+}
