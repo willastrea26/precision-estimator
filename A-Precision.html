@@ -658,6 +658,16 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 .sr-drop-zone svg{width:30px;height:30px;stroke:var(--muted);margin-bottom:6px}
 .sr-drop-zone p{margin:3px 0;font-size:.82rem;color:var(--muted)}
 .sr-drop-zone .sr-file-name{font-size:.86rem;color:var(--text);font-weight:500}
+.sr-accordion{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px;transition:border-color .15s}
+.sr-accordion:hover,.sr-accordion.open{border-color:var(--blue)}
+.sr-acc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;cursor:pointer;background:var(--s2);user-select:none}
+.sr-acc-chevron{width:15px;height:15px;stroke:var(--muted);flex-shrink:0;transition:transform .2s}
+.sr-acc-body{padding:14px 16px;border-top:1px solid var(--border)}
+.sr-rates-tbl{width:100%;border-collapse:collapse;font-size:.83rem;margin-bottom:4px}
+.sr-rates-tbl th{text-align:left;padding:5px 8px;font-size:.71rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
+.sr-rates-tbl td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04)}
+.sr-rates-tbl tr:last-child td{border-bottom:none}
+.sr-rates-tbl tr:hover td{background:rgba(255,255,255,.025)}
 </style>
 </head>
 <body>
@@ -4598,82 +4608,109 @@ window.showCatalogueAISheet=function(){
     +'<div id="ai-sr-status" style="display:none;padding:10px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:7px;font-size:.82rem;color:var(--blue)">Extracting…</div>',
   actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="ai-extract-sr">Extract with AI</button>'});
 };
+let _srOpenIds=new Set();
+window.toggleSR=function(id){
+  if(_srOpenIds.has(id))_srOpenIds.delete(id);else _srOpenIds.add(id);
+  renderCatalogue();
+};
+window.showAddRateSheet=function(sid,rid){
+  const all=_srGet();const sup=all.find(s=>s.id===sid);if(!sup)return;
+  const it=rid?(sup.items||[]).find(i=>i.id===rid):null;
+  showModal({title:(it?'Edit Rate':'Add Rate')+' — '+esc(sup.company),body:
+    '<div class="form-group"><label class="form-label">Description *</label><input class="form-input" id="srrk-desc" placeholder="e.g. Excavator 20T, Tipper, Pipe Supply 300mm…" value="'+(it?esc(it.description):'')+'"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+      +'<div class="form-group"><label class="form-label">Unit</label><input class="form-input" id="srrk-unit" placeholder="hr, m, m2, m3, ea…" value="'+(it?esc(it.unit):'hr')+'"></div>'
+      +'<div class="form-group"><label class="form-label">Rate ($)</label><input class="form-input" type="number" id="srrk-rate" placeholder="0.00" min="0" step="0.01" value="'+(it?it.rate:'')+'"></div>'
+    +'</div>'
+    +'<div class="form-group"><label class="form-label">Notes</label><input class="form-input" id="srrk-notes" placeholder="Optional — e.g. incl. operator, ex GST" value="'+(it?esc(it.notes||''):'')+'"></div>',
+  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button>'
+    +'<button class="btn btn-blue" data-action="save-sr-rate" data-sid="'+sid+'"'+(rid?' data-rid="'+rid+'"':'')+'>'+(it?'Update Rate':'Add Rate')+'</button>'
+  });
+};
+window.deleteSRRate=function(sid,rid){
+  if(!confirm('Remove this rate?'))return;
+  const items=_srGet();const sup=items.find(s=>s.id===sid);if(!sup)return;
+  sup.items=(sup.items||[]).filter(i=>i.id!==rid);
+  _srSave(items);toast('Rate removed.','success');renderCatalogue();
+};
 function renderCatalogue(){
   const lc=_catLifecycle;
   const all=_srGet();
-  const sett=DB.getSettings();
-  const locked=!!sett.catalogue_locked;
-  const _fmtD=iso=>iso?new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'';
-  const lockedAt=_fmtD(sett.catalogue_locked_at);
-  const now=Date.now();
-
+  const contacts=DB.getContacts();
   const filtered=lc==='all'?all:all.filter(s=>_srGetLc(s)===lc);
-  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'},{key:'all',label:'All'}];
+  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'}];
   const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setCatLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
-  const noticeHTML=lc==='archived'?'<div style="padding:8px 13px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:12px">📦 Archived schedules are hidden. Restore to make them available.</div>'
-    :lc==='deleted'?'<div style="padding:8px 13px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.14);border-radius:7px;font-size:.77rem;color:var(--red);margin-bottom:12px">🗑️ Deleted schedules can be restored or permanently removed.</div>':'';
+  const CAT_LABELS={earthworks:'Earthworks',civil:'Civil',drainage:'Drainage',water:'Water',sewer:'Sewer',electrical:'Electrical',communications:'Comms',concrete:'Concrete',landscaping:'Landscaping',traffic:'Traffic',fencing:'Fencing',demolition:'Demolition',other:'Other'};
 
-  const cardsHTML=!filtered.length
-    ?'<div style="grid-column:1/-1;text-align:center;padding:50px 20px;color:var(--muted);font-size:.88rem">No supplier rate schedules '+(lc==='active'?'yet. Click <strong>Add Supplier</strong> or use <strong>AI Extract</strong> to get started.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</div>'
+  const listHTML=!filtered.length
+    ?'<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:.88rem">No suppliers '+( lc==='active'?'yet. Click <strong>Add Supplier</strong> to get started, or use <strong>AI Extract</strong> to pull rates from a PDF.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</div>'
     :filtered.map(s=>{
+      const open=_srOpenIds.has(s.id);
       const slc=_srGetLc(s);
-      const daysDeleted=s.deleted_at?Math.floor((now-new Date(s.deleted_at))/86400000):null;
-      const itemCount=(s.items||[]).length;
-      const actionsHTML=locked
-        ?'<span style="font-size:.73rem;color:var(--muted2)">🔒</span>'
-        :slc==='active'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showCatalogueSheet(\''+s.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();archiveSR(\''+s.id+'\')" title="Archive">'+icon('archive')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
-        :slc==='archived'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showCatalogueSheet(\''+s.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>'
-        :'<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();permDeleteSR(\''+s.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>';
-      return'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--border)\'" '+(locked?'':'onclick="showCatalogueSheet(\''+s.id+'\')"')+'>'
-        +'<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-          +'<div>'
-            +'<div style="font-size:.93rem;font-weight:700;margin-bottom:2px">'+esc(s.company)+'</div>'
-            +(s.abn?'<div style="font-size:.72rem;color:var(--muted2)">ABN '+esc(s.abn)+'</div>':'')
-          +'</div>'
-          +'<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">'
-            +(lc==='all'?'<span class="badge '+(slc==='active'?'badge-green':slc==='archived'?'badge-amber':'badge-red')+'" style="font-size:.65rem">'+slc+'</span>':'')
-            +'<span class="badge badge-grey" style="font-size:.68rem">'+s.trade_category+'</span>'
+      const items=s.items||[];
+      const catLabel=CAT_LABELS[s.trade_category]||'Other';
+      const contactParts=[s.contact_name,s.email,s.phone].filter(Boolean);
+      const chevronSVG='<svg class="sr-acc-chevron" style="transform:rotate('+(open?'90':'0')+'deg)" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+      const headerHTML='<div class="sr-acc-row" onclick="toggleSR(\''+s.id+'\')">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'
+          +chevronSVG
+          +'<div style="min-width:0">'
+            +'<div style="font-weight:600;font-size:.93rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(s.company)+'</div>'
+            +(contactParts.length?'<div style="font-size:.75rem;color:var(--muted);margin-top:1px">'+contactParts.map(esc).join(' &middot; ')+'</div>':'')
           +'</div>'
         +'</div>'
-        +'<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-bottom:1px solid var(--border)">'
-          +'<div><div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Items</div><div style="font-size:.88rem;font-weight:700;color:var(--blue)">'+itemCount+'</div></div>'
-          +'<div><div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Contact</div><div style="font-size:.76rem;color:var(--muted2)">'+esc(s.contact_name||'—')+'</div></div>'
-          +'<div><div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Source</div><div style="font-size:.76rem;color:var(--muted2)">'+(s.source==='ai'?'AI extracted':'Manual')+'</div></div>'
-        +'</div>'
-        +(itemCount?'<div style="padding:9px 14px;border-bottom:1px solid var(--border)">'
-          +'<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px">Items preview</div>'
-          +'<div style="display:flex;flex-wrap:wrap;gap:4px">'+(s.items||[]).slice(0,4).map(it=>'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:5px;font-size:.72rem;white-space:nowrap">'+esc(it.description)+(it.rate?' · $'+parseFloat(it.rate).toLocaleString()+'/'+esc(it.unit):'')+'</span>').join('')+(itemCount>4?'<span style="font-size:.7rem;color:var(--muted2);padding:3px 6px">+'+( itemCount-4)+' more</span>':'')+'</div>'
-        +'</div>':'')
-        +'<div style="padding:7px 10px;display:flex;justify-content:flex-end;gap:2px;background:rgba(255,255,255,.01)" onclick="event.stopPropagation()">'
-          +actionsHTML
-          +(daysDeleted!==null?'<span style="font-size:.68rem;color:var(--muted2)">'+daysDeleted+'d ago</span>':'')
+        +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+          +'<span style="font-size:.71rem;padding:2px 8px;border-radius:20px;background:var(--s3);color:var(--muted)">'+catLabel+'</span>'
+          +'<span style="font-size:.72rem;color:var(--muted2);min-width:40px;text-align:right">'+items.length+' rate'+(items.length!==1?'s':'')+'</span>'
         +'</div>'
       +'</div>';
+
+      const bodyHTML=!open?'':'<div class="sr-acc-body">'
+        +(items.length
+          ?'<table class="sr-rates-tbl"><thead><tr><th style="width:40%">Description</th><th>Unit</th><th>Rate (ex GST)</th><th style="width:30%">Notes</th><th style="width:48px"></th></tr></thead><tbody>'
+            +items.map(it=>'<tr>'
+              +'<td>'+esc(it.description)+'</td>'
+              +'<td style="color:var(--muted)">'+esc(it.unit)+'</td>'
+              +'<td style="font-weight:600;font-variant-numeric:tabular-nums">$'+parseFloat(it.rate||0).toFixed(2)+'</td>'
+              +'<td style="color:var(--muted);font-size:.78rem">'+esc(it.notes||'')+'</td>'
+              +'<td style="white-space:nowrap">'
+                +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showAddRateSheet(\''+s.id+'\',\''+it.id+'\')" title="Edit">'+icon('edit')+'</button>'
+                +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteSRRate(\''+s.id+'\',\''+it.id+'\')" style="color:var(--red)" title="Remove">'+icon('trash')+'</button>'
+              +'</td>'
+            +'</tr>').join('')
+            +'</tbody></table>'
+          :'<p style="font-size:.83rem;color:var(--muted);margin:0 0 12px">No rates added yet.</p>')
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border);margin-top:'+(items.length?'8':'0')+'px">'
+          +'<button class="btn btn-sm btn-blue" onclick="event.stopPropagation();showAddRateSheet(\''+s.id+'\')">+ Add Rate</button>'
+          +'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();showCatalogueSheet(\''+s.id+'\')">Edit Supplier</button>'
+          +(slc==='active'?'<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();archiveSR(\''+s.id+'\')" style="margin-left:auto">Archive</button>':'')
+          +(slc==='archived'?'<button class="btn btn-sm btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">Delete</button>':'')
+          +(slc==='deleted'?'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();permDeleteSR(\''+s.id+'\')" style="color:var(--red)">Permanently Delete</button>':'')
+          +(slc==='active'?'<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">Delete</button>':'')
+        +'</div>'
+      +'</div>';
+
+      return'<div class="sr-accordion'+(open?' open':'')+(slc!=='active'?' muted':'')+'">'+headerHTML+bodyHTML+'</div>';
     }).join('');
 
-  const content=''
-    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">'
-      +'<div style="display:flex;align-items:center;gap:10px">'
-        +'<div class="page-title" style="margin:0">Supplier Rates</div>'
-        +(locked?'<span class="badge badge-amber" style="font-size:.7rem">🔒 Locked'+(lockedAt?' '+lockedAt:'')+'</span>':'')
-      +'</div>'
-      +'<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'
-        +'<button class="btn btn-sm" onclick="toggleCatalogueLock()" style="'+(locked?'border:1px solid var(--amber);color:var(--amber);background:rgba(245,158,11,.08)':'border:1px solid var(--border);background:transparent;color:var(--muted2)')+'">'+(locked?'🔓 Unlock':'🔒 Lock')+'</button>'
-        +(!locked?'<button class="btn btn-outline" onclick="showCatalogueAISheet()">✦ AI Extract</button>':'')
-        +(!locked?'<button class="btn btn-blue" onclick="showCatalogueSheet(\'\')">'+icon('plus')+' Add Supplier</button>':'')
-      +'</div>'
-    +'</div>'
-    +(locked?'<div style="padding:9px 14px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:14px;display:flex;align-items:center;gap:8px">🔒 <span>Supplier Rates is locked. Click <strong>Unlock</strong> to make changes.</span></div>':'')
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px">'
-      +'<div class="proj-tabs">'+tabsHTML+'</div>'
-      +'<span style="font-size:.72rem;color:var(--muted2);background:rgba(255,255,255,.07);padding:2px 9px;border-radius:99px;font-weight:500;border:1px solid rgba(255,255,255,.07)">'+filtered.length+' schedule'+(filtered.length!==1?'s':'')+'</span>'
-    +'</div>'
-    +noticeHTML
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">'+cardsHTML+'</div>';
-
+  const activeCount=all.filter(s=>_srGetLc(s)==='active').length;
+  const content=`
+    <div class="page-header">
+      <div>
+        <div class="page-title">Supplier Rates Library</div>
+        <div class="page-sub">${activeCount} active supplier${activeCount!==1?'s':''}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="window.showCatalogueAISheet()">&#10022; AI Extract</button>
+        <button class="btn btn-blue" onclick="window.showCatalogueSheet('')">${icon('plus')} Add Supplier</button>
+      </div>
+    </div>
+    <div class="proj-tabs">${tabsHTML}</div>
+    <div id="sr-list" style="margin-top:12px">${listHTML}</div>
+  `;
   renderShell(content,'supplier-rates');
 }
-
 function renderQuotes(){
   const quotes=DB.getQuotes();
   const projects=DB.getProjects();
@@ -7707,7 +7744,21 @@ if(action==='save-prod-record'){
     renderProductivity();
     return;
   }
-if(action==='save-catalogue'){
+if(action==='if(action==='save-sr-rate'){
+    const sid=el.dataset.sid;
+    const rid=el.dataset.rid||null;
+    const desc=document.getElementById('srrk-desc')?.value.trim();
+    if(!desc){toast('Description is required.','warning');return;}
+    const items=_srGet();
+    const sup=items.find(s=>s.id===sid);
+    if(!sup){toast('Supplier not found.','warning');return;}
+    if(!sup.items)sup.items=[];
+    const rateItem={id:rid||uid(),description:desc,unit:document.getElementById('srrk-unit')?.value.trim()||'hr',rate:parseFloat(document.getElementById('srrk-rate')?.value)||0,notes:document.getElementById('srrk-notes')?.value.trim()||''};
+    if(rid){const i=sup.items.findIndex(x=>x.id===rid);if(i>=0)sup.items[i]=rateItem;else sup.items.push(rateItem);}
+    else sup.items.push(rateItem);
+    _srSave(items);closeModal();toast(rid?'Rate updated.':'Rate added.','success');renderCatalogue();return;
+  }
+save-catalogue'){
     const sid=el.dataset.sid;
     const company=document.getElementById('sr-company')?.value.trim();
     if(!company){toast('Company name is required.','warning');return;}
