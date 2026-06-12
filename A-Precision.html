@@ -1005,7 +1005,8 @@ function renderShell(content,activePage){
     {key:'dashboard',label:'Dashboard',icon:'dashboard'},
     {key:'projects',label:'Projects',icon:'projects'},
     {key:'rate-library',label:'Rate Library',icon:'rates'},
-    {key:'productivity',label:'Productivity Library',icon:'productivity'},
+    {key:'supplier-rates',label:'Supplier Rates',icon:'rates'},
+    {key:'productivity',label:'Productivity Library & Crews',icon:'productivity'},
     {key:'quotes',label:'All Quotes',icon:'quotes'},
     {key:'financial',label:'Financial',icon:'dollar'},
     {key:'contacts',label:'Contacts',icon:'contacts'},
@@ -4445,6 +4446,192 @@ window.applyQuoteStatusQuick=function(qid,newStatus){
   if(typeof filterQuotes==='function')filterQuotes();
 };
 
+/* ================================================================
+   SUPPLIER RATES — localStorage register
+================================================================ */
+const _SR_KEY='ap_supplier_rates';
+function _srGet(){try{return JSON.parse(localStorage.getItem(_SR_KEY)||'[]');}catch{return[];}}
+function _srSave(arr){localStorage.setItem(_SR_KEY,JSON.stringify(arr));}
+function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
+
+let _catLifecycle='active';
+window.setCatLifecycle=function(lc){_catLifecycle=lc;renderCatalogue();};
+
+window.toggleCatalogueLock=function(){
+  const s=DB.getSettings();
+  if(s.catalogue_locked){
+    if(!confirm('Unlock Supplier Rates? Items will be editable again.'))return;
+    DB.saveSettings({catalogue_locked:false,catalogue_locked_at:null});
+    toast('Supplier Rates unlocked.','info');
+  }else{
+    DB.saveSettings({catalogue_locked:true,catalogue_locked_at:new Date().toISOString()});
+    toast('Supplier Rates locked.','success');
+  }
+  renderCatalogue();
+};
+
+window.archiveSR=function(id){
+  const items=_srGet();const i=items.find(x=>x.id===id);
+  if(!i||!confirm('Archive "'+i.company+'"?'))return;
+  i.lifecycle_status='archived';i.archived_at=new Date().toISOString();
+  _srSave(items);toast('Archived.','success');renderCatalogue();
+};
+window.deleteSR=function(id){
+  const items=_srGet();const i=items.find(x=>x.id===id);
+  if(!i||!confirm('Delete "'+i.company+'"? Moved to trash.'))return;
+  i.lifecycle_status='deleted';i.deleted_at=new Date().toISOString();
+  _srSave(items);toast('Moved to trash.','success');renderCatalogue();
+};
+window.restoreSR=function(id){
+  const items=_srGet();const i=items.find(x=>x.id===id);if(!i)return;
+  i.lifecycle_status='active';i.archived_at=null;i.deleted_at=null;
+  _srSave(items);toast('Restored.','success');renderCatalogue();
+};
+window.permDeleteSR=function(id){
+  if(!confirm('Permanently delete? This cannot be undone.'))return;
+  _srSave(_srGet().filter(x=>x.id!==id));toast('Permanently deleted.','success');renderCatalogue();
+};
+
+let _srItems=[];
+window._srAddItem=function(){
+  _srItems.push({id:uid(),description:'',unit:'hr',rate:'',notes:''});
+  _srRenderItems();
+};
+window._srRemoveItem=function(idx){_srItems.splice(idx,1);_srRenderItems();};
+window._srSetItem=function(idx,field,val){if(_srItems[idx])_srItems[idx][field]=val;};
+
+function _srRenderItems(){
+  const el=document.getElementById('sr-items-list');if(!el)return;
+  if(!_srItems.length){
+    el.innerHTML='<div style="padding:12px;text-align:center;border:1px dashed var(--border);border-radius:7px;color:var(--muted2);font-size:.8rem">No items yet — click <strong>+ Add Item</strong> below.</div>';
+    return;
+  }
+  el.innerHTML='<table class="prr-crew-tbl" style="margin-top:4px">'
+    +'<thead><tr><th style="width:45%">Description</th><th style="width:12%">Unit</th><th style="width:18%">Rate ($)</th><th style="width:20%">Notes</th><th></th></tr></thead>'
+    +'<tbody>'+_srItems.map((it,i)=>''
+      +'<tr>'
+      +'<td><input class="form-input" style="padding:3px 6px;font-size:.8rem" value="'+esc(it.description||'')+'" placeholder="e.g. 14T Excavator Wet Hire" oninput="window._srSetItem('+i+',\'description\',this.value)"></td>'
+      +'<td><input class="form-input" style="padding:3px 6px;font-size:.8rem;width:70px" value="'+esc(it.unit||'')+'" placeholder="hr" oninput="window._srSetItem('+i+',\'unit\',this.value)"></td>'
+      +'<td><input class="form-input" type="number" style="padding:3px 6px;font-size:.8rem;width:90px" value="'+(it.rate||'')+'" placeholder="0" oninput="window._srSetItem('+i+',\'rate\',this.value)"></td>'
+      +'<td><input class="form-input" style="padding:3px 6px;font-size:.8rem" value="'+esc(it.notes||'')+'" placeholder="Optional" oninput="window._srSetItem('+i+',\'notes\',this.value)"></td>'
+      +'<td><button class="btn btn-ghost btn-xs" onclick="window._srRemoveItem('+i+')" style="color:var(--red);font-size:1.1rem;padding:0 4px">&times;</button></td>'
+      +'</tr>'
+    ).join('')+'</tbody></table>';
+}
+
+window.showCatalogueSheet=function(id){
+  if(DB.getSettings().catalogue_locked){toast('Supplier Rates is locked.','warning');return;}
+  const s=id?_srGet().find(x=>x.id===id)||{}:{};
+  _srItems=(s.items||[]).map(it=>({...it}));
+  const cats=['earthworks','civil','drainage','water','sewer','electrical','communications','concrete','landscaping','traffic','fencing','demolition','other'];
+  showModal({xl:true,title:id?'Edit Supplier Schedule':'Add Supplier Schedule',body:''
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
+      +'<div class="form-group" style="margin:0"><label class="form-label">Company Name *</label><input class="form-input" id="sr-company" value="'+esc(s.company||'')+'" placeholder="e.g. Coates Hire"></div>'
+      +'<div class="form-group" style="margin:0"><label class="form-label">ABN</label><input class="form-input" id="sr-abn" value="'+esc(s.abn||'')+'" placeholder="12 345 678 901"></div>'
+      +'<div class="form-group" style="margin:0"><label class="form-label">Contact Name</label><input class="form-input" id="sr-contact" value="'+esc(s.contact_name||'')+'" placeholder="John Smith"></div>'
+      +'<div class="form-group" style="margin:0"><label class="form-label">Contact Email</label><input class="form-input" id="sr-email" value="'+esc(s.contact_email||'')+'" placeholder="john@company.com"></div>'
+      +'<div class="form-group" style="margin:0"><label class="form-label">Contact Phone</label><input class="form-input" id="sr-phone" value="'+esc(s.contact_phone||'')+'" placeholder="0400 000 000"></div>'
+      +'<div class="form-group" style="margin:0"><label class="form-label">Trade Category</label><select class="form-input" id="sr-cat">'+cats.map(c=>'<option'+(s.trade_category===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'
+    +'</div>'
+    +'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">'
+      +'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.02)">'
+        +'<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Rate Items</span>'
+        +'<button class="btn btn-outline btn-sm" type="button" onclick="window._srAddItem()">+ Add Item</button>'
+      +'</div>'
+      +'<div style="padding:12px 14px"><div id="sr-items-list"></div></div>'
+    +'</div>'
+    +'<div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" id="sr-notes" rows="2" placeholder="e.g. Prices valid until June 2025, excludes fuel levy">'+esc(s.notes||'')+'</textarea></div>',
+  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="save-catalogue" data-sid="'+(s.id||'')+'">Save</button>'});
+  setTimeout(()=>_srRenderItems(),0);
+};
+
+window.showCatalogueAISheet=function(){
+  const key=DB.getSettings().ai_key;
+  if(!key){toast('Add your AI API key in Settings first.','warning');return;}
+  showModal({wide:true,title:'AI Extract — Paste Rate Schedule',body:''
+    +'<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Paste text from a supplier rate schedule (copy from PDF, email, or document). The AI will extract company details and line items.</p>'
+    +'<div class="form-group"><label class="form-label">Company Name (optional override)</label><input class="form-input" id="ai-sr-company" placeholder="Leave blank to auto-detect"></div>'
+    +'<div class="form-group"><label class="form-label">Rate Schedule Text *</label><textarea class="form-input" id="ai-sr-text" rows="12" placeholder="Paste the rate schedule content here…" style="font-family:monospace;font-size:.78rem"></textarea></div>'
+    +'<div id="ai-sr-status" style="display:none;padding:10px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:7px;font-size:.82rem;color:var(--blue)">Extracting…</div>',
+  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="ai-extract-sr">Extract with AI</button>'});
+};
+
+function renderCatalogue(){
+  const lc=_catLifecycle;
+  const all=_srGet();
+  const sett=DB.getSettings();
+  const locked=!!sett.catalogue_locked;
+  const _fmtD=iso=>iso?new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'';
+  const lockedAt=_fmtD(sett.catalogue_locked_at);
+  const now=Date.now();
+
+  const filtered=lc==='all'?all:all.filter(s=>_srGetLc(s)===lc);
+  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'},{key:'all',label:'All'}];
+  const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setCatLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
+  const noticeHTML=lc==='archived'?'<div style="padding:8px 13px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:12px">📦 Archived schedules are hidden. Restore to make them available.</div>'
+    :lc==='deleted'?'<div style="padding:8px 13px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.14);border-radius:7px;font-size:.77rem;color:var(--red);margin-bottom:12px">🗑️ Deleted schedules can be restored or permanently removed.</div>':'';
+
+  const cardsHTML=!filtered.length
+    ?'<div style="grid-column:1/-1;text-align:center;padding:50px 20px;color:var(--muted);font-size:.88rem">No supplier rate schedules '+(lc==='active'?'yet. Click <strong>Add Supplier</strong> or use <strong>AI Extract</strong> to get started.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</div>'
+    :filtered.map(s=>{
+      const slc=_srGetLc(s);
+      const daysDeleted=s.deleted_at?Math.floor((now-new Date(s.deleted_at))/86400000):null;
+      const itemCount=(s.items||[]).length;
+      const actionsHTML=locked
+        ?'<span style="font-size:.73rem;color:var(--muted2)">🔒</span>'
+        :slc==='active'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showCatalogueSheet(\''+s.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();archiveSR(\''+s.id+'\')" title="Archive">'+icon('archive')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
+        :slc==='archived'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showCatalogueSheet(\''+s.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>'
+        :'<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();permDeleteSR(\''+s.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>';
+      return'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--border)\'" '+(locked?'':'onclick="showCatalogueSheet(\''+s.id+'\')"')+'>'
+        +'<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+          +'<div>'
+            +'<div style="font-size:.93rem;font-weight:700;margin-bottom:2px">'+esc(s.company)+'</div>'
+            +(s.abn?'<div style="font-size:.72rem;color:var(--muted2)">ABN '+esc(s.abn)+'</div>':'')
+          +'</div>'
+          +'<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">'
+            +(lc==='all'?'<span class="badge '+(slc==='active'?'badge-green':slc==='archived'?'badge-amber':'badge-red')+'" style="font-size:.65rem">'+slc+'</span>':'')
+            +'<span class="badge badge-grey" style="font-size:.68rem">'+s.trade_category+'</span>'
+          +'</div>'
+        +'</div>'
+        +'<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-bottom:1px solid var(--border)">'
+          +'<div><div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Items</div><div style="font-size:.88rem;font-weight:700;color:var(--blue)">'+itemCount+'</div></div>'
+          +'<div><div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Contact</div><div style="font-size:.76rem;color:var(--muted2)">'+esc(s.contact_name||'—')+'</div></div>'
+          +'<div><div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Source</div><div style="font-size:.76rem;color:var(--muted2)">'+(s.source==='ai'?'AI extracted':'Manual')+'</div></div>'
+        +'</div>'
+        +(itemCount?'<div style="padding:9px 14px;border-bottom:1px solid var(--border)">'
+          +'<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px">Items preview</div>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:4px">'+(s.items||[]).slice(0,4).map(it=>'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:5px;font-size:.72rem;white-space:nowrap">'+esc(it.description)+(it.rate?' · $'+parseFloat(it.rate).toLocaleString()+'/'+esc(it.unit):'')+'</span>').join('')+(itemCount>4?'<span style="font-size:.7rem;color:var(--muted2);padding:3px 6px">+'+( itemCount-4)+' more</span>':'')+'</div>'
+        +'</div>':'')
+        +'<div style="padding:7px 10px;display:flex;justify-content:flex-end;gap:2px;background:rgba(255,255,255,.01)" onclick="event.stopPropagation()">'
+          +actionsHTML
+          +(daysDeleted!==null?'<span style="font-size:.68rem;color:var(--muted2)">'+daysDeleted+'d ago</span>':'')
+        +'</div>'
+      +'</div>';
+    }).join('');
+
+  const content=''
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +'<div class="page-title" style="margin:0">Supplier Rates</div>'
+        +(locked?'<span class="badge badge-amber" style="font-size:.7rem">🔒 Locked'+(lockedAt?' '+lockedAt:'')+'</span>':'')
+      +'</div>'
+      +'<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'
+        +'<button class="btn btn-sm" onclick="toggleCatalogueLock()" style="'+(locked?'border:1px solid var(--amber);color:var(--amber);background:rgba(245,158,11,.08)':'border:1px solid var(--border);background:transparent;color:var(--muted2)')+'">'+(locked?'🔓 Unlock':'🔒 Lock')+'</button>'
+        +(!locked?'<button class="btn btn-outline" onclick="showCatalogueAISheet()">✦ AI Extract</button>':'')
+        +(!locked?'<button class="btn btn-blue" onclick="showCatalogueSheet(\'\')">'+icon('plus')+' Add Supplier</button>':'')
+      +'</div>'
+    +'</div>'
+    +(locked?'<div style="padding:9px 14px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:14px;display:flex;align-items:center;gap:8px">🔒 <span>Supplier Rates is locked. Click <strong>Unlock</strong> to make changes.</span></div>':'')
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px">'
+      +'<div class="proj-tabs">'+tabsHTML+'</div>'
+      +'<span style="font-size:.72rem;color:var(--muted2);background:rgba(255,255,255,.07);padding:2px 9px;border-radius:99px;font-weight:500;border:1px solid rgba(255,255,255,.07)">'+filtered.length+' schedule'+(filtered.length!==1?'s':'')+'</span>'
+    +'</div>'
+    +noticeHTML
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">'+cardsHTML+'</div>';
+
+  renderShell(content,'supplier-rates');
+}
+
 function renderQuotes(){
   const quotes=DB.getQuotes();
   const projects=DB.getProjects();
@@ -6115,6 +6302,7 @@ function renderPage(page,params){
     dashboard:renderDashboard,
     projects:renderProjects,
     'rate-library':renderRateLibrary,
+    'supplier-rates':renderCatalogue,
     productivity:renderProductivity,
     quotes:renderQuotes,
     financial:renderFinancial,
@@ -7475,6 +7663,56 @@ if(action==='save-prod-record'){
     closeModal();
     toast(rid?'Record updated.':'Record saved.','success');
     renderProductivity();
+    return;
+  }
+if(action==='save-catalogue'){
+    const sid=el.dataset.sid;
+    const company=document.getElementById('sr-company')?.value.trim();
+    if(!company){toast('Company name is required.','warning');return;}
+    const items=_srGet();
+    const obj={
+      id:sid||uid(),
+      company,
+      abn:document.getElementById('sr-abn')?.value.trim(),
+      contact_name:document.getElementById('sr-contact')?.value.trim(),
+      contact_email:document.getElementById('sr-email')?.value.trim(),
+      contact_phone:document.getElementById('sr-phone')?.value.trim(),
+      trade_category:document.getElementById('sr-cat')?.value,
+      notes:document.getElementById('sr-notes')?.value.trim(),
+      items:_srItems.map(it=>({id:it.id||uid(),description:it.description,unit:it.unit,rate:parseFloat(it.rate)||0,notes:it.notes})),
+      source:sid?(items.find(x=>x.id===sid)?.source||'manual'):'manual',
+      lifecycle_status:'active',
+      created_at:sid?(items.find(x=>x.id===sid)?.created_at||new Date().toISOString()):new Date().toISOString()
+    };
+    if(sid){const idx=items.findIndex(x=>x.id===sid);if(idx>=0)items[idx]=obj;else items.push(obj);}
+    else items.push(obj);
+    _srSave(items);closeModal();toast(sid?'Schedule updated.':'Schedule saved.','success');renderCatalogue();return;
+  }
+if(action==='ai-extract-sr'){
+    const key=DB.getSettings().ai_key;if(!key){toast('No AI key set in Settings.','warning');return;}
+    const text=document.getElementById('ai-sr-text')?.value.trim();
+    if(!text){toast('Paste some text first.','warning');return;}
+    const companyHint=document.getElementById('ai-sr-company')?.value.trim();
+    const statusEl=document.getElementById('ai-sr-status');
+    if(statusEl){statusEl.style.display='block';statusEl.textContent='Extracting with AI…';}
+    el.disabled=true;
+    const prompt='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty"}]}\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+'Rate schedule:\n'+text;
+    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4096,messages:[{role:'user',content:prompt}]})})
+    .then(r=>r.json()).then(data=>{
+      el.disabled=false;
+      if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
+      try{
+        const raw=data.content?.[0]?.text||'{}';
+        const parsed=JSON.parse(raw.replace(/^```json\n?/,'').replace(/```$/,'').trim());
+        const items=_srGet();
+        const obj={id:uid(),company:companyHint||parsed.company||'Unknown',abn:parsed.abn||'',
+          contact_name:parsed.contact_name||'',contact_email:parsed.contact_email||'',contact_phone:parsed.contact_phone||'',
+          trade_category:parsed.trade_category||'other',notes:'',source:'ai',lifecycle_status:'active',
+          created_at:new Date().toISOString(),
+          items:(parsed.items||[]).map(it=>({id:uid(),description:it.description||'',unit:it.unit||'hr',rate:parseFloat(it.rate)||0,notes:it.notes||''}))};
+        items.push(obj);_srSave(items);closeModal();toast('Extracted '+obj.items.length+' items for '+obj.company+'.','success');renderCatalogue();
+      }catch(e){if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Could not parse AI response. Try again.';} el.disabled=false;}
+    }).catch(e=>{el.disabled=false;if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Error: '+e.message;}});
     return;
   }
   if(action==='save-productivity'){
