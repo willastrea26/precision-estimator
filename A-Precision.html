@@ -671,7 +671,7 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#070C18"><div style="text-align:center"><div style="width:36px;height:36px;border:3px solid rgba(59,130,246,.2);border-top-color:#3B82F6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px"></div><div style="color:#475569;font-size:.85rem;font-family:system-ui">Loading A-Precision…</div></div></div></div>
 <div id="modal-root"></div>
 <div id="toast-container"></div>
 <script>
@@ -8207,7 +8207,7 @@ window.addEventListener('load',function(){
   // Supabase startup — check for existing session
   (async()=>{
     try{
-      const{data:{session}}=await _sb.auth.getSession();
+      const _sessionRace=await Promise.race([_sb.auth.getSession(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),6000))]);const{data:{session}}=_sessionRace;
       if(session){
         const ok=await _sbLoad();
         if(ok){
