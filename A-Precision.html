@@ -19,7 +19,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -652,26 +652,10 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 .email-gen-bar{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
 .email-meta{font-size:.78rem;color:var(--muted);margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:6px;line-height:1.6}
 .email-body-ta{font-family:'Segoe UI',system-ui,sans-serif;min-height:230px;line-height:1.65;resize:vertical}
-.sr-drop-zone{border:2px dashed var(--border);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:4px}
-.sr-drop-zone:hover,.sr-drop-zone.drag-over{border-color:var(--blue);background:rgba(59,130,246,.05)}
-.sr-drop-zone.file-ready{border-color:var(--green);background:rgba(34,197,94,.04)}
-.sr-drop-zone svg{width:30px;height:30px;stroke:var(--muted);margin-bottom:6px}
-.sr-drop-zone p{margin:3px 0;font-size:.82rem;color:var(--muted)}
-.sr-drop-zone .sr-file-name{font-size:.86rem;color:var(--text);font-weight:500}
-.sr-accordion{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px;transition:border-color .15s}
-.sr-accordion:hover,.sr-accordion.open{border-color:var(--blue)}
-.sr-acc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;cursor:pointer;background:var(--s2);user-select:none}
-.sr-acc-chevron{width:15px;height:15px;stroke:var(--muted);flex-shrink:0;transition:transform .2s}
-.sr-acc-body{padding:14px 16px;border-top:1px solid var(--border)}
-.sr-rates-tbl{width:100%;border-collapse:collapse;font-size:.83rem;margin-bottom:4px}
-.sr-rates-tbl th{text-align:left;padding:5px 8px;font-size:.71rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
-.sr-rates-tbl td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04)}
-.sr-rates-tbl tr:last-child td{border-bottom:none}
-.sr-rates-tbl tr:hover td{background:rgba(255,255,255,.025)}
 </style>
 </head>
 <body>
-<div id="app"><div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#070C18"><div style="text-align:center"><div style="width:36px;height:36px;border:3px solid rgba(59,130,246,.2);border-top-color:#3B82F6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px"></div><div style="color:#475569;font-size:.85rem;font-family:system-ui">Loading A-Precision…</div></div></div></div>
+<div id="app"></div>
 <div id="modal-root"></div>
 <div id="toast-container"></div>
 <script>
@@ -696,7 +680,7 @@ const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 ================================================================ */
 const _SB_URL='https://gcdkxapepawiixyusjnu.supabase.co';
 const _SB_KEY='sb_publishable_tb77mPEA7LCKq4cQNT2W9Q_BKZtBi7P';
-if(typeof supabase==='undefined'){document.addEventListener('DOMContentLoaded',()=>{document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;background:#070C18;color:#F1F5F9"><div style="text-align:center;padding:40px;max-width:480px"><div style="font-size:2rem;margin-bottom:16px">⚠️</div><div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Failed to load required libraries</div><div style="color:#8FA3BF;margin-bottom:16px">The app could not load a required library from the internet. Please check your connection and try a hard refresh (Ctrl+Shift+R).</div><div style="color:#8FA3BF;font-size:.85rem">If the problem persists, try disabling browser extensions or opening in a private window.</div></div></div>';});throw new Error('Supabase CDN failed to load');}
+if(typeof supabase==='undefined'){document.addEventListener('DOMContentLoaded',()=>{document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;background:#070C18;color:#F1F5F9"><div style="text-align:center;padding:40px"><div style="font-size:2rem;margin-bottom:16px">⚠️</div><div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Open via the local server</div><div style="color:#8FA3BF;margin-bottom:20px">This app must be opened via the local server, not directly as a file.</div><div style="background:#0D1525;border:1px solid #1A2840;border-radius:8px;padding:12px 20px;font-family:monospace;font-size:1rem;color:#3B82F6">http://localhost:3456/A-Precision.html</div></div></div>';});throw new Error('Supabase not loaded — open via http://localhost:3456/');}
 const _sb=supabase.createClient(_SB_URL,_SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
 
 // In-memory cache — all reads are synchronous from here
@@ -1021,8 +1005,7 @@ function renderShell(content,activePage){
     {key:'dashboard',label:'Dashboard',icon:'dashboard'},
     {key:'projects',label:'Projects',icon:'projects'},
     {key:'rate-library',label:'Rate Library',icon:'rates'},
-    {key:'supplier-rates',label:'Supplier Rates',icon:'rates'},
-    {key:'productivity',label:'Productivity Library & Crews',icon:'productivity'},
+    {key:'productivity',label:'Productivity Library',icon:'productivity'},
     {key:'quotes',label:'All Quotes',icon:'quotes'},
     {key:'financial',label:'Financial',icon:'dollar'},
     {key:'contacts',label:'Contacts',icon:'contacts'},
@@ -4462,255 +4445,6 @@ window.applyQuoteStatusQuick=function(qid,newStatus){
   if(typeof filterQuotes==='function')filterQuotes();
 };
 
-/* ================================================================
-   SUPPLIER RATES — localStorage register
-================================================================ */
-const _SR_KEY='ap_supplier_rates';
-function _srGet(){try{return JSON.parse(localStorage.getItem(_SR_KEY)||'[]');}catch{return[];}}
-function _srSave(arr){localStorage.setItem(_SR_KEY,JSON.stringify(arr));}
-function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
-
-let _catLifecycle='active';
-window.setCatLifecycle=function(lc){_catLifecycle=lc;renderCatalogue();};
-
-window.toggleCatalogueLock=function(){
-  const s=DB.getSettings();
-  if(s.catalogue_locked){
-    if(!confirm('Unlock Supplier Rates? Items will be editable again.'))return;
-    DB.saveSettings({catalogue_locked:false,catalogue_locked_at:null});
-    toast('Supplier Rates unlocked.','info');
-  }else{
-    DB.saveSettings({catalogue_locked:true,catalogue_locked_at:new Date().toISOString()});
-    toast('Supplier Rates locked.','success');
-  }
-  renderCatalogue();
-};
-
-window.archiveSR=function(id){
-  const items=_srGet();const i=items.find(x=>x.id===id);
-  if(!i||!confirm('Archive "'+i.company+'"?'))return;
-  i.lifecycle_status='archived';i.archived_at=new Date().toISOString();
-  _srSave(items);toast('Archived.','success');renderCatalogue();
-};
-window.deleteSR=function(id){
-  const items=_srGet();const i=items.find(x=>x.id===id);
-  if(!i||!confirm('Delete "'+i.company+'"? Moved to trash.'))return;
-  i.lifecycle_status='deleted';i.deleted_at=new Date().toISOString();
-  _srSave(items);toast('Moved to trash.','success');renderCatalogue();
-};
-window.restoreSR=function(id){
-  const items=_srGet();const i=items.find(x=>x.id===id);if(!i)return;
-  i.lifecycle_status='active';i.archived_at=null;i.deleted_at=null;
-  _srSave(items);toast('Restored.','success');renderCatalogue();
-};
-window.permDeleteSR=function(id){
-  if(!confirm('Permanently delete? This cannot be undone.'))return;
-  _srSave(_srGet().filter(x=>x.id!==id));toast('Permanently deleted.','success');renderCatalogue();
-};
-
-let _srItems=[];
-window._srAddItem=function(){
-  _srItems.push({id:uid(),description:'',unit:'hr',rate:'',notes:''});
-  _srRenderItems();
-};
-window._srRemoveItem=function(idx){_srItems.splice(idx,1);_srRenderItems();};
-window._srSetItem=function(idx,field,val){if(_srItems[idx])_srItems[idx][field]=val;};
-
-function _srRenderItems(){
-  const el=document.getElementById('sr-items-list');if(!el)return;
-  if(!_srItems.length){
-    el.innerHTML='<div style="padding:12px;text-align:center;border:1px dashed var(--border);border-radius:7px;color:var(--muted2);font-size:.8rem">No items yet — click <strong>+ Add Item</strong> below.</div>';
-    return;
-  }
-  el.innerHTML='<table class="prr-crew-tbl" style="margin-top:4px">'
-    +'<thead><tr><th style="width:45%">Description</th><th style="width:12%">Unit</th><th style="width:18%">Rate ($)</th><th style="width:20%">Notes</th><th></th></tr></thead>'
-    +'<tbody>'+_srItems.map((it,i)=>''
-      +'<tr>'
-      +'<td><input class="form-input" style="padding:3px 6px;font-size:.8rem" value="'+esc(it.description||'')+'" placeholder="e.g. 14T Excavator Wet Hire" oninput="window._srSetItem('+i+',\'description\',this.value)"></td>'
-      +'<td><input class="form-input" style="padding:3px 6px;font-size:.8rem;width:70px" value="'+esc(it.unit||'')+'" placeholder="hr" oninput="window._srSetItem('+i+',\'unit\',this.value)"></td>'
-      +'<td><input class="form-input" type="number" style="padding:3px 6px;font-size:.8rem;width:90px" value="'+(it.rate||'')+'" placeholder="0" oninput="window._srSetItem('+i+',\'rate\',this.value)"></td>'
-      +'<td><input class="form-input" style="padding:3px 6px;font-size:.8rem" value="'+esc(it.notes||'')+'" placeholder="Optional" oninput="window._srSetItem('+i+',\'notes\',this.value)"></td>'
-      +'<td><button class="btn btn-ghost btn-xs" onclick="window._srRemoveItem('+i+')" style="color:var(--red);font-size:1.1rem;padding:0 4px">&times;</button></td>'
-      +'</tr>'
-    ).join('')+'</tbody></table>';
-}
-
-window.showCatalogueSheet=function(id){
-  if(DB.getSettings().catalogue_locked){toast('Supplier Rates is locked.','warning');return;}
-  const s=id?_srGet().find(x=>x.id===id)||{}:{};
-  _srItems=(s.items||[]).map(it=>({...it}));
-  const cats=['earthworks','civil','drainage','water','sewer','electrical','communications','concrete','landscaping','traffic','fencing','demolition','other'];
-  showModal({xl:true,title:id?'Edit Supplier Schedule':'Add Supplier Schedule',body:''
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
-      +'<div class="form-group" style="margin:0"><label class="form-label">Company Name *</label><input class="form-input" id="sr-company" value="'+esc(s.company||'')+'" placeholder="e.g. Coates Hire"></div>'
-      +'<div class="form-group" style="margin:0"><label class="form-label">ABN</label><input class="form-input" id="sr-abn" value="'+esc(s.abn||'')+'" placeholder="12 345 678 901"></div>'
-      +'<div class="form-group" style="margin:0"><label class="form-label">Contact Name</label><input class="form-input" id="sr-contact" value="'+esc(s.contact_name||'')+'" placeholder="John Smith"></div>'
-      +'<div class="form-group" style="margin:0"><label class="form-label">Contact Email</label><input class="form-input" id="sr-email" value="'+esc(s.contact_email||'')+'" placeholder="john@company.com"></div>'
-      +'<div class="form-group" style="margin:0"><label class="form-label">Contact Phone</label><input class="form-input" id="sr-phone" value="'+esc(s.contact_phone||'')+'" placeholder="0400 000 000"></div>'
-      +'<div class="form-group" style="margin:0"><label class="form-label">Trade Category</label><select class="form-input" id="sr-cat">'+cats.map(c=>'<option'+(s.trade_category===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'
-    +'</div>'
-    +'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">'
-      +'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.02)">'
-        +'<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Rate Items</span>'
-        +'<button class="btn btn-outline btn-sm" type="button" onclick="window._srAddItem()">+ Add Item</button>'
-      +'</div>'
-      +'<div style="padding:12px 14px"><div id="sr-items-list"></div></div>'
-    +'</div>'
-    +'<div class="form-group"><label class="form-label">Notes</label><textarea class="form-input" id="sr-notes" rows="2" placeholder="e.g. Prices valid until June 2025, excludes fuel levy">'+esc(s.notes||'')+'</textarea></div>',
-  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="save-catalogue" data-sid="'+(s.id||'')+'">Save</button>'});
-  setTimeout(()=>_srRenderItems(),0);
-};
-
-window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
-window._srDragOver=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('sr-drop-zone');if(z)z.classList.add('drag-over');};
-window._srDragLeave=function(e){const z=document.getElementById('sr-drop-zone');if(z)z.classList.remove('drag-over');};
-window._srDrop=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('sr-drop-zone');if(z)z.classList.remove('drag-over');const f=e.dataTransfer?.files?.[0];if(f)_srLoadFile(f);};
-window._srFileChange=function(e){const f=e.target?.files?.[0];if(f)_srLoadFile(f);};
-window._srLoadFile=function(file){
-  const zone=document.getElementById('sr-drop-zone');
-  const label=document.getElementById('sr-drop-label');
-  const textArea=document.getElementById('ai-sr-text');
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(ext==='txt'||ext==='csv'){
-    const r=new FileReader();
-    r.onload=ev=>{if(textArea)textArea.value=ev.target.result;if(label)label.innerHTML='<p class="sr-file-name">&#128196; '+file.name+' — text loaded into box below</p>';if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}};
-    r.readAsText(file);window._srAIFile=null;return;
-  }
-  const allowed=['pdf','jpg','jpeg','png','webp'];
-  if(!allowed.includes(ext)){toast('Unsupported file type. Use PDF, image, or text file.','warning');return;}
-  const r=new FileReader();
-  r.onload=ev=>{
-    const b64=ev.target.result.split(',')[1];
-    window._srAIFile=b64;
-    window._srAIFileType=ext==='pdf'?'application/pdf':'image/'+ext;
-    window._srAIFileName=file.name;
-    const icon=ext==='pdf'?'&#128196;':'&#128247;';
-    if(label)label.innerHTML='<p class="sr-file-name">'+icon+' '+file.name+'</p><p>Ready — click Extract with AI</p>';
-    if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}
-    if(textArea)textArea.placeholder='File attached — paste extra context here if needed';
-  };
-  r.readAsDataURL(file);
-};
-window.showCatalogueAISheet=function(){
-  const key=DB.getSettings().ai_key;
-  if(!key){toast('Add your AI API key in Settings first.','warning');return;}
-  window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
-  showModal({wide:true,title:'AI Extract — Rate Schedule',body:
-    '<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Drop a PDF or image of a rate schedule, or paste the text below. The AI will extract company details and line items.</p>'
-    +'<div class="form-group"><label class="form-label">Company Name (optional override)</label><input class="form-input" id="ai-sr-company" placeholder="Leave blank to auto-detect"></div>'
-    +'<div class="sr-drop-zone" id="sr-drop-zone" ondragover="_srDragOver(event)" ondragleave="_srDragLeave(event)" ondrop="_srDrop(event)" onclick="document.getElementById(\'sr-file-input\').click()">'
-      +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
-      +'<div id="sr-drop-label"><p>Drop PDF or image here</p><p>or click to browse &mdash; PDF, JPG, PNG, TXT</p></div>'
-      +'<input type="file" id="sr-file-input" style="display:none" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv" onchange="_srFileChange(event)">'
-    +'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px"><div style="flex:1;height:1px;background:var(--border)"></div><span style="font-size:.73rem;color:var(--muted)">or paste text</span><div style="flex:1;height:1px;background:var(--border)"></div></div>'
-    +'<div class="form-group"><label class="form-label">Rate Schedule Text</label><textarea class="form-input" id="ai-sr-text" rows="7" placeholder="Paste the rate schedule content here…" style="font-family:monospace;font-size:.78rem"></textarea></div>'
-    +'<div id="ai-sr-status" style="display:none;padding:10px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:7px;font-size:.82rem;color:var(--blue)">Extracting…</div>',
-  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="ai-extract-sr">Extract with AI</button>'});
-};
-let _srOpenIds=new Set();
-window.toggleSR=function(id){
-  if(_srOpenIds.has(id))_srOpenIds.delete(id);else _srOpenIds.add(id);
-  renderCatalogue();
-};
-window.showAddRateSheet=function(sid,rid){
-  const all=_srGet();const sup=all.find(s=>s.id===sid);if(!sup)return;
-  const it=rid?(sup.items||[]).find(i=>i.id===rid):null;
-  showModal({title:(it?'Edit Rate':'Add Rate')+' — '+esc(sup.company),body:
-    '<div class="form-group"><label class="form-label">Description *</label><input class="form-input" id="srrk-desc" placeholder="e.g. Excavator 20T, Tipper, Pipe Supply 300mm…" value="'+(it?esc(it.description):'')+'"></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
-      +'<div class="form-group"><label class="form-label">Unit</label><input class="form-input" id="srrk-unit" placeholder="hr, m, m2, m3, ea…" value="'+(it?esc(it.unit):'hr')+'"></div>'
-      +'<div class="form-group"><label class="form-label">Rate ($)</label><input class="form-input" type="number" id="srrk-rate" placeholder="0.00" min="0" step="0.01" value="'+(it?it.rate:'')+'"></div>'
-    +'</div>'
-    +'<div class="form-group"><label class="form-label">Notes</label><input class="form-input" id="srrk-notes" placeholder="Optional — e.g. incl. operator, ex GST" value="'+(it?esc(it.notes||''):'')+'"></div>',
-  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button>'
-    +'<button class="btn btn-blue" data-action="save-sr-rate" data-sid="'+sid+'"'+(rid?' data-rid="'+rid+'"':'')+'>'+(it?'Update Rate':'Add Rate')+'</button>'
-  });
-};
-window.deleteSRRate=function(sid,rid){
-  if(!confirm('Remove this rate?'))return;
-  const items=_srGet();const sup=items.find(s=>s.id===sid);if(!sup)return;
-  sup.items=(sup.items||[]).filter(i=>i.id!==rid);
-  _srSave(items);toast('Rate removed.','success');renderCatalogue();
-};
-function renderCatalogue(){
-  const lc=_catLifecycle;
-  const all=_srGet();
-  const contacts=DB.getContacts();
-  const filtered=lc==='all'?all:all.filter(s=>_srGetLc(s)===lc);
-  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'}];
-  const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setCatLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
-  const CAT_LABELS={earthworks:'Earthworks',civil:'Civil',drainage:'Drainage',water:'Water',sewer:'Sewer',electrical:'Electrical',communications:'Comms',concrete:'Concrete',landscaping:'Landscaping',traffic:'Traffic',fencing:'Fencing',demolition:'Demolition',other:'Other'};
-
-  const listHTML=!filtered.length
-    ?'<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:.88rem">No suppliers '+( lc==='active'?'yet. Click <strong>Add Supplier</strong> to get started, or use <strong>AI Extract</strong> to pull rates from a PDF.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</div>'
-    :filtered.map(s=>{
-      const open=_srOpenIds.has(s.id);
-      const slc=_srGetLc(s);
-      const items=s.items||[];
-      const catLabel=CAT_LABELS[s.trade_category]||'Other';
-      const contactParts=[s.contact_name,s.email,s.phone].filter(Boolean);
-      const chevronSVG='<svg class="sr-acc-chevron" style="transform:rotate('+(open?'90':'0')+'deg)" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
-
-      const headerHTML='<div class="sr-acc-row" onclick="toggleSR(\''+s.id+'\')">'
-        +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">'
-          +chevronSVG
-          +'<div style="min-width:0">'
-            +'<div style="font-weight:600;font-size:.93rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(s.company)+'</div>'
-            +(contactParts.length?'<div style="font-size:.75rem;color:var(--muted);margin-top:1px">'+contactParts.map(esc).join(' &middot; ')+'</div>':'')
-          +'</div>'
-        +'</div>'
-        +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
-          +'<span style="font-size:.71rem;padding:2px 8px;border-radius:20px;background:var(--s3);color:var(--muted)">'+catLabel+'</span>'
-          +'<span style="font-size:.72rem;color:var(--muted2);min-width:40px;text-align:right">'+items.length+' rate'+(items.length!==1?'s':'')+'</span>'
-        +'</div>'
-      +'</div>';
-
-      const bodyHTML=!open?'':'<div class="sr-acc-body">'
-        +(items.length
-          ?'<table class="sr-rates-tbl"><thead><tr><th style="width:40%">Description</th><th>Unit</th><th>Rate (ex GST)</th><th style="width:30%">Notes</th><th style="width:48px"></th></tr></thead><tbody>'
-            +items.map(it=>'<tr>'
-              +'<td>'+esc(it.description)+'</td>'
-              +'<td style="color:var(--muted)">'+esc(it.unit)+'</td>'
-              +'<td style="font-weight:600;font-variant-numeric:tabular-nums">$'+parseFloat(it.rate||0).toFixed(2)+'</td>'
-              +'<td style="color:var(--muted);font-size:.78rem">'+esc(it.notes||'')+'</td>'
-              +'<td style="white-space:nowrap">'
-                +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showAddRateSheet(\''+s.id+'\',\''+it.id+'\')" title="Edit">'+icon('edit')+'</button>'
-                +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteSRRate(\''+s.id+'\',\''+it.id+'\')" style="color:var(--red)" title="Remove">'+icon('trash')+'</button>'
-              +'</td>'
-            +'</tr>').join('')
-            +'</tbody></table>'
-          :'<p style="font-size:.83rem;color:var(--muted);margin:0 0 12px">No rates added yet.</p>')
-        +'<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border);margin-top:'+(items.length?'8':'0')+'px">'
-          +'<button class="btn btn-sm btn-blue" onclick="event.stopPropagation();showAddRateSheet(\''+s.id+'\')">+ Add Rate</button>'
-          +'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();showCatalogueSheet(\''+s.id+'\')">Edit Supplier</button>'
-          +(slc==='active'?'<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();archiveSR(\''+s.id+'\')" style="margin-left:auto">Archive</button>':'')
-          +(slc==='archived'?'<button class="btn btn-sm btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">Delete</button>':'')
-          +(slc==='deleted'?'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();permDeleteSR(\''+s.id+'\')" style="color:var(--red)">Permanently Delete</button>':'')
-          +(slc==='active'?'<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">Delete</button>':'')
-        +'</div>'
-      +'</div>';
-
-      return'<div class="sr-accordion'+(open?' open':'')+(slc!=='active'?' muted':'')+'">'+headerHTML+bodyHTML+'</div>';
-    }).join('');
-
-  const activeCount=all.filter(s=>_srGetLc(s)==='active').length;
-  const content=`
-    <div class="page-header">
-      <div>
-        <div class="page-title">Supplier Rates Library</div>
-        <div class="page-sub">${activeCount} active supplier${activeCount!==1?'s':''}</div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-outline" onclick="window.showCatalogueAISheet()">&#10022; AI Extract</button>
-        <button class="btn btn-blue" onclick="window.showCatalogueSheet('')">${icon('plus')} Add Supplier</button>
-      </div>
-    </div>
-    <div class="proj-tabs">${tabsHTML}</div>
-    <div id="sr-list" style="margin-top:12px">${listHTML}</div>
-  `;
-  renderShell(content,'supplier-rates');
-}
 function renderQuotes(){
   const quotes=DB.getQuotes();
   const projects=DB.getProjects();
@@ -4908,7 +4642,7 @@ function renderSettings(){
           ${hasKey?`<span class="badge badge-green">✓ Connected</span>`:`<span class="badge badge-grey">Not configured</span>`}
         </div>
         <div class="form-group"><label class="form-label">Anthropic API Key</label><input class="form-input" type="password" id="s-aikey" value="${esc(s.ai_key||'')}" placeholder="sk-ant-…"></div>
-        <div class="form-hint mb-3">Used for AI Package Analyser and Quote Email Drafter. Get your key at console.anthropic.com</div><div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Models in use</div><div style="display:flex;flex-direction:column;gap:5px"><div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem"><span style="color:var(--muted)">AI Package Analyser</span><code style="background:var(--s3);padding:2px 7px;border-radius:5px;font-size:.72rem;color:var(--blue)">claude-opus-4-5</code></div><div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem"><span style="color:var(--muted)">Quote Analysis &amp; Email Drafter</span><code style="background:var(--s3);padding:2px 7px;border-radius:5px;font-size:.72rem;color:var(--blue)">claude-sonnet-4-5</code></div><div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem"><span style="color:var(--muted)">Supplier Rate Extraction</span><code style="background:var(--s3);padding:2px 7px;border-radius:5px;font-size:.72rem;color:var(--blue)">claude-haiku-4-5</code></div></div></div>
+        <div class="form-hint mb-3">Used for AI Package Analyser and Quote Email Drafter. Get your key at console.anthropic.com</div>
         <button class="btn btn-blue btn-sm" data-action="save-ai-key">Save API Key</button>
       </div>
       <div class="card mb-4">
@@ -6381,7 +6115,6 @@ function renderPage(page,params){
     dashboard:renderDashboard,
     projects:renderProjects,
     'rate-library':renderRateLibrary,
-    'supplier-rates':renderCatalogue,
     productivity:renderProductivity,
     quotes:renderQuotes,
     financial:renderFinancial,
@@ -6991,7 +6724,7 @@ document.addEventListener('click',async function(e){
     const email=document.getElementById('fp-email')?.value.trim();
     const a=document.getElementById('auth-alert');
     if(email){
-      await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href.split('#')[0]});
+      await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
       if(a)a.innerHTML=`<div style="color:var(--green);background:var(--green-d);padding:8px 12px;border-radius:6px;font-size:.82rem;margin-bottom:12px">Password reset email sent to ${esc(email)}. Check your inbox.</div>`;
     }else{if(a)a.innerHTML=`<div style="color:var(--red);background:var(--red-d);padding:8px 12px;border-radius:6px;font-size:.82rem;margin-bottom:12px">Please enter your email address.</div>`;}
     return;
@@ -7744,82 +7477,6 @@ if(action==='save-prod-record'){
     renderProductivity();
     return;
   }
-if(action==='if(action==='save-sr-rate'){
-    const sid=el.dataset.sid;
-    const rid=el.dataset.rid||null;
-    const desc=document.getElementById('srrk-desc')?.value.trim();
-    if(!desc){toast('Description is required.','warning');return;}
-    const items=_srGet();
-    const sup=items.find(s=>s.id===sid);
-    if(!sup){toast('Supplier not found.','warning');return;}
-    if(!sup.items)sup.items=[];
-    const rateItem={id:rid||uid(),description:desc,unit:document.getElementById('srrk-unit')?.value.trim()||'hr',rate:parseFloat(document.getElementById('srrk-rate')?.value)||0,notes:document.getElementById('srrk-notes')?.value.trim()||''};
-    if(rid){const i=sup.items.findIndex(x=>x.id===rid);if(i>=0)sup.items[i]=rateItem;else sup.items.push(rateItem);}
-    else sup.items.push(rateItem);
-    _srSave(items);closeModal();toast(rid?'Rate updated.':'Rate added.','success');renderCatalogue();return;
-  }
-save-catalogue'){
-    const sid=el.dataset.sid;
-    const company=document.getElementById('sr-company')?.value.trim();
-    if(!company){toast('Company name is required.','warning');return;}
-    const items=_srGet();
-    const obj={
-      id:sid||uid(),
-      company,
-      abn:document.getElementById('sr-abn')?.value.trim(),
-      contact_name:document.getElementById('sr-contact')?.value.trim(),
-      contact_email:document.getElementById('sr-email')?.value.trim(),
-      contact_phone:document.getElementById('sr-phone')?.value.trim(),
-      trade_category:document.getElementById('sr-cat')?.value,
-      notes:document.getElementById('sr-notes')?.value.trim(),
-      items:_srItems.map(it=>({id:it.id||uid(),description:it.description,unit:it.unit,rate:parseFloat(it.rate)||0,notes:it.notes})),
-      source:sid?(items.find(x=>x.id===sid)?.source||'manual'):'manual',
-      lifecycle_status:'active',
-      created_at:sid?(items.find(x=>x.id===sid)?.created_at||new Date().toISOString()):new Date().toISOString()
-    };
-    if(sid){const idx=items.findIndex(x=>x.id===sid);if(idx>=0)items[idx]=obj;else items.push(obj);}
-    else items.push(obj);
-    _srSave(items);closeModal();toast(sid?'Schedule updated.':'Schedule saved.','success');renderCatalogue();return;
-  }
-if(action==='ai-extract-sr'){
-    const key=DB.getSettings().ai_key;if(!key){toast('No AI key set in Settings.','warning');return;}
-    const text=document.getElementById('ai-sr-text')?.value.trim();
-    const companyHint=document.getElementById('ai-sr-company')?.value.trim();
-    const statusEl=document.getElementById('ai-sr-status');
-    const aiFile=window._srAIFile;
-    const aiFileType=window._srAIFileType;
-    if(!aiFile&&!text){toast('Drop a file or paste some text first.','warning');return;}
-    if(statusEl){statusEl.style.display='block';statusEl.textContent='Extracting with AI…';}
-    el.disabled=true;
-    const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty"}]}\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
-    let msgContent;
-    if(aiFile){
-      if(aiFileType==='application/pdf'){
-        msgContent=[{type:'document',source:{type:'base64',media_type:'application/pdf',data:aiFile}},{type:'text',text:promptText}];
-      }else{
-        msgContent=[{type:'image',source:{type:'base64',media_type:aiFileType,data:aiFile}},{type:'text',text:promptText}];
-      }
-    }else{
-      msgContent=promptText;
-    }
-    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4096,messages:[{role:'user',content:msgContent}]})})
-    .then(r=>r.json()).then(data=>{
-      el.disabled=false;window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
-      if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
-      try{
-        const raw=data.content?.[0]?.text||'{}';
-        const parsed=JSON.parse(raw.replace(/^```json\n?/,'').replace(/```$/,'').trim());
-        const items=_srGet();
-        const obj={id:uid(),company:companyHint||parsed.company||'Unknown',abn:parsed.abn||'',
-          contact_name:parsed.contact_name||'',contact_email:parsed.contact_email||'',contact_phone:parsed.contact_phone||'',
-          trade_category:parsed.trade_category||'other',notes:'',source:'ai',lifecycle_status:'active',
-          created_at:new Date().toISOString(),
-          items:(parsed.items||[]).map(it=>({id:uid(),description:it.description||'',unit:it.unit||'hr',rate:parseFloat(it.rate)||0,notes:it.notes||''}))};
-        items.push(obj);_srSave(items);closeModal();toast('Extracted '+obj.items.length+' items for '+obj.company+'.','success');renderCatalogue();
-      }catch(e){if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Could not parse AI response. Try again.';} el.disabled=false;}
-    }).catch(e=>{el.disabled=false;if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Error: '+e.message;}});
-    return;
-  }
   if(action==='save-productivity'){
     const pid2=el.dataset.pid;
     const name=document.getElementById('prd-name')?.value.trim();
@@ -8195,7 +7852,7 @@ document.addEventListener('drop',function(e){
   navigate(`project/${id}/documents`);
 });
 
-document.addEventListener('DOMContentLoaded',function(){
+window.addEventListener('load',function(){
   if(window.Chart){
     Chart.defaults.color='#94A3B8';
     Chart.defaults.borderColor='#1F2937';
@@ -8204,14 +7861,15 @@ document.addEventListener('DOMContentLoaded',function(){
   if(window.pdfjsLib){
     pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
-  // Show login immediately, then check for existing session in background
-  navigate('login');
+  // Supabase startup — check for existing session
   (async()=>{
     try{
-      const _sessionRace=await Promise.race([_sb.auth.getSession(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),5000))]);const{data:{session}}=_sessionRace;
+      const{data:{session}}=await _sb.auth.getSession();
       if(session){
         const ok=await _sbLoad();
         if(ok){
+          // First-time user with no Supabase data but has localStorage data → offer migration
+            // Restore API key if not already saved
           if(!_c.settings.ai_key){
             _c.settings.ai_key='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';
             DB.saveSettings(_c.settings);
@@ -8219,13 +7877,16 @@ document.addEventListener('DOMContentLoaded',function(){
           if(!DB.isSeeded()&&(localStorage.getItem('ap_projects')||localStorage.getItem('ap_rates'))){
             await _offerMigration();
           }else if(!DB.isSeeded()){
+            // Brand new user — seed demo data (writes to Supabase via new DB object)
             seedDemoData();
           }
           router();
-        }
-      }
+        }else{navigate('login');}
+      }else{navigate('login');}
     }catch(e){
       console.error('Startup error:',e);
+      // Fallback: show login page
+      navigate('login');
     }
   })();
 });
