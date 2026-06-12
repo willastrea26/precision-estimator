@@ -4551,7 +4551,7 @@ window.showCatalogueSheet=function(id){
   setTimeout(()=>_srRenderItems(),0);
 };
 
-window.window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
+window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
 window._srDragOver=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('sr-drop-zone');if(z)z.classList.add('drag-over');};
 window._srDragLeave=function(e){const z=document.getElementById('sr-drop-zone');if(z)z.classList.remove('drag-over');};
 window._srDrop=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('sr-drop-zone');if(z)z.classList.remove('drag-over');const f=e.dataTransfer?.files?.[0];if(f)_srLoadFile(f);};
@@ -4581,7 +4581,7 @@ window._srLoadFile=function(file){
   };
   r.readAsDataURL(file);
 };
-showCatalogueAISheet=function(){
+window.showCatalogueAISheet=function(){
   const key=DB.getSettings().ai_key;
   if(!key){toast('Add your AI API key in Settings first.','warning');return;}
   window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
