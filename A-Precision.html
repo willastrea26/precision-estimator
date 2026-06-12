@@ -652,6 +652,12 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 .email-gen-bar{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
 .email-meta{font-size:.78rem;color:var(--muted);margin-bottom:12px;padding:8px 10px;background:var(--s2);border-radius:6px;line-height:1.6}
 .email-body-ta{font-family:'Segoe UI',system-ui,sans-serif;min-height:230px;line-height:1.65;resize:vertical}
+.sr-drop-zone{border:2px dashed var(--border);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:4px}
+.sr-drop-zone:hover,.sr-drop-zone.drag-over{border-color:var(--blue);background:rgba(59,130,246,.05)}
+.sr-drop-zone.file-ready{border-color:var(--green);background:rgba(34,197,94,.04)}
+.sr-drop-zone svg{width:30px;height:30px;stroke:var(--muted);margin-bottom:6px}
+.sr-drop-zone p{margin:3px 0;font-size:.82rem;color:var(--muted)}
+.sr-drop-zone .sr-file-name{font-size:.86rem;color:var(--text);font-weight:500}
 </style>
 </head>
 <body>
@@ -4545,17 +4551,53 @@ window.showCatalogueSheet=function(id){
   setTimeout(()=>_srRenderItems(),0);
 };
 
-window.showCatalogueAISheet=function(){
+window.window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
+window._srDragOver=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('sr-drop-zone');if(z)z.classList.add('drag-over');};
+window._srDragLeave=function(e){const z=document.getElementById('sr-drop-zone');if(z)z.classList.remove('drag-over');};
+window._srDrop=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('sr-drop-zone');if(z)z.classList.remove('drag-over');const f=e.dataTransfer?.files?.[0];if(f)_srLoadFile(f);};
+window._srFileChange=function(e){const f=e.target?.files?.[0];if(f)_srLoadFile(f);};
+window._srLoadFile=function(file){
+  const zone=document.getElementById('sr-drop-zone');
+  const label=document.getElementById('sr-drop-label');
+  const textArea=document.getElementById('ai-sr-text');
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='txt'||ext==='csv'){
+    const r=new FileReader();
+    r.onload=ev=>{if(textArea)textArea.value=ev.target.result;if(label)label.innerHTML='<p class="sr-file-name">&#128196; '+file.name+' — text loaded into box below</p>';if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}};
+    r.readAsText(file);window._srAIFile=null;return;
+  }
+  const allowed=['pdf','jpg','jpeg','png','webp'];
+  if(!allowed.includes(ext)){toast('Unsupported file type. Use PDF, image, or text file.','warning');return;}
+  const r=new FileReader();
+  r.onload=ev=>{
+    const b64=ev.target.result.split(',')[1];
+    window._srAIFile=b64;
+    window._srAIFileType=ext==='pdf'?'application/pdf':'image/'+ext;
+    window._srAIFileName=file.name;
+    const icon=ext==='pdf'?'&#128196;':'&#128247;';
+    if(label)label.innerHTML='<p class="sr-file-name">'+icon+' '+file.name+'</p><p>Ready — click Extract with AI</p>';
+    if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}
+    if(textArea)textArea.placeholder='File attached — paste extra context here if needed';
+  };
+  r.readAsDataURL(file);
+};
+showCatalogueAISheet=function(){
   const key=DB.getSettings().ai_key;
   if(!key){toast('Add your AI API key in Settings first.','warning');return;}
-  showModal({wide:true,title:'AI Extract — Paste Rate Schedule',body:''
-    +'<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Paste text from a supplier rate schedule (copy from PDF, email, or document). The AI will extract company details and line items.</p>'
+  window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
+  showModal({wide:true,title:'AI Extract — Rate Schedule',body:
+    '<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Drop a PDF or image of a rate schedule, or paste the text below. The AI will extract company details and line items.</p>'
     +'<div class="form-group"><label class="form-label">Company Name (optional override)</label><input class="form-input" id="ai-sr-company" placeholder="Leave blank to auto-detect"></div>'
-    +'<div class="form-group"><label class="form-label">Rate Schedule Text *</label><textarea class="form-input" id="ai-sr-text" rows="12" placeholder="Paste the rate schedule content here…" style="font-family:monospace;font-size:.78rem"></textarea></div>'
+    +'<div class="sr-drop-zone" id="sr-drop-zone" ondragover="_srDragOver(event)" ondragleave="_srDragLeave(event)" ondrop="_srDrop(event)" onclick="document.getElementById(\'sr-file-input\').click()">'
+      +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+      +'<div id="sr-drop-label"><p>Drop PDF or image here</p><p>or click to browse &mdash; PDF, JPG, PNG, TXT</p></div>'
+      +'<input type="file" id="sr-file-input" style="display:none" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv" onchange="_srFileChange(event)">'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px"><div style="flex:1;height:1px;background:var(--border)"></div><span style="font-size:.73rem;color:var(--muted)">or paste text</span><div style="flex:1;height:1px;background:var(--border)"></div></div>'
+    +'<div class="form-group"><label class="form-label">Rate Schedule Text</label><textarea class="form-input" id="ai-sr-text" rows="7" placeholder="Paste the rate schedule content here…" style="font-family:monospace;font-size:.78rem"></textarea></div>'
     +'<div id="ai-sr-status" style="display:none;padding:10px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:7px;font-size:.82rem;color:var(--blue)">Extracting…</div>',
   actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="ai-extract-sr">Extract with AI</button>'});
 };
-
 function renderCatalogue(){
   const lc=_catLifecycle;
   const all=_srGet();
@@ -7691,15 +7733,27 @@ if(action==='save-catalogue'){
 if(action==='ai-extract-sr'){
     const key=DB.getSettings().ai_key;if(!key){toast('No AI key set in Settings.','warning');return;}
     const text=document.getElementById('ai-sr-text')?.value.trim();
-    if(!text){toast('Paste some text first.','warning');return;}
     const companyHint=document.getElementById('ai-sr-company')?.value.trim();
     const statusEl=document.getElementById('ai-sr-status');
+    const aiFile=window._srAIFile;
+    const aiFileType=window._srAIFileType;
+    if(!aiFile&&!text){toast('Drop a file or paste some text first.','warning');return;}
     if(statusEl){statusEl.style.display='block';statusEl.textContent='Extracting with AI…';}
     el.disabled=true;
-    const prompt='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty"}]}\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+'Rate schedule:\n'+text;
-    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4096,messages:[{role:'user',content:prompt}]})})
+    const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty"}]}\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
+    let msgContent;
+    if(aiFile){
+      if(aiFileType==='application/pdf'){
+        msgContent=[{type:'document',source:{type:'base64',media_type:'application/pdf',data:aiFile}},{type:'text',text:promptText}];
+      }else{
+        msgContent=[{type:'image',source:{type:'base64',media_type:aiFileType,data:aiFile}},{type:'text',text:promptText}];
+      }
+    }else{
+      msgContent=promptText;
+    }
+    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4096,messages:[{role:'user',content:msgContent}]})})
     .then(r=>r.json()).then(data=>{
-      el.disabled=false;
+      el.disabled=false;window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
       if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
       try{
         const raw=data.content?.[0]?.text||'{}';
