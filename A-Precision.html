@@ -8204,15 +8204,14 @@ document.addEventListener('DOMContentLoaded',function(){
   if(window.pdfjsLib){
     pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
-  // Supabase startup — check for existing session
+  // Show login immediately, then check for existing session in background
+  navigate('login');
   (async()=>{
     try{
-      const _sessionRace=await Promise.race([_sb.auth.getSession(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),6000))]);const{data:{session}}=_sessionRace;
+      const _sessionRace=await Promise.race([_sb.auth.getSession(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('timeout')),5000))]);const{data:{session}}=_sessionRace;
       if(session){
         const ok=await _sbLoad();
         if(ok){
-          // First-time user with no Supabase data but has localStorage data → offer migration
-            // Restore API key if not already saved
           if(!_c.settings.ai_key){
             _c.settings.ai_key='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';
             DB.saveSettings(_c.settings);
@@ -8220,16 +8219,13 @@ document.addEventListener('DOMContentLoaded',function(){
           if(!DB.isSeeded()&&(localStorage.getItem('ap_projects')||localStorage.getItem('ap_rates'))){
             await _offerMigration();
           }else if(!DB.isSeeded()){
-            // Brand new user — seed demo data (writes to Supabase via new DB object)
             seedDemoData();
           }
           router();
-        }else{navigate('login');}
-      }else{navigate('login');}
+        }
+      }
     }catch(e){
       console.error('Startup error:',e);
-      // Fallback: show login page
-      navigate('login');
     }
   })();
 });
