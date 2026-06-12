@@ -19,7 +19,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -696,7 +696,7 @@ const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 ================================================================ */
 const _SB_URL='https://gcdkxapepawiixyusjnu.supabase.co';
 const _SB_KEY='sb_publishable_tb77mPEA7LCKq4cQNT2W9Q_BKZtBi7P';
-if(typeof supabase==='undefined'){document.addEventListener('DOMContentLoaded',()=>{document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;background:#070C18;color:#F1F5F9"><div style="text-align:center;padding:40px"><div style="font-size:2rem;margin-bottom:16px">⚠️</div><div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Open via the local server</div><div style="color:#8FA3BF;margin-bottom:20px">This app must be opened via the local server, not directly as a file.</div><div style="background:#0D1525;border:1px solid #1A2840;border-radius:8px;padding:12px 20px;font-family:monospace;font-size:1rem;color:#3B82F6">http://localhost:3456/A-Precision.html</div></div></div>';});throw new Error('Supabase not loaded — open via http://localhost:3456/');}
+if(typeof supabase==='undefined'){document.addEventListener('DOMContentLoaded',()=>{document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;background:#070C18;color:#F1F5F9"><div style="text-align:center;padding:40px;max-width:480px"><div style="font-size:2rem;margin-bottom:16px">⚠️</div><div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Failed to load required libraries</div><div style="color:#8FA3BF;margin-bottom:16px">The app could not load a required library from the internet. Please check your connection and try a hard refresh (Ctrl+Shift+R).</div><div style="color:#8FA3BF;font-size:.85rem">If the problem persists, try disabling browser extensions or opening in a private window.</div></div></div>';});throw new Error('Supabase CDN failed to load');}
 const _sb=supabase.createClient(_SB_URL,_SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
 
 // In-memory cache — all reads are synchronous from here
