@@ -8195,7 +8195,7 @@ document.addEventListener('drop',function(e){
   navigate(`project/${id}/documents`);
 });
 
-window.addEventListener('load',function(){
+document.addEventListener('DOMContentLoaded',function(){
   if(window.Chart){
     Chart.defaults.color='#94A3B8';
     Chart.defaults.borderColor='#1F2937';
