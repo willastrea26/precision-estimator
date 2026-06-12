@@ -631,6 +631,19 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 
 /* EMAIL DRAFTER */
 .modal-wide{max-width:680px}
+.modal-xl{max-width:900px}
+.prr-crew-tbl{width:100%;border-collapse:collapse;font-size:.82rem}
+.prr-crew-tbl th{padding:5px 8px;color:var(--muted2);font-weight:500;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:left}
+.prr-crew-tbl td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+.prr-crew-tbl tr:last-child td{border-bottom:none}
+.prr-total-bar{margin-top:10px;padding:10px 14px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:7px;display:flex;justify-content:space-between;align-items:center}
+.prr-crew-results{border:1px solid var(--border);border-radius:6px;background:var(--s2);max-height:180px;overflow-y:auto;margin-top:4px}
+.prr-crew-result{padding:7px 10px;cursor:pointer;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.04)}
+.prr-crew-result:hover{background:rgba(255,255,255,.06)}
+.prod-info-wrap{position:relative;display:inline-flex;align-items:center}
+.prod-info-btn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted2);color:var(--muted2);font-size:.65rem;cursor:default;font-style:italic;font-weight:600;line-height:1}
+.prod-info-tip{display:none;position:absolute;left:22px;top:-4px;z-index:200;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;font-size:.76rem;color:var(--muted);line-height:1.5;width:280px;box-shadow:0 4px 20px rgba(0,0,0,.35)}
+.prod-info-wrap:hover .prod-info-tip{display:block}
 .tone-bar{display:flex;align-items:center;gap:6px;flex:1}
 .tone-bar>span{font-size:.76rem;color:var(--muted);font-weight:500;white-space:nowrap;margin-right:2px}
 .tone-btn{padding:4px 13px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:.74rem;font-weight:500;transition:all .15s;line-height:1.4}
@@ -927,12 +940,12 @@ function toast(msg,type='info'){
    MODAL
 ================================================================ */
 let _modalClose=null;
-function showModal({title,body,actions='',onClose,wide=false}){
+function showModal({title,body,actions='',onClose,wide=false,xl=false}){
   closeModal();
   const r=document.getElementById('modal-root');
   // NO stopPropagation on .modal — overlay uses target===this guard instead
   r.innerHTML=`<div class="modal-overlay" id="_mo" onclick="if(event.target===document.getElementById('_mo'))closeModal()">
-    <div class="modal${wide?' modal-wide':''}">
+    <div class="modal${wide?' modal-wide':''}${xl?' modal-xl':''}">
       <div class="modal-head"><span class="modal-title">${esc(title)}</span><button class="modal-close" data-action="close-modal">✕</button></div>
       <div class="modal-body">${body}</div>
       <div class="modal-foot">${actions}</div>
@@ -1081,7 +1094,7 @@ function renderDashboard(){
   const activeProjects=projects.filter(p=>['estimating','in_progress'].includes(p.status));
   const pipeline=projects.filter(p=>['estimating','submitted'].includes(p.status)).reduce((s,p)=>s+(p.estimated_value||0),0);
   const awarded=projects.filter(p=>p.status==='awarded').reduce((s,p)=>s+(p.awarded_value||0),0);
-  const overdueQ=quotes.filter(q=>q.status!=='received'&&q.status!=='accepted'&&q.status!=='declined'&&q.due_date&&q.due_date<todayStr);
+  const overdueQ=quotes.filter(q=>q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr));
   const awaitingQ=quotes.filter(q=>q.status==='awaiting');
   const receivedQ=quotes.filter(q=>q.status==='received');
   const activeContacts=contacts.filter(c=>['active','preferred'].includes(c.status));
@@ -2627,6 +2640,18 @@ function _pipInit(projId,jobConfig){
     sys:jobConfig?_buildAISys(jobConfig.jobType,jobConfig.focusAreas,jobConfig.context||''):null};
 }
 
+function _prodRecordsCtx(){
+  const records=DB.getProductivity().filter(r=>r.record_type==='record'&&r.lifecycle_status!=='deleted');
+  if(!records.length)return'';
+  let out='\n\n=== HISTORICAL PRODUCTIVITY RECORDS ===\n';
+  out+='ACTIVITY|WORK_TYPE|PROJECT|PIPE_SIZE|DEPTH_M|SOIL|RUN_M|EST_RATE|ACHIEVED_RATE|UNIT|CREW\n';
+  records.forEach(r=>{
+    const crew=r.crew_items?.map(c=>c.quantity+'x'+c.name).join(',')||'';
+    out+=(r.activity_name||'')+'|'+(r.work_type||'')+'|'+(r.project_name||'')+'|'+(r.pipe_size||'')+'|'+(r.depth_avg||'')+'|'+(r.soil_type||'')+'|'+(r.trench_length||'')+'|'+(r.estimated_rate||'')+'|'+(r.achieved_rate||'')+'|'+(r.unit||'')+'|'+crew+'\n';
+  });
+  return out;
+}
+
 function _buildStage6Context(){
   const rates=DB.getRates().filter(r=>_getRateLc(r)==='active');
   const contacts=DB.getContacts().filter(c=>['active','preferred'].includes(c.status)&&['supplier','subcontractor'].includes(c.contact_type));
@@ -2645,6 +2670,7 @@ function _buildStage6Context(){
     out+=`CONTACT_ID | COMPANY NAME | TRADE CATEGORY | TYPE\n`;
     for(const c of contacts){out+=`${c.id} | ${c.company_name} | ${c.trade_category||'general'} | ${c.contact_type}\n`;}
   }else{out+='AVAILABLE SUPPLIERS/SUBCONTRACTORS: None in contacts list.\n';}
+  out+=_prodRecordsCtx();
   return out;
 }
 
@@ -3732,12 +3758,14 @@ function renderTabProductivity(p,id){
 /* ================================================================
    RATE LIBRARY  +  PRODUCTIVITY LIBRARY  — lifecycle management
 ================================================================ */
+let _prodView='records';
 let _rateLifecycle='active', _prodLifecycle='active';
 
 const _getRateLc=r=>r.lifecycle_status||(r.status==='archived'?'archived':'active');
 const _getProdLc=p=>p.lifecycle_status||(p.status==='archived'?'archived':'active');
 
 window.setRateLifecycle=function(lc){_rateLifecycle=lc;renderRateLibrary();};
+window.setProdView=function(v){_prodView=v;renderProductivity();};
 window.setProdLifecycle=function(lc){_prodLifecycle=lc;renderProductivity();};
 
 window.duplicateRate=function(id){
@@ -4032,67 +4060,335 @@ window.toggleNightRate=function(){
 /* ================================================================
    PRODUCTIVITY LIBRARY
 ================================================================ */
+function _getRLItemCompanies(rateItemId){
+  if(!rateItemId)return[];
+  const lib=_rlGet();
+  const item=lib.categories.flatMap(cat=>cat.items||[]).find(it=>it.id===rateItemId);
+  return(item?.companies||[]).map(c=>({id:c.id,company:c.company,day_rate:c.day_rate||0}));
+}
+
+let _prrCrew=[];
+
+window._prrTogglePicker=function(){
+  const p=document.getElementById('prr-picker');if(!p)return;
+  const show=p.style.display==='none'||p.style.display==='';
+  p.style.display=show?'block':'none';
+  if(show)setTimeout(()=>document.getElementById('prr-crew-search')?.focus(),50);
+};
+
+window._prrToggleCustom=function(){
+  const sel=document.getElementById('prr-proj');
+  const ct=document.getElementById('prr-custom-title');if(!ct)return;
+  ct.style.display=sel?.value==='custom'?'':'none';
+  if(sel?.value==='custom')ct.focus();
+};
+
+window._prrSearchCrew=function(q){
+  if(!q.trim()){document.getElementById('prr-crew-results').innerHTML='';return;}
+  const lib=_rlGet();
+  const allItems=lib.categories.flatMap(cat=>(cat.items||[]).filter(it=>it.status!=='archived'));
+  const matches=allItems.filter(it=>(it.name||'').toLowerCase().includes(q.toLowerCase())).slice(0,10);
+  const el=document.getElementById('prr-crew-results');if(!el)return;
+  el.innerHTML=matches.length
+    ?matches.map(it=>{
+      const cos=it.companies||[];
+      const pref=cos.find(c=>c.preferred)||cos[0]||null;
+      const coName=pref?esc(pref.company):'<span style="color:var(--muted2);font-style:italic">No company rates</span>';
+      const rateStr=pref?' — $'+((pref.day_rate||0).toLocaleString())+'/'+(it.unit||'shift'):'';
+      const extraCos=cos.length>1?'<span style="font-size:.68rem;color:var(--muted2);margin-left:4px">+'+(cos.length-1)+' more</span>':'';
+      return'<div class="prr-crew-result" onclick="window._prrAddCrew(\''+it.id+'\')">'
+        +'<span style="font-weight:500;display:block">'+esc(it.name)+'</span>'
+        +'<span style="font-size:.72rem;color:var(--muted2)">'+coName+rateStr+extraCos+'</span>'
+        +'</div>';
+    }).join('')
+    :'<div style="padding:8px 10px;font-size:.78rem;color:var(--muted2)">No matching items found</div>';
+};
+
+window._prrAddCrew=function(rateItemId){
+  const lib=_rlGet();
+  const rlItem=lib.categories.flatMap(cat=>cat.items||[]).find(it=>it.id===rateItemId);
+  if(!rlItem)return;
+  if(_prrCrew.some(c=>c.rate_item_id===rateItemId)){toast('Already in crew','info');return;}
+  const pref=(rlItem.companies||[]).find(c=>c.preferred)||(rlItem.companies||[])[0]||null;
+  _prrCrew.push({
+    rate_item_id:rateItemId,name:rlItem.name,unit:rlItem.unit||'',quantity:1,
+    company_id:pref?.id||'',company_name:pref?.company||'',rate:pref?.day_rate||0,
+    companies:(rlItem.companies||[]).map(c=>({id:c.id,company:c.company,day_rate:c.day_rate||0}))
+  });
+  const si=document.getElementById('prr-crew-search');if(si)si.value='';
+  document.getElementById('prr-crew-results').innerHTML='';
+  _prrRenderCrew();
+};
+
+window._prrRemoveCrew=function(idx){_prrCrew.splice(idx,1);_prrRenderCrew();};
+window._prrSetQty=function(idx,val){if(_prrCrew[idx])_prrCrew[idx].quantity=parseFloat(val)||1;_prrCalcTotal();};
+window._prrSetCompany=function(idx,compId){
+  const item=_prrCrew[idx];if(!item)return;
+  const co=(item.companies||[]).find(c=>c.id===compId);
+  if(co){item.company_id=co.id;item.company_name=co.company;item.rate=co.day_rate||0;}
+  _prrRenderCrew();
+};
+window._prrSetRate=function(idx,val){if(_prrCrew[idx])_prrCrew[idx].rate=parseFloat(val)||0;_prrCalcTotal();};
+
+function _prrDayRate(item){
+  const u=(item.unit||'').toLowerCase().trim();
+  return u==='hr'||u==='hour'?(item.rate||0)*9.5:(item.rate||0);
+}
+function _prrCalcTotal(){
+  const total=_prrCrew.reduce((s,c)=>s+_prrDayRate(c)*(c.quantity||1),0);
+  const el=document.getElementById('prr-total-val');if(el)el.textContent=fmtAUD(total)+'/day';
+  const bar=document.getElementById('prr-total-bar');if(bar)bar.style.display=_prrCrew.length?'flex':'none';
+}
+function _prrRenderCrew(){
+  const el=document.getElementById('prr-crew-list');if(!el)return;
+  if(!_prrCrew.length){
+    el.innerHTML='<div style="padding:14px;text-align:center;border:1px dashed var(--border);border-radius:7px;color:var(--muted2);font-size:.8rem">No crew items yet — click <strong>+ Add Item</strong> to build your crew.</div>';
+    const bar=document.getElementById('prr-total-bar');if(bar)bar.style.display='none';
+    return;
+  }
+  const rows=_prrCrew.map((c,i)=>{
+    const day=_prrDayRate(c)*(c.quantity||1);
+    const cos=c.companies||[];
+    const selCo=cos.find(co=>co.id===c.company_id)||cos[0]||null;
+    const compCell=cos.length>1
+      ?'<div style="display:flex;flex-direction:column;gap:3px"><select class="form-input" style="padding:2px 6px;font-size:.76rem" onchange="window._prrSetCompany('+i+',this.value)">'+cos.map(co=>'<option value="'+co.id+'"'+(co.id===c.company_id?' selected':'')+'>'+esc(co.company)+'</option>').join('')+'</select><span style="font-size:.72rem;color:var(--muted2);padding-left:2px">$'+((selCo?.day_rate||0)).toLocaleString()+'/'+(c.unit||'shift')+'</span></div>'
+      :cos.length===1
+      ?'<div><span style="font-size:.8rem;font-weight:500">'+esc(cos[0].company)+'</span><br><span style="font-size:.72rem;color:var(--muted2)">$'+(cos[0].day_rate||0).toLocaleString()+'/'+(c.unit||'shift')+'</span></div>'
+      :'<input type="number" class="form-input" style="width:90px;padding:3px 6px;font-size:.78rem" placeholder="Rate" value="'+(c.rate||0)+'" oninput="window._prrSetRate('+i+',this.value)">';
+    return'<tr>'
+      +'<td style="font-weight:500">'+esc(c.name)+'</td>'
+      +'<td><input type="number" min="0.5" step="0.5" value="'+(c.quantity||1)+'" class="form-input" style="width:62px;padding:3px 7px;font-size:.82rem" oninput="window._prrSetQty('+i+',this.value)"></td>'
+      +'<td style="color:var(--muted2)">'+esc(c.unit)+'</td>'
+      +'<td>'+compCell+'</td>'
+      +'<td style="font-weight:600;color:var(--blue);white-space:nowrap">'+fmtAUD(day)+'<span style="font-size:.7rem;color:var(--muted2);font-weight:400">/day</span></td>'
+      +'<td><button class="btn btn-ghost btn-xs" onclick="window._prrRemoveCrew('+i+')" style="color:var(--red);font-size:1.1rem;padding:0 5px;line-height:1">&times;</button></td>'
+      +'</tr>';
+  }).join('');
+  el.innerHTML='<table class="prr-crew-tbl"><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Company / Rate</th><th>Day Cost</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+  _prrCalcTotal();
+}
+
+window.showProdRecordSheet=function(id){
+  const r=DB.getProductivity().find(x=>x.id===id&&x.record_type==='record')||{};
+  _prrCrew=r.crew_items?r.crew_items.map(c=>({...c,companies:_getRLItemCompanies(c.rate_item_id)})):[];
+  const types=['pipe_installation','trench_excavation','electrical_conduit_trenching','pit_installation','backfill_compaction','pavement_preparation','concrete_works','spoil_disposal','traffic_control','testing_qa'];
+  const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
+  const isCustom=r.project_id==='custom'||(r.project_name&&!projects.find(p=>p.id===r.project_id));
+  const projOptions='<option value="">— Select project —</option>'
+    +projects.map(p=>'<option value="'+p.id+'"'+(r.project_id===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')
+    +'<option value="custom"'+(isCustom?' selected':'')+'>Custom title…</option>';
+  showModal({xl:true,title:id?'Edit Productivity Record':'Log Productivity Record',body:''
+    +'<div style="margin-bottom:16px">'
+      +'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Project</div>'
+      +'<div style="display:flex;gap:8px">'
+        +'<select class="form-input" id="prr-proj" style="flex:1" onchange="window._prrToggleCustom()">'+projOptions+'</select>'
+        +'<input class="form-input" id="prr-custom-title" placeholder="Custom project title…" value="'+(isCustom?esc(r.project_name||''):'')+'" style="flex:1;'+(isCustom?'':'display:none')+'">'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-bottom:14px;align-items:start">'
+      +'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden">'
+        +'<div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.02)">'
+          +'<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Crew Builder</span>'
+          +'<button class="btn btn-outline btn-sm" type="button" onclick="window._prrTogglePicker()">+ Add Item</button>'
+        +'</div>'
+        +'<div style="padding:12px 14px">'
+          +'<div id="prr-picker" style="display:none;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px">'
+            +'<input class="form-input" id="prr-crew-search" placeholder="Search Rate Library…" oninput="window._prrSearchCrew(this.value)" autocomplete="off" style="margin-bottom:6px">'
+            +'<div id="prr-crew-results" class="prr-crew-results"></div>'
+          +'</div>'
+          +'<div id="prr-crew-list"></div>'
+          +'<div class="prr-total-bar" id="prr-total-bar" style="display:none">'
+            +'<span style="font-size:.85rem;font-weight:600">Total Crew Day Rate</span>'
+            +'<span id="prr-total-val" style="font-size:1.15rem;font-weight:700;color:var(--blue)">$0/day</span>'
+          +'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden">'
+        +'<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)">'
+          +'<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Job Details</span>'
+        +'</div>'
+        +'<div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">'
+          +'<div class="form-group" style="margin:0"><label class="form-label">Activity Description *</label><input class="form-input" id="prr-name" value="'+esc(r.activity_name||'')+'" placeholder="e.g. DN375 HDPE pipe installation"></div>'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            +'<div class="form-group" style="margin:0"><label class="form-label">Work Type</label><select class="form-input" id="prr-wtype">'+types.map(t=>'<option'+(r.work_type===t?' selected':'')+'>'+t+'</option>').join('')+'</select></div>'
+            +'<div class="form-group" style="margin:0"><label class="form-label">Unit</label><input class="form-input" id="prr-unit" placeholder="m/day" value="'+esc(r.unit||'')+'"></div>'
+          +'</div>'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            +'<div class="form-group" style="margin:0"><label class="form-label">Pipe Size</label><input class="form-input" id="prr-pipe" placeholder="DN375" value="'+esc(r.pipe_size||'')+'"></div>'
+            +'<div class="form-group" style="margin:0"><label class="form-label">Avg Depth (m)</label><input class="form-input" type="number" step="0.1" id="prr-depth" value="'+(r.depth_avg!=null?r.depth_avg:'')+'"></div>'
+          +'</div>'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            +'<div class="form-group" style="margin:0"><label class="form-label">Run Length (m)</label><input class="form-input" type="number" id="prr-length" value="'+(r.trench_length!=null?r.trench_length:'')+'"></div>'
+            +'<div class="form-group" style="margin:0"><label class="form-label">Date Completed</label><input class="form-input" type="date" id="prr-date" value="'+esc(r.date_completed||'')+'"></div>'
+          +'</div>'
+          +'<div class="form-group" style="margin:0"><label class="form-label">Soil / Geotech Conditions</label><input class="form-input" id="prr-soil" placeholder="e.g. Sandy clay with gravel layers" value="'+esc(r.soil_type||'')+'"></div>'
+          +'<div class="form-group" style="margin:0"><label class="form-label">Notes</label><textarea class="form-input" id="prr-notes" rows="3">'+esc(r.notes||'')+'</textarea></div>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+      +'<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px 16px">'
+        +'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-bottom:8px">Estimated Rate / day</div>'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<input class="form-input" type="number" id="prr-est" value="'+(r.estimated_rate!=null?r.estimated_rate:'')+'" placeholder="0" style="font-size:1.2rem;font-weight:700;color:var(--amber);background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3);width:120px;text-align:right">'
+          +'<span style="font-size:.9rem;color:var(--amber);opacity:.7">'+esc(r.unit||'m')+'/day</span>'
+        +'</div>'
+      +'</div>'
+      +'<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px 16px">'
+        +'<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:8px">Achieved Rate / day</div>'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<input class="form-input" type="number" id="prr-ach" value="'+(r.achieved_rate!=null?r.achieved_rate:'')+'" placeholder="0" style="font-size:1.2rem;font-weight:700;color:var(--green);background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3);width:120px;text-align:right">'
+          +'<span style="font-size:.9rem;color:var(--green);opacity:.7">'+esc(r.unit||'m')+'/day</span>'
+        +'</div>'
+      +'</div>'
+    +'</div>',
+  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="save-prod-record" data-rid="'+(r.id||'')+'">Save Record</button>'});
+  setTimeout(()=>{_prrRenderCrew();},0);
+};
+
 function renderProductivity(){
   const lc=_prodLifecycle;
+  const view=_prodView||'records';
   const all=DB.getProductivity();
-  const items=lc==='all'?all:all.filter(p=>_getProdLc(p)===lc);
-  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'},{key:'all',label:'All'}];
-  const tabsHTML=tabDefs.map(t=>`<button class="proj-tab${lc===t.key?' active':''}" onclick="setProdLifecycle('${t.key}')">${t.label}</button>`).join('');
-  const noticeHTML=lc==='archived'?`<div style="padding:8px 13px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:12px">📦 Archived activities are hidden from project tabs. Restore to make them available again.</div>`
-    :lc==='deleted'?`<div style="padding:8px 13px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.14);border-radius:7px;font-size:.77rem;color:var(--red);margin-bottom:12px">🗑️ Deleted activities can be restored or permanently removed.</div>`:'';
+  const sett=DB.getSettings();
+  const locked=!!sett.productivity_locked;
+  const _fmtD=iso=>iso?new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'';
+  const updatedAt=_fmtD(sett.productivity_updated_at);
+  const lockedAt=_fmtD(sett.productivity_locked_at);
   const now=Date.now();
-  const rowsHTML=!items.length?`<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--muted)">No activities ${lc==='active'?'yet. Add your first activity.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.'}</td></tr>`:
-    items.map(i=>{
-      const ilc=_getProdLc(i);
-      const daysDeleted=i.deleted_at?Math.floor((now-new Date(i.deleted_at))/86400000):null;
-      const actionsCell=ilc==='active'?`
-        <button class="btn btn-ghost btn-xs" onclick="showProdSheet('${i.id}')" title="Edit">${icon('edit')}</button>
-        <button class="btn btn-ghost btn-xs" onclick="duplicateProd('${i.id}')" title="Duplicate">⧉</button>
-        <button class="btn btn-ghost btn-xs" onclick="archiveProd('${i.id}')" title="Archive">${icon('archive')}</button>
-        <button class="btn btn-ghost btn-xs" onclick="deleteProd('${i.id}')" style="color:var(--red)" title="Delete">${icon('trash')}</button>`
-      :ilc==='archived'?`
-        <button class="btn btn-ghost btn-xs" onclick="showProdSheet('${i.id}')" title="Edit">${icon('edit')}</button>
-        <button class="btn btn-outline btn-xs" onclick="restoreProd('${i.id}')">↩ Restore</button>
-        <button class="btn btn-ghost btn-xs" onclick="deleteProd('${i.id}')" style="color:var(--red)" title="Delete">${icon('trash')}</button>`
-      :`<button class="btn btn-outline btn-xs" onclick="restoreProd('${i.id}')">↩ Restore</button>
-        <button class="btn btn-ghost btn-xs" onclick="permDeleteProd('${i.id}')" style="color:var(--red)" title="Delete Permanently">${icon('trash')}</button>`;
-      return`<tr onclick="showProdSheet('${i.id}')">
-        ${lc==='all'?`<td><span class="badge ${ilc==='active'?'badge-green':ilc==='archived'?'badge-amber':'badge-red'}">${ilc}</span></td>`:''}
-        <td class="bold">${esc(i.activity_name)}</td>
-        <td><span class="badge badge-grey">${esc(i.work_type?.replace(/_/g,' '))}</span></td>
-        <td>${esc(i.unit)}</td>
-        <td><b>${i.productivity_per_day}</b> ${esc(i.unit)}</td>
-        <td style="font-size:.78rem">${esc(i.crew_type)}</td>
-        <td style="font-size:.78rem;color:var(--muted)">${esc(truncate(i.plant_required,50))}</td>
-        <td style="font-size:.78rem;color:var(--muted)">${esc(truncate(i.notes,40))}</td>
-        <td class="tbl-actions" onclick="event.stopPropagation()">${actionsCell}
-          ${daysDeleted!==null?`<span style="font-size:.68rem;color:var(--muted2)">${daysDeleted}d ago</span>`:''}
-        </td>
-      </tr>`;
-    }).join('');
-  const content=`
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px">
-    <div style="display:flex;align-items:center;gap:10px">
-      <div class="page-title" style="margin:0">Productivity Library</div>
-      <span style="font-size:.72rem;color:var(--muted2);background:rgba(255,255,255,.07);padding:2px 9px;border-radius:99px;font-weight:500;border:1px solid rgba(255,255,255,.07)">${items.length}</span>
-    </div>
-    <button class="btn btn-blue" data-action="add-productivity" style="flex-shrink:0">${icon('plus')} Add Activity</button>
-  </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px">
-    <div class="proj-tabs">${tabsHTML}</div>
-    <div></div>
-  </div>
-  ${noticeHTML}
-  <div class="tbl-wrap">
-    <table>
-      <thead><tr>
-        ${lc==='all'?'<th>Lifecycle</th>':''}
-        <th>Activity</th><th>Work Type</th><th>Unit</th><th>Output/Day</th><th>Crew Type</th><th>Plant Required</th><th>Notes</th><th></th>
-      </tr></thead>
-      <tbody>${rowsHTML}</tbody>
-    </table>
-  </div>`;
-  renderShell(content,'productivity');
+
+  const viewTabsHTML='<div style="display:flex;gap:2px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:3px">'
+    +'<button onclick="setProdView(\'records\')" style="padding:5px 16px;border-radius:6px;border:none;cursor:pointer;font-size:.82rem;font-weight:500;transition:all .15s;'+(view==='records'?'background:var(--blue);color:#fff':'background:transparent;color:var(--muted2)')+'">Records</button>'
+    +'<button onclick="setProdView(\'assumptions\')" style="padding:5px 16px;border-radius:6px;border:none;cursor:pointer;font-size:.82rem;font-weight:500;transition:all .15s;'+(view==='assumptions'?'background:var(--blue);color:#fff':'background:transparent;color:var(--muted2)')+'">Assumptions</button>'
+    +'</div>';
+
+  const infoBtn='<span class="prod-info-wrap" style="margin-left:4px">'
+    +'<span class="prod-info-btn">i</span>'
+    +'<span class="prod-info-tip">Log what your crews actually achieved on past jobs. After each project, record the work type, site conditions (depth, soil, pipe size) and crew used. When the AI analyses a new BOQ, it finds the 3–5 most similar historical records and recommends a blended productivity rate based on your real-world data.</span>'
+    +'</span>';
+
+  const headerHTML=''
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        +'<div class="page-title" style="margin:0">Productivity Library &amp; Crews</div>'
+        +infoBtn
+        +(locked?'<span class="badge badge-amber" style="font-size:.7rem">🔒 Locked'+(lockedAt?' '+lockedAt:'')+'</span>':(updatedAt?'<span style="font-size:.71rem;color:var(--muted2)">Updated '+updatedAt+'</span>':''))
+      +'</div>'
+      +'<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'
+        +'<button class="btn btn-sm" onclick="toggleProductivityLock()" style="'+(locked?'border:1px solid var(--amber);color:var(--amber);background:rgba(245,158,11,.08)':'border:1px solid var(--border);background:transparent;color:var(--muted2)')+'" title="'+(locked?'Unlock to edit activities':'Lock to prevent changes')+'">'+(locked?'🔓 Unlock':'🔒 Lock')+'</button>'
+        +(!locked&&view==='records'?'<button class="btn btn-blue" onclick="showProdRecordSheet(\'\')" style="flex-shrink:0">'+icon('plus')+' Log Record</button>':'')
+        +(!locked&&view==='assumptions'?'<button class="btn btn-blue" data-action="add-productivity" style="flex-shrink:0">'+icon('plus')+' Add Activity</button>':'')
+      +'</div>'
+    +'</div>'
+    +(locked?'<div style="padding:9px 14px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:14px;display:flex;align-items:center;gap:8px">🔒 <span>Productivity Library is locked. Click <strong>Unlock</strong> to make changes.</span></div>':'')
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px">'
+      +viewTabsHTML
+      +'<div></div>'
+    +'</div>';
+
+  let bodyHTML='';
+
+  if(view==='records'){
+    const records=all.filter(r=>r.record_type==='record');
+    const filteredRecords=lc==='all'?records:records.filter(r=>_getProdLc(r)===lc);
+    const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'},{key:'all',label:'All'}];
+    const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setProdLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
+    const noticeHTML=lc==='archived'?'<div style="padding:8px 13px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:12px">📦 Archived records are hidden. Restore to make them available again.</div>'
+      :lc==='deleted'?'<div style="padding:8px 13px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.14);border-radius:7px;font-size:.77rem;color:var(--red);margin-bottom:12px">🗑️ Deleted records can be restored or permanently removed.</div>':'';
+    const _fmtDate=iso=>iso?new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'2-digit'}):'—';
+    const cardsHTML=!filteredRecords.length
+      ?'<div style="grid-column:1/-1;text-align:center;padding:50px 20px;color:var(--muted);font-size:.88rem">No records '+(lc==='active'?'yet. Click <strong>Log Record</strong> after a job to start building your productivity database.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</div>'
+      :filteredRecords.map(r=>{
+        const ilc=_getProdLc(r);
+        const daysDeleted=r.deleted_at?Math.floor((now-new Date(r.deleted_at))/86400000):null;
+        const crewLines=r.crew_items?.length?r.crew_items.map(c=>'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:5px;font-size:.73rem;white-space:nowrap">'+(c.quantity>1?'<span style="font-weight:700;color:var(--blue)">'+c.quantity+'×</span> ':'')+'<span>'+esc(c.name)+'</span></span>').join(''):'<span style="font-size:.75rem;color:var(--muted2)">No crew recorded</span>';
+        const actionsHTML=locked
+          ?'<span style="font-size:.73rem;color:var(--muted2)">🔒</span>'
+          :ilc==='active'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showProdRecordSheet(\''+r.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();archiveProd(\''+r.id+'\')" title="Archive">'+icon('archive')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteProd(\''+r.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
+          :ilc==='archived'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showProdRecordSheet(\''+r.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreProd(\''+r.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteProd(\''+r.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>'
+          :'<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreProd(\''+r.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();permDeleteProd(\''+r.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>';
+        return'<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s" onmouseenter="this.style.borderColor=\'var(--blue)\'" onmouseleave="this.style.borderColor=\'var(--border)\'" '+(locked?'':'onclick="showProdRecordSheet(\''+r.id+'\')"')+'>'
+          +'<div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">'
+            +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+              +'<div><div style="font-size:.93rem;font-weight:700;line-height:1.25;margin-bottom:3px">'+esc(r.activity_name)+'</div>'
+              +'<div style="font-size:.75rem;color:var(--muted)">'+esc(r.project_name||'No project')+'</div></div>'
+              +'<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">'
+                +(lc==='all'?'<span class="badge '+(ilc==='active'?'badge-green':ilc==='archived'?'badge-amber':'badge-red')+'" style="font-size:.65rem">'+ilc+'</span>':'')
+                +(r.date_completed?'<span style="font-size:.7rem;color:var(--muted2)">'+_fmtDate(r.date_completed)+'</span>':'')
+              +'</div>'
+            +'</div>'
+          +'</div>'
+          +'<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-bottom:1px solid var(--border)">'
+            +'<div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Pipe Size</div><div style="font-size:.82rem;font-weight:600">'+esc(r.pipe_size||'—')+'</div></div>'
+            +'<div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Depth</div><div style="font-size:.82rem;font-weight:600">'+(r.depth_avg!=null?r.depth_avg+'m':'—')+'</div></div>'
+            +'<div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px">Soil</div><div style="font-size:.78rem;color:var(--muted2)">'+esc(r.soil_type||'—')+'</div></div>'
+          +'</div>'
+          +'<div style="padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-bottom:1px solid var(--border)">'
+            +'<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:6px;padding:7px 10px">'
+              +'<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-bottom:2px">Est. Rate</div>'
+              +'<div style="font-size:.95rem;font-weight:700;color:var(--amber)">'+(r.estimated_rate!=null?r.estimated_rate+' '+esc(r.unit||'m'):'<span style="color:var(--muted2);font-weight:400;font-size:.78rem">—</span>')+'</div>'
+            +'</div>'
+            +'<div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:7px 10px">'
+              +'<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:2px">Achieved Rate</div>'
+              +'<div style="font-size:.95rem;font-weight:700;color:var(--green)">'+(r.achieved_rate!=null?r.achieved_rate+' '+esc(r.unit||'m'):'<span style="color:var(--muted2);font-weight:400;font-size:.78rem">—</span>')+'</div>'
+            +'</div>'
+          +'</div>'
+          +'<div style="padding:9px 14px;border-bottom:1px solid var(--border)">'
+            +'<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px">Crew</div>'
+            +'<div style="display:flex;flex-wrap:wrap;gap:4px">'+crewLines+'</div>'
+          +'</div>'
+          +'<div style="padding:7px 10px;display:flex;justify-content:flex-end;gap:2px;background:rgba(255,255,255,.01)" onclick="event.stopPropagation()">'+actionsHTML+'</div>'
+        +'</div>';
+      }).join('');
+    bodyHTML=''
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px">'
+        +'<div class="proj-tabs">'+tabsHTML+'</div>'
+        +'<span style="font-size:.72rem;color:var(--muted2);background:rgba(255,255,255,.07);padding:2px 9px;border-radius:99px;font-weight:500;border:1px solid rgba(255,255,255,.07)">'+filteredRecords.length+' record'+(filteredRecords.length!==1?'s':'')+'</span>'
+      +'</div>'
+      +noticeHTML
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">'+cardsHTML+'</div>';
+  } else {
+    const assumptions=all.filter(a=>!a.record_type||a.record_type==='assumption');
+    const items=lc==='all'?assumptions:assumptions.filter(p=>_getProdLc(p)===lc);
+    const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'},{key:'all',label:'All'}];
+    const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setProdLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
+    const noticeHTML=lc==='archived'?'<div style="padding:8px 13px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:12px">📦 Archived activities are hidden from project tabs. Restore to make them available again.</div>'
+      :lc==='deleted'?'<div style="padding:8px 13px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.14);border-radius:7px;font-size:.77rem;color:var(--red);margin-bottom:12px">🗑️ Deleted activities can be restored or permanently removed.</div>':'';
+    const rowsHTML=!items.length?'<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--muted)">No activities '+(lc==='active'?'yet. Add your first activity.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</td></tr>'
+      :items.map(i=>{
+        const ilc=_getProdLc(i);
+        const daysDeleted=i.deleted_at?Math.floor((now-new Date(i.deleted_at))/86400000):null;
+        const actionsCell=locked
+          ?'<span style="font-size:.75rem;color:var(--muted2)" title="Unlock to edit">🔒</span>'
+          :ilc==='active'?'<button class="btn btn-ghost btn-xs" onclick="showProdSheet(\''+i.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-ghost btn-xs" onclick="duplicateProd(\''+i.id+'\')" title="Duplicate">⧉</button><button class="btn btn-ghost btn-xs" onclick="archiveProd(\''+i.id+'\')" title="Archive">'+icon('archive')+'</button><button class="btn btn-ghost btn-xs" onclick="deleteProd(\''+i.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
+          :ilc==='archived'?'<button class="btn btn-ghost btn-xs" onclick="showProdSheet(\''+i.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-outline btn-xs" onclick="restoreProd(\''+i.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="deleteProd(\''+i.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
+          :'<button class="btn btn-outline btn-xs" onclick="restoreProd(\''+i.id+'\')">↩ Restore</button><button class="btn btn-ghost btn-xs" onclick="permDeleteProd(\''+i.id+'\')" style="color:var(--red)" title="Delete Permanently">'+icon('trash')+'</button>';
+        return'<tr '+(locked?'':'onclick="showProdSheet(\''+i.id+'\')"')+'>'
+          +(lc==='all'?'<td><span class="badge '+(ilc==='active'?'badge-green':ilc==='archived'?'badge-amber':'badge-red')+'">'+ilc+'</span></td>':'')
+          +'<td class="bold">'+esc(i.activity_name)+'</td>'
+          +'<td><span class="badge badge-grey">'+esc(i.work_type?.replace(/_/g,' '))+'</span></td>'
+          +'<td>'+esc(i.unit)+'</td>'
+          +'<td><b>'+i.productivity_per_day+'</b> '+esc(i.unit)+'</td>'
+          +'<td style="font-size:.78rem">'+esc(i.crew_type)+'</td>'
+          +'<td style="font-size:.78rem;color:var(--muted)">'+esc(truncate(i.plant_required,50))+'</td>'
+          +'<td style="font-size:.78rem;color:var(--muted)">'+esc(truncate(i.notes,40))+'</td>'
+          +'<td class="tbl-actions" onclick="event.stopPropagation()">'+actionsCell
+          +(daysDeleted!==null?'<span style="font-size:.68rem;color:var(--muted2)">'+daysDeleted+'d ago</span>':'')
+          +'</td></tr>';
+      }).join('');
+    bodyHTML=''
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px">'
+        +'<div class="proj-tabs">'+tabsHTML+'</div>'
+        +'<span style="font-size:.72rem;color:var(--muted2);background:rgba(255,255,255,.07);padding:2px 9px;border-radius:99px;font-weight:500;border:1px solid rgba(255,255,255,.07)">'+items.length+'</span>'
+      +'</div>'
+      +noticeHTML
+      +'<div class="tbl-wrap"><table><thead><tr>'
+        +(lc==='all'?'<th>Lifecycle</th>':'')
+        +'<th>Activity</th><th>Work Type</th><th>Unit</th><th>Output/Day</th><th>Crew Type</th><th>Plant Required</th><th>Notes</th><th></th>'
+      +'</tr></thead><tbody>'+rowsHTML+'</tbody></table></div>';
+  }
+
+  renderShell(headerHTML+bodyHTML,'productivity');
 }
 window.showProdSheet=function(id){
   const i=DB.getProductivity().find(x=>x.id===id)||{};
@@ -4116,12 +4412,45 @@ window.showProdSheet=function(id){
 /* ================================================================
    QUOTES
 ================================================================ */
+const ALL_QUOTE_STATUSES=[
+  {key:'awaiting',label:'Awaiting',cls:'badge-amber'},
+  {key:'overdue',label:'Overdue',cls:'badge-red'},
+  {key:'received',label:'Received',cls:'badge-green'},
+];
+let _statusPickerOpen=null;
+function openQuoteStatusPicker(e,qid){
+  e.stopPropagation();
+  closeStatusPicker();
+  const q=DB.getQuotes().find(x=>x.id===qid);if(!q)return;
+  const rect=e.currentTarget.getBoundingClientRect();
+  const picker=document.createElement('div');
+  picker.id='status-picker-popup';
+  picker.style.cssText='position:fixed;z-index:9999;background:var(--s2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.4);padding:4px;min-width:140px;top:'+(rect.bottom+4)+'px;left:'+rect.left+'px';
+  picker.innerHTML=ALL_QUOTE_STATUSES.map(s=>'<div onclick="applyQuoteStatusQuick(\''+qid+'\',\''+s.key+'\')" style="padding:7px 12px;border-radius:5px;cursor:pointer;font-size:.8rem;font-weight:500;display:flex;align-items:center;gap:8px" onmouseenter="this.style.background=\'rgba(255,255,255,.07)\'" onmouseleave="this.style.background=\'\'">'+s.label+(q.status===s.key?' ✓':'')+'</div>').join('');
+  document.body.appendChild(picker);
+  _statusPickerOpen=picker;
+  setTimeout(()=>document.addEventListener('click',closeStatusPicker,{once:true}),0);
+}
+function closeStatusPicker(){
+  if(_statusPickerOpen){_statusPickerOpen.remove();_statusPickerOpen=null;}
+}
+window.applyQuoteStatusQuick=function(qid,newStatus){
+  closeStatusPicker();
+  const quotes=DB.getQuotes();
+  const q=quotes.find(x=>x.id===qid);if(!q)return;
+  if(q.status===newStatus)return;
+  q.status=newStatus;
+  DB.saveQuotes(quotes);
+  toast('Quote status: '+newStatus.replace(/_/g,' '),'success');
+  if(typeof filterQuotes==='function')filterQuotes();
+};
+
 function renderQuotes(){
   const quotes=DB.getQuotes();
   const projects=DB.getProjects();
   const contacts=DB.getContacts();
   const todayStr=today();
-  const quotesFull=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.due_date&&q.due_date<todayStr&&!['received','accepted','declined'].includes(q.status)}));
+  const quotesFull=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr)}));
   const content=`
   <div class="page-header">
     <div><div class="page-title">Quote Requests</div><div class="page-sub">${quotes.length} total</div></div>
@@ -4150,7 +4479,7 @@ function renderQuoteRows(qf){
     <td>${esc(q.trade_package)}</td>
     <td>${fmtDate(q.request_date)}</td>
     <td><span class="${q.isOverdue?'days-red':relDaysClass(q.due_date)}">${fmtDate(q.due_date)}${q.due_date?`<br><span style="font-size:.7rem">${relDays(q.due_date)}</span>`:''}</span></td>
-    <td>${quoteBadge(q.isOverdue?'overdue':q.status)}</td>
+    <td><span onclick="openQuoteStatusPicker(event,'${q.id}')" style="cursor:pointer" title="Click to change status">${quoteBadge(q.isOverdue?'overdue':q.status)}</span></td>
     <td class="aud">${q.quoted_amount!=null?fmtAUD(q.quoted_amount):'—'}</td>
     <td class="tbl-actions">
       ${q.isOverdue
@@ -4164,7 +4493,7 @@ function renderQuoteRows(qf){
 }
 window.filterQuotes=function(filter){
   const quotes=DB.getQuotes();const projects=DB.getProjects();const contacts=DB.getContacts();const todayStr=today();
-  let qf=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.due_date&&q.due_date<todayStr&&!['received','accepted','declined'].includes(q.status)}));
+  let qf=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr)}));
   const projFilter=document.getElementById('q-proj')?.value||'';
   const statFilter=filter||document.getElementById('q-status')?.value||'';
   if(projFilter)qf=qf.filter(q=>q.project_id===projFilter);
@@ -4360,6 +4689,21 @@ window.showRiskSheet=function(projId,riskId){
     </div>`,
   actions:`<button class="btn btn-outline" data-action="close-sheet">Cancel</button><button class="btn btn-blue" data-action="save-risk" data-id="${projId}" data-rid="${riskId||''}">Save Risk</button>`});
 };
+window.showGlobalRiskSheet=function(){
+  const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
+  if(!projects.length){toast('No active projects to add a risk to.','warning');return;}
+  const cats=['design','geotechnical','services','access','traffic','environmental','procurement','subcontractor','programme','commercial','safety'];
+  showSheet({title:'New Risk',body:''
+    +'<div class="form-group"><label class="form-label">Project *</label><select class="form-input" id="rk-proj"><option value="">— Select project —</option>'+projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div>'
+    +'<div class="form-group"><label class="form-label">Risk Title *</label><input class="form-input" id="rk-title" placeholder="e.g. Utility conflict — Water main crossing"></div>'
+    +'<div class="form-row mb-3"><div class="form-group" style="margin:0"><label class="form-label">Category</label><select class="form-input" id="rk-cat">'+cats.map(c=>'<option>'+c+'</option>').join('')+'</select></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Likelihood (1–5)</label><input class="form-input" type="number" min="1" max="5" id="rk-like" value="3"></div></div>'
+    +'<div class="form-group"><label class="form-label">Consequence (1–5)</label><input class="form-input" type="number" min="1" max="5" id="rk-cons" value="3"></div>'
+    +'<div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="rk-desc" rows="3"></textarea></div>'
+    +'<div class="form-group"><label class="form-label">Mitigation</label><textarea class="form-input" id="rk-mit" rows="3"></textarea></div>',
+  actions:'<button class="btn btn-outline" data-action="close-sheet">Cancel</button><button class="btn btn-blue" data-action="save-risk-global">Save Risk</button>'});
+};
+
 window.calcRiskRating=function(){
   const l=parseInt(document.getElementById('rk-l')?.value)||1;
   const c=parseInt(document.getElementById('rk-c')?.value)||1;
@@ -6851,6 +7195,19 @@ document.addEventListener('click',async function(e){
     const id=el.dataset.id;const p=DB.getProject(id);if(!p)return;
     showRiskSheet(id,'');return;
   }
+if(action==='save-risk-global'){
+    const projId=document.getElementById('rk-proj')?.value;
+    const title=document.getElementById('rk-title')?.value.trim();
+    if(!projId){toast('Select a project.','warning');return;}
+    if(!title){toast('Risk title is required.','warning');return;}
+    const projects=DB.getProjects();
+    const p=projects.find(x=>x.id===projId);if(!p)return;
+    if(!p.risks)p.risks=[];
+    p.risks.push({id:uid(),title,category:document.getElementById('rk-cat')?.value,likelihood:parseInt(document.getElementById('rk-like')?.value)||3,consequence:parseInt(document.getElementById('rk-cons')?.value)||3,description:document.getElementById('rk-desc')?.value.trim(),mitigation:document.getElementById('rk-mit')?.value.trim(),status:'open',created_at:new Date().toISOString()});
+    DB.saveProject(p);closeSheet();toast('Risk saved.','success');
+    if(typeof renderRisks==='function')renderRisks();
+    return;
+  }
   if(action==='save-risk'){
     const projId=el.dataset.id,riskId=el.dataset.rid;
     const title=document.getElementById('rk-title')?.value.trim();
@@ -7081,6 +7438,45 @@ document.addEventListener('click',async function(e){
 
   /* ---- PRODUCTIVITY ---- */
   if(action==='add-productivity'){showProdSheet('');return;}
+if(action==='save-prod-record'){
+    const rid=el.dataset.rid;
+    const name=document.getElementById('prr-name')?.value.trim();
+    clearFieldErrors();
+    if(!name){showFieldError('prr-name','Activity name is required.');return;}
+    const items=DB.getProductivity();
+    const projId=document.getElementById('prr-proj')?.value||'';
+    const isCustomProj=projId==='custom';
+    const projName=isCustomProj
+      ?(document.getElementById('prr-custom-title')?.value.trim()||'')
+      :projId?(DB.getProjects().find(p=>p.id===projId)?.name||''):'';
+    const obj={
+      id:rid||uid(),
+      record_type:'record',
+      activity_name:name,
+      work_type:document.getElementById('prr-wtype')?.value,
+      project_id:isCustomProj?'custom':projId,
+      project_name:projName,
+      pipe_size:document.getElementById('prr-pipe')?.value.trim(),
+      depth_avg:parseFloat(document.getElementById('prr-depth')?.value)||null,
+      soil_type:document.getElementById('prr-soil')?.value.trim(),
+      trench_length:parseFloat(document.getElementById('prr-length')?.value)||null,
+      estimated_rate:parseFloat(document.getElementById('prr-est')?.value)||null,
+      achieved_rate:parseFloat(document.getElementById('prr-ach')?.value)||null,
+      unit:document.getElementById('prr-unit')?.value.trim()||'m/day',
+      crew_items:_prrCrew.map(c=>({rate_item_id:c.rate_item_id,name:c.name,unit:c.unit,quantity:c.quantity,company_id:c.company_id,company_name:c.company_name,rate:c.rate})),
+      notes:document.getElementById('prr-notes')?.value.trim(),
+      date_completed:document.getElementById('prr-date')?.value||'',
+      lifecycle_status:'active',
+      status:'active'
+    };
+    if(rid){const idx=items.findIndex(x=>x.id===rid);if(idx>=0)items[idx]=obj;else items.push(obj);}
+    else items.push(obj);
+    DB.saveProductivity(items);
+    closeModal();
+    toast(rid?'Record updated.':'Record saved.','success');
+    renderProductivity();
+    return;
+  }
   if(action==='save-productivity'){
     const pid2=el.dataset.pid;
     const name=document.getElementById('prd-name')?.value.trim();
