@@ -6991,7 +6991,7 @@ document.addEventListener('click',async function(e){
     const email=document.getElementById('fp-email')?.value.trim();
     const a=document.getElementById('auth-alert');
     if(email){
-      await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
+      await _sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href.split('#')[0]});
       if(a)a.innerHTML=`<div style="color:var(--green);background:var(--green-d);padding:8px 12px;border-radius:6px;font-size:.82rem;margin-bottom:12px">Password reset email sent to ${esc(email)}. Check your inbox.</div>`;
     }else{if(a)a.innerHTML=`<div style="color:var(--red);background:var(--red-d);padding:8px 12px;border-radius:6px;font-size:.82rem;margin-bottom:12px">Please enter your email address.</div>`;}
     return;
