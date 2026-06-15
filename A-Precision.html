@@ -738,7 +738,8 @@ function _sbUp(table,row){
           toast('Supabase column missing on "'+table+'" table. Open Settings → check the SQL setup guide.','error');
           console.warn('Missing column in table: '+table+'. Row keys: '+Object.keys(row).join(', '));
         } else {
-          console.warn(table+' upsert error:',error.message);
+          toast('Save error ('+table+'): '+error.message,'error');
+          console.warn(table+' upsert error:',error.message,error);
         }
       }
     });
@@ -4407,7 +4408,14 @@ function renderProductivity(){
       :filteredRecords.map(r=>{
         const ilc=_getProdLc(r);
         const daysDeleted=r.deleted_at?Math.floor((now-new Date(r.deleted_at))/86400000):null;
-        const crewLines=r.crew_items?.length?r.crew_items.map(c=>'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:5px;font-size:.73rem;white-space:nowrap">'+(c.quantity>1?'<span style="font-weight:700;color:var(--blue)">'+c.quantity+'×</span> ':'')+'<span>'+esc(c.name)+'</span></span>').join(''):'<span style="font-size:.75rem;color:var(--muted2)">No crew recorded</span>';
+        const crewTotal=r.crew_items?.reduce((s,c)=>s+(parseFloat(c.rate)||0)*(parseFloat(c.quantity)||1),0)||0;
+        const fmtCM=n=>'$'+Math.round(n).toLocaleString('en-AU');
+        const crewLines=r.crew_items?.length
+          ?'<div style="display:flex;flex-direction:column;gap:3px">'
+            +r.crew_items.map(c=>{const cost=(parseFloat(c.rate)||0)*(parseFloat(c.quantity)||1);const qty=parseFloat(c.quantity)||1;return'<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center"><div style="font-size:.78rem">'+(qty>1?'<span style="font-weight:700;color:var(--blue);margin-right:3px">'+qty+'\xd7</span>':'')+esc(c.name)+'</div><div style="font-size:.73rem;color:var(--muted2);white-space:nowrap">'+fmtCM(cost)+'/day</div></div>';}).join('')
+            +'</div>'
+            +(crewTotal>0?'<div style="margin-top:7px;padding-top:7px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;align-items:center"><div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Total Daily Cost</div><div style="font-size:.88rem;font-weight:700;color:var(--blue)">'+fmtCM(crewTotal)+'/day</div></div>':'')
+          :'<span style="font-size:.75rem;color:var(--muted2)">No crew recorded</span>';
         const actionsHTML=locked
           ?'<span style="font-size:.73rem;color:var(--muted2)">🔒</span>'
           :ilc==='active'?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showProdRecordSheet(\''+r.id+'\')" title="Edit">'+icon('edit')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();archiveProd(\''+r.id+'\')" title="Archive">'+icon('archive')+'</button><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteProd(\''+r.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
@@ -4417,7 +4425,7 @@ function renderProductivity(){
           +'<div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)">'
             +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
               +'<div><div style="font-size:.93rem;font-weight:700;line-height:1.25;margin-bottom:3px">'+esc(r.activity_name)+'</div>'
-              +'<div style="font-size:.75rem;color:var(--muted)">'+esc(r.project_name||'No project')+'</div></div>'
+              +(r.project_name?'<div style="font-size:.8rem;font-weight:500;color:var(--blue);margin-top:2px;opacity:.85">'+esc(r.project_name)+'</div>':'<div style="font-size:.72rem;color:var(--muted2)">No project</div>')+'</div>'
               +'<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">'
                 +(lc==='all'?'<span class="badge '+(ilc==='active'?'badge-green':ilc==='archived'?'badge-amber':'badge-red')+'" style="font-size:.65rem">'+ilc+'</span>':'')
                 +(r.date_completed?'<span style="font-size:.7rem;color:var(--muted2)">'+_fmtDate(r.date_completed)+'</span>':'')
@@ -4441,7 +4449,7 @@ function renderProductivity(){
           +'</div>'
           +'<div style="padding:9px 14px;border-bottom:1px solid var(--border)">'
             +'<div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px">Crew</div>'
-            +'<div style="display:flex;flex-wrap:wrap;gap:4px">'+crewLines+'</div>'
+            +crewLines
           +'</div>'
           +'<div style="padding:7px 10px;display:flex;justify-content:flex-end;gap:2px;background:rgba(255,255,255,.01)" onclick="event.stopPropagation()">'+actionsHTML+'</div>'
         +'</div>';
