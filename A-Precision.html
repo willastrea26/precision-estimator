@@ -4908,7 +4908,7 @@ window._srShowReview=function(parsed,companyHint){
       +'</tr>';
   }).join('');
   const body='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'
-    +'<div class="form-group" style="margin:0"><label class="form-label">Company Name</label><input class="form-input" id="sr-rv-company" value="'+esc(company)+'"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Company Name</label><input class="form-input" id="sr-rv-company" value="'+esc(company)+'" oninput="window._srCheckExisting(this.value)"><div id="sr-rv-dup-note" style="display:none;margin-top:5px;padding:5px 10px;border-radius:5px;font-size:.77rem;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);color:var(--blue)"></div></div>'
     +'<div class="form-group" style="margin:0"><label class="form-label">ABN</label><input class="form-input" id="sr-rv-abn" value="'+esc(parsed.abn||'')+'" placeholder="Optional"></div>'
     +'<div class="form-group" style="margin:0"><label class="form-label">Contact Name</label><input class="form-input" id="sr-rv-contact-name" value="'+esc(parsed.contact_name||'')+'" placeholder="Optional"></div>'
     +'<div class="form-group" style="margin:0"><label class="form-label">Contact Email</label><input class="form-input" id="sr-rv-contact-email" value="'+esc(parsed.contact_email||'')+'" placeholder="Optional"></div>'
@@ -4927,8 +4927,15 @@ window._srShowReview=function(parsed,companyHint){
     actions:'<button class="btn btn-outline" onclick="closeModal()">Cancel</button>'
       +'<button class="btn btn-blue" onclick="_srImportFromReview()">Import to Supplier Rates</button>'
   });
+  requestAnimationFrame(function(){window._srCheckExisting(company);});
 };
 window._srDelRow=function(i){document.getElementById('sr-rv-'+i)?.remove();};
+window._srCheckExisting=function(val){
+  const note=document.getElementById('sr-rv-dup-note');if(!note)return;
+  const match=_srGet().find(function(s){return(s.company||'').toLowerCase().trim()===(val||'').toLowerCase().trim()&&(s.lifecycle_status||'active')!=='deleted';});
+  if(match){note.style.display='block';note.innerHTML='<strong>'+esc(match.company)+'</strong> already exists — new rates will be added to their folder.';}
+  else{note.style.display='none';}
+};
 window._srImportFromReview=function(){
   const company=document.getElementById('sr-rv-company')?.value.trim()||'Unknown';
   const abn=document.getElementById('sr-rv-abn')?.value.trim()||'';
@@ -4949,13 +4956,23 @@ window._srImportFromReview=function(){
     });
   }
   const all=_srGet();
-  const obj={id:uid(),company:company,abn:abn,contact_name:contactName,contact_email:contactEmail,
-    contact_phone:contactPhone,trade_category:tradeCat,notes:'',source:'ai',lifecycle_status:'active',
-    created_at:new Date().toISOString(),items:rowItems};
-  all.push(obj);
-  _srSave(all);
-  closeModal();
-  toast('Imported '+rowItems.length+' rates for '+company+'.','success');
+  const compLower=company.toLowerCase().trim();
+  const existing=all.find(function(s){return(s.company||'').toLowerCase().trim()===compLower&&(s.lifecycle_status||'active')!=='deleted';});
+  if(existing){
+    existing.items=(existing.items||[]).concat(rowItems);
+    if(!existing.abn&&abn)existing.abn=abn;
+    if(!existing.contact_name&&contactName)existing.contact_name=contactName;
+    if(!existing.contact_email&&contactEmail)existing.contact_email=contactEmail;
+    if(!existing.contact_phone&&contactPhone)existing.contact_phone=contactPhone;
+    _srSave(all);closeModal();
+    toast('Added '+rowItems.length+' rates to '+company+'.','success');
+  }else{
+    const obj={id:uid(),company:company,abn:abn,contact_name:contactName,contact_email:contactEmail,
+      contact_phone:contactPhone,trade_category:tradeCat,notes:'',source:'ai',lifecycle_status:'active',
+      created_at:new Date().toISOString(),items:rowItems};
+    all.push(obj);_srSave(all);closeModal();
+    toast('Imported '+rowItems.length+' rates for '+company+'.','success');
+  }
   renderCatalogue();
 };
 window.showCatalogueAISheet=function(){
