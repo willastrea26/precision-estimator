@@ -5396,7 +5396,7 @@ window.openDuePicker=function(e,projId){
   pop.style.cssText=`top:${rect.bottom+4}px;left:${Math.min(rect.left,window.innerWidth-260)}px`;
   document.body.appendChild(pop);
   document.getElementById('_dp_inp')?.focus();
-  setTimeout(()=>document.addEventListener('click',()=>document.getElementById('_dp')?.remove(),{once:true,capture:true}),0);
+  setTimeout(()=>document.addEventListener('click',()=>document.getElementById('_dp')?.remove(),{once:true}),0);
 };
 
 window.openDuePopover=function(e,projId,targetId){
@@ -5411,7 +5411,7 @@ window.openDuePopover=function(e,projId,targetId){
   else{pop.style.cssText=`top:${rect.bottom+6}px;left:${Math.min(rect.left,window.innerWidth-260)}px`;}
   document.body.appendChild(pop);
   document.getElementById('_dpop_inp')?.focus();
-  setTimeout(()=>document.addEventListener('click',()=>document.getElementById('_dpop')?.remove(),{once:true,capture:true}),0);
+  setTimeout(()=>document.addEventListener('click',()=>document.getElementById('_dpop')?.remove(),{once:true}),0);
 };
 
 window.quickSaveDue=function(projId,dateVal,context,targetId){
