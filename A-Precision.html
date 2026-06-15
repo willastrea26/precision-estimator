@@ -684,7 +684,8 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmtAUD=n=>n==null?'—':new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD',minimumFractionDigits:0,maximumFractionDigits:0}).format(n);
 const fmtDate=d=>{if(!d)return'—';const dt=new Date(d);return isNaN(dt)?d:dt.toLocaleDateString('en-AU')};
 const fmtDateInput=d=>{if(!d)return'';const dt=new Date(d);if(isNaN(dt))return d;return dt.toISOString().split('T')[0]};
-const today=()=>new Date().toISOString().split('T')[0];
+const today=()=>{const _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');};
+const _localISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const daysUntil=d=>{if(!d)return null;const diff=Math.round((new Date(d)-new Date(today()))/(1000*60*60*24));return diff};
 const relDays=d=>{const n=daysUntil(d);if(n===null)return'';if(n<0)return`${Math.abs(n)}d overdue`;if(n===0)return'Due today';if(n===1)return'Tomorrow';return`in ${n} days`};
 const relDaysClass=d=>{const n=daysUntil(d);if(n===null)return'';if(n<0||n===0)return'days-red';if(n<3)return'days-red';if(n<7)return'days-orange';if(n<14)return'days-amber';return''};
@@ -734,7 +735,10 @@ function _sbUp(table,row){
       if(error){
         console.error(table+' save:',error.message);
         if(error.message&&(error.message.includes('column')||error.message.includes('schema cache')||error.code==='42703')){
-          console.warn('A Supabase column is missing. Go to Supabase → SQL Editor and run the migration SQL.');
+          toast('Supabase column missing on "'+table+'" table. Open Settings → check the SQL setup guide.','error');
+          console.warn('Missing column in table: '+table+'. Row keys: '+Object.keys(row).join(', '));
+        } else {
+          console.warn(table+' upsert error:',error.message);
         }
       }
     });
@@ -1070,7 +1074,7 @@ async function fetchWeather(){
     const d=await r.json();
     if(!strip)return;
     const days=d.daily.time,codes=d.daily.weathercode,hi=d.daily.temperature_2m_max,lo=d.daily.temperature_2m_min;
-    const todayISO=new Date().toISOString().split('T')[0];
+    const todayISO=(function(){const _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
     const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     const wmoIcon=c=>{
       if(c===0)return'☀️';
@@ -3841,61 +3845,154 @@ window.permDeleteProd=function(id){
 /* ================================================================
    RATE LIBRARY
 ================================================================ */
+let _rlOpenCats=new Set();
+window.toggleRateCat=function(key){
+  if(_rlOpenCats.has(key))_rlOpenCats.delete(key);else _rlOpenCats.add(key);
+  renderRateLibrary();
+};
+window._rlSearch='';
+window.filterRateLibrary=function(){
+  window._rlSearch=(document.getElementById('rl-search')?.value||'').toLowerCase();
+  renderRateLibrary();
+};
+
 function renderRateLibrary(){
   const lc=_rateLifecycle;
   const all=DB.getRates();
   const companies=DB.getCompanies();
-  const selCo=window._rateCoFilter||'';
   let rates=lc==='all'?all:all.filter(r=>_getRateLc(r)===lc);
-  if(selCo)rates=rates.filter(r=>(r.company||r.rate_code||'')==selCo);
+  const search=window._rlSearch||'';
+  if(search)rates=rates.filter(r=>(r.description+'|'+(r.company||r.rate_code||'')+'|'+(r.notes||'')).toLowerCase().includes(search));
+  if(!window._rlCatSearch)window._rlCatSearch={};
+
+  const CATS=[
+    {key:'personnel',label:'Personnel'},
+    {key:'excavators',label:'Excavators'},
+    {key:'loaders_skid_steers',label:'Loaders / Skid Steers'},
+    {key:'rollers_compaction',label:'Rollers / Compaction'},
+    {key:'trucks_tippers',label:'Trucks / Tippers'},
+    {key:'dumpers',label:'Dumpers'},
+    {key:'water_carts',label:'Water Carts'},
+    {key:'vac_trucks',label:'Vac Trucks'},
+    {key:'attachments',label:'Attachments'},
+    {key:'small_plant',label:'Small Plant'},
+    {key:'traffic_control',label:'Traffic Control'},
+    {key:'survey',label:'Survey'},
+    {key:'testing_qa',label:'Testing / QA'},
+    {key:'mobilisation_float',label:'Mobilisation / Float'},
+  ];
+  const validKeys=new Set(CATS.map(c=>c.key));
+
   const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'},{key:'all',label:'All'}];
-  const tabsHTML=tabDefs.map(t=>`<button class="proj-tab${lc===t.key?' active':''}" onclick="setRateLifecycle('${t.key}')">${t.label}</button>`).join('');
-  const showSearch=lc==='active'||lc==='all';
+  const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setRateLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
+
   const noticeHTML=lc==='archived'?'<div style="padding:8px 13px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.14);border-radius:7px;font-size:.77rem;color:var(--amber);margin-bottom:12px">Archived rates are hidden from BOQ and dropdowns. Restore to make them available again.</div>'
     :lc==='deleted'?'<div style="padding:8px 13px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.14);border-radius:7px;font-size:.77rem;color:var(--red);margin-bottom:12px">Deleted rates can be restored or permanently removed.</div>':'';
-  const cats=['drainage','excavation','concrete','pits','traffic_control','pavements','backfill','disposal','dewatering','electrical','labour','plant','materials'];
-  const content=`
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px">
-    <div style="display:flex;align-items:center;gap:10px">
-      <div class="page-title" style="margin:0">Rate Library</div>
-      <span style="font-size:.72rem;color:var(--muted2);background:rgba(255,255,255,.07);padding:2px 9px;border-radius:99px;font-weight:500;border:1px solid rgba(255,255,255,.07)">${rates.length}</span>
-    </div>
-    <div style="display:flex;gap:8px;flex-shrink:0">
-      <button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Manage Companies</button>
-      <button class="btn btn-blue" data-action="add-rate">${icon('plus')} Add Rate</button>
-    </div>
-  </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
-    <div class="proj-tabs">${tabsHTML}</div>
-    ${showSearch?`<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
-      <div class="proj-search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="form-input" id="rate-search" placeholder="Search rates…" style="width:180px" oninput="filterRates()">
-      </div>
-      <select class="form-input" id="rate-cat" onchange="filterRates()" style="width:150px">
-        <option value="">All Categories</option>
-        ${cats.map(c=>`<option>${c}</option>`).join('')}
-      </select>
-      <select class="form-input" id="rate-co-filter" onchange="filterRates()" style="width:160px">
-        <option value="">All Companies</option>
-        ${companies.map(c=>`<option value="${esc(c.name)}"${selCo===c.name?' selected':''}>${esc(c.name)}</option>`).join('')}
-      </select>
-    </div>`:'<div></div>'}
-  </div>
-  ${noticeHTML}
-  <div class="tbl-wrap">
-    <table id="rate-table">
-      <thead><tr>
-        ${lc==='all'?'<th>Lifecycle</th>':''}
-        <th>Company</th><th>Category</th><th>Description</th><th>Unit</th>
-        <th>Labour</th><th>Plant</th><th>Material</th>
-        <th>Total Rate</th><th>Margin%</th><th>Sell Rate</th><th></th>
-      </tr></thead>
-      <tbody id="rate-tbody">${renderRateRows(rates,lc)}</tbody>
-    </table>
-  </div>`;
+
+  function rateRow(r){
+    const total=(r.labour_rate||0)+(r.plant_rate||0)+(r.material_rate||0)+(r.subcontractor_rate||0)+(r.other_cost||0);
+    const sell=total*(1+(r.default_margin_pct||15)/100);
+    const nightStr=r.has_night_shift&&r.night_shift_total?'<span title="Night: '+fmtAUD(r.night_shift_total)+'" style="font-size:.62rem;padding:1px 4px;border-radius:3px;background:rgba(99,102,241,.1);color:#a5b4fc;margin-left:3px">N</span>':'';
+    const wkndStr=r.weekend_rate?'<span title="W/End: '+fmtAUD(r.weekend_rate)+'" style="font-size:.62rem;padding:1px 4px;border-radius:3px;background:rgba(59,130,246,.1);color:#93c5fd;margin-left:3px">W</span>':'';
+    const rlc=_getRateLc(r);
+    const actions=rlc==='active'
+      ?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showRateSheet(\''+r.id+'\')" title="Edit">'+icon('edit')+'</button>'
+       +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();duplicateRate(\''+r.id+'\')" title="Duplicate">&#10021;</button>'
+       +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();archiveRate(\''+r.id+'\')" title="Archive">'+icon('archive')+'</button>'
+       +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteRate(\''+r.id+'\')" style="color:var(--red)" title="Delete">'+icon('trash')+'</button>'
+      :rlc==='archived'
+      ?'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showRateSheet(\''+r.id+'\')" title="Edit">'+icon('edit')+'</button>'
+       +'<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreRate(\''+r.id+'\')">&#8617; Restore</button>'
+       +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteRate(\''+r.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>'
+      :'<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreRate(\''+r.id+'\')">&#8617; Restore</button>'
+       +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();permDeleteRate(\''+r.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>';
+    return'<tr onclick="showRateSheet(\''+r.id+'\')" style="cursor:pointer">'
+      +'<td class="bold" style="max-width:260px">'+esc(r.description)+'</td>'
+      +'<td style="color:var(--muted2);font-size:.78rem">'+esc(r.company||r.rate_code||'')+'</td>'
+      +'<td>'+esc(r.unit)+'</td>'
+      +'<td class="aud">'+fmtAUD(total)+nightStr+wkndStr+'</td>'
+      +'<td class="aud text-green">'+fmtAUD(sell)+'</td>'
+      +(lc==='all'?'<td><span class="badge '+(rlc==='active'?'badge-green':rlc==='archived'?'badge-amber':'badge-red')+'">'+rlc+'</span></td>':'')
+      +'<td class="tbl-actions" onclick="event.stopPropagation()">'+actions+'</td>'
+      +'</tr>';
+  }
+
+  function catBlock(key,label,catRates){
+    catRates=catRates.slice().sort(function(a,b){return(a.description||'').localeCompare(b.description||'');});
+    const catQ=(window._rlCatSearch[key]||'').toLowerCase().trim();
+    const filteredRates=catQ?catRates.filter(function(r){return(r.description+'|'+(r.company||r.rate_code||'')+'|'+(r.notes||'')).toLowerCase().includes(catQ);}):catRates;
+    const open=search?catRates.length>0:_rlOpenCats.has(key);
+    if(search&&!catRates.length)return'';
+    const chevron='<svg class="sr-acc-chevron" style="transform:rotate('+(open?'90':'0')+'deg)" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+    const header='<div class="sr-acc-row" onclick="toggleRateCat(\''+key+'\')">'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +chevron
+        +'<span style="font-weight:600;font-size:.92rem">'+label+'</span>'
+      +'</div>'
+      +'<span style="font-size:.72rem;color:var(--muted2);min-width:50px;text-align:right">'+catRates.length+' rate'+(catRates.length!==1?'s':'')+'</span>'
+      +'</div>';
+    const searchBar='<div style="padding:8px 12px;border-bottom:1px solid var(--border)">'
+      +'<div class="proj-search-wrap" style="max-width:260px">'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+        +'<input class="form-input" placeholder="Search '+label+'..." style="font-size:.8rem" value="'+esc(window._rlCatSearch[key]||'')+'" oninput="filterRateCat(\''+key+'\',this.value)" onclick="event.stopPropagation()">'
+      +'</div>'
+      +'</div>';
+    const body=open
+      ?'<div class="sr-acc-body" style="padding:0">'
+        +searchBar
+        +'<table style="width:100%;border-collapse:collapse;font-size:.83rem">'
+          +'<thead><tr style="background:rgba(255,255,255,.02)">'
+            +'<th style="text-align:left;padding:7px 14px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Description</th>'
+            +'<th style="text-align:left;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Company</th>'
+            +'<th style="text-align:left;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Unit</th>'
+            +'<th style="text-align:right;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Total Rate</th>'
+            +'<th style="text-align:right;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Sell Rate</th>'
+            +(lc==='all'?'<th style="text-align:left;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Status</th>':'')
+            +'<th style="border-bottom:1px solid var(--border)"></th>'
+          +'</tr></thead>'
+          +'<tbody>'
+            +(filteredRates.length?filteredRates.map(rateRow).join('')
+              :catQ?'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">No rates match your search.</td></tr>'
+              :'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">No rates in this category yet.</td></tr>')
+          +'</tbody>'
+        +'</table>'
+        +'<div style="padding:10px 14px;border-top:1px solid var(--border)">'
+          +'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();showRateSheet(\'\',\''+key+'\')">'+icon('plus')+' Add Rate</button>'
+        +'</div>'
+      +'</div>'
+      :'';
+    return'<div class="sr-accordion'+(open?' open':'')+'">'+header+body+'</div>';
+  }
+
+  const accsHTML=CATS.map(cat=>catBlock(cat.key,cat.label,rates.filter(r=>r.category===cat.key))).join('');
+  const uncatRates=rates.filter(r=>!validKeys.has(r.category));
+  const uncatHTML=uncatRates.length?catBlock('_uncat','Uncategorised',uncatRates):'';
+
+  const content='<div class="page-header">'
+    +'<div><div class="page-title">Rate Library</div><div class="page-sub">'+rates.length+' rate'+(rates.length!==1?'s':'')+' ('+lc+')</div></div>'
+    +'<div style="display:flex;gap:8px">'
+      +'<button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Companies</button>'
+      +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()">&#10022; AI Analyse</button>'
+      +'<button class="btn btn-blue" onclick="showRateSheet(\'\')">'+icon('plus')+' Add Rate</button>'
+    +'</div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">'
+      +'<div class="proj-tabs">'+tabsHTML+'</div>'
+      +'<div class="proj-search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+        +'<input class="form-input" id="rl-search" placeholder="Search all rates..." style="width:200px" value="'+(search||'')+'" oninput="filterRateLibrary()">'
+      +'</div>'
+    +'</div>'
+    +noticeHTML
+    +accsHTML
+    +uncatHTML;
+
   renderShell(content,'rate-library');
 }
-window._rateCoFilter='';
+window.filterRateCat=function(key,val){
+  if(!window._rlCatSearch)window._rlCatSearch={};
+  window._rlCatSearch[key]=val;
+  renderRateLibrary();
+};
 
 function renderRateRows(rates,lc='active'){
   const colCount=lc==='all'?12:11;
@@ -4001,7 +4098,7 @@ window.deleteCompany=function(id){
 
 window.showRateSheet=function(id){
   const r=DB.getRates().find(x=>x.id===id)||{};
-  const cats=['drainage','excavation','concrete','pits','traffic_control','pavements','backfill','disposal','dewatering','electrical','labour','plant','materials'];
+  const cats=['personnel','excavators','loaders_skid_steers','rollers_compaction','trucks_tippers','dumpers','water_carts','vac_trucks','attachments','small_plant','traffic_control','survey','testing_qa','mobilisation_float'];const catLabels={personnel:'Personnel',excavators:'Excavators',loaders_skid_steers:'Loaders / Skid Steers',rollers_compaction:'Rollers / Compaction',trucks_tippers:'Trucks / Tippers',dumpers:'Dumpers',water_carts:'Water Carts',vac_trucks:'Vac Trucks',attachments:'Attachments',small_plant:'Small Plant',traffic_control:'Traffic Control',survey:'Survey',testing_qa:'Testing / QA',mobilisation_float:'Mobilisation / Float'};
   const companies=DB.getCompanies();
   const currentCo=r.company||r.rate_code||'';
   const total=(r.labour_rate||0)+(r.plant_rate||0)+(r.material_rate||0)+(r.subcontractor_rate||0)+(r.other_cost||0);
@@ -4015,7 +4112,7 @@ window.showRateSheet=function(id){
       </select>
       <div style="font-size:.68rem;color:var(--muted2);margin-top:3px"><a onclick="showManageCompanies()" style="color:var(--blue);cursor:pointer">+ Manage Companies</a></div>
     </div>
-    <div class="form-group" style="margin:0"><label class="form-label">Category</label><select class="form-input" id="r-cat">${cats.map(c=>`<option${r.category===c?' selected':''}>${c}</option>`).join('')}</select></div></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Category</label><select class="form-input" id="r-cat">${cats.map(c=>`<option value="${c}"${r.category===c?' selected':''}>${catLabels[c]||c}</option>`).join('')}</select></div></div>
     <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="r-desc" value="${esc(r.description||'')}"></div>
     <div class="form-row mb-3"><div class="form-group" style="margin:0"><label class="form-label">Unit</label><input class="form-input" id="r-unit" value="${esc(r.unit||'')}"></div>
     <div class="form-group" style="margin:0"><label class="form-label">Default Margin %</label><input class="form-input" type="number" id="r-margin" value="${r.default_margin_pct||15}"></div></div>
@@ -4076,13 +4173,45 @@ window.toggleNightRate=function(){
 /* ================================================================
    PRODUCTIVITY LIBRARY
 ================================================================ */
-function _getRLItemCompanies(rateItemId){
-  if(!rateItemId)return[];
-  const lib=_rlGet();
-  const item=lib.categories.flatMap(cat=>cat.items||[]).find(it=>it.id===rateItemId);
-  return(item?.companies||[]).map(c=>({id:c.id,company:c.company,day_rate:c.day_rate||0}));
-}
+function _getRLItemCompanies(rateItemId){return[];}
 
+window._prrSearchCrew=function(q){
+  const el=document.getElementById('prr-crew-results');if(!el)return;
+  if(!q.trim()){el.innerHTML='';return;}
+  const rates=DB.getRates().filter(r=>_getRateLc(r)==='active');
+  const ql=q.toLowerCase();
+  const matches=rates.filter(r=>(r.description+'|'+(r.company||r.rate_code||'')+'|'+(r.category||'')).toLowerCase().includes(ql)).slice(0,12);
+  el.innerHTML=matches.length
+    ?matches.map(r=>{
+      const total=(r.labour_rate||0)+(r.plant_rate||0)+(r.material_rate||0)+(r.subcontractor_rate||0)+(r.other_cost||0);
+      const company=r.company||r.rate_code||'';
+      const catLabel=(r.category||'').replace(/_/g,' ');
+      return'<div class="prr-crew-result" onclick="window._prrAddCrew(\''+r.id+'\')">'
+        +'<span style="font-weight:500;display:block">'+esc(r.description)+'</span>'
+        +'<span style="font-size:.72rem;color:var(--muted2)">'+(company?esc(company)+' &mdash; ':'')+'$'+total.toLocaleString()+'/'+(r.unit||'unit')
+          +(catLabel?'<span style="margin-left:5px;padding:1px 5px;background:rgba(255,255,255,.05);border-radius:3px;font-size:.65rem;text-transform:capitalize;letter-spacing:.02em">'+esc(catLabel)+'</span>':'')
+        +'</span>'
+        +'</div>';
+    }).join('')
+    :'<div style="padding:8px 10px;font-size:.78rem;color:var(--muted2)">No matching rates found</div>';
+};
+
+window._prrAddCrew=function(rateId){
+  const r=DB.getRates().find(x=>x.id===rateId);
+  if(!r)return;
+  if(_prrCrew.some(c=>(c.rate_id||c.rate_item_id)===rateId)){toast('Already in crew','info');return;}
+  const total=(r.labour_rate||0)+(r.plant_rate||0)+(r.material_rate||0)+(r.subcontractor_rate||0)+(r.other_cost||0);
+  _prrCrew.push({
+    rate_id:rateId,rate_item_id:rateId,
+    name:r.description||'',category:r.category||'',unit:r.unit||'',
+    quantity:1,company:r.company||r.rate_code||'',company_name:r.company||r.rate_code||'',
+    rate:total,companies:[]
+  });
+  const si=document.getElementById('prr-crew-search');if(si)si.value='';
+  document.getElementById('prr-crew-results').innerHTML='';
+  const picker=document.getElementById('prr-picker');if(picker)picker.style.display='none';
+  _prrRenderCrew();
+};
 let _prrCrew=[];
 
 window._prrTogglePicker=function(){
@@ -4097,43 +4226,6 @@ window._prrToggleCustom=function(){
   const ct=document.getElementById('prr-custom-title');if(!ct)return;
   ct.style.display=sel?.value==='custom'?'':'none';
   if(sel?.value==='custom')ct.focus();
-};
-
-window._prrSearchCrew=function(q){
-  if(!q.trim()){document.getElementById('prr-crew-results').innerHTML='';return;}
-  const lib=_rlGet();
-  const allItems=lib.categories.flatMap(cat=>(cat.items||[]).filter(it=>it.status!=='archived'));
-  const matches=allItems.filter(it=>(it.name||'').toLowerCase().includes(q.toLowerCase())).slice(0,10);
-  const el=document.getElementById('prr-crew-results');if(!el)return;
-  el.innerHTML=matches.length
-    ?matches.map(it=>{
-      const cos=it.companies||[];
-      const pref=cos.find(c=>c.preferred)||cos[0]||null;
-      const coName=pref?esc(pref.company):'<span style="color:var(--muted2);font-style:italic">No company rates</span>';
-      const rateStr=pref?' — $'+((pref.day_rate||0).toLocaleString())+'/'+(it.unit||'shift'):'';
-      const extraCos=cos.length>1?'<span style="font-size:.68rem;color:var(--muted2);margin-left:4px">+'+(cos.length-1)+' more</span>':'';
-      return'<div class="prr-crew-result" onclick="window._prrAddCrew(\''+it.id+'\')">'
-        +'<span style="font-weight:500;display:block">'+esc(it.name)+'</span>'
-        +'<span style="font-size:.72rem;color:var(--muted2)">'+coName+rateStr+extraCos+'</span>'
-        +'</div>';
-    }).join('')
-    :'<div style="padding:8px 10px;font-size:.78rem;color:var(--muted2)">No matching items found</div>';
-};
-
-window._prrAddCrew=function(rateItemId){
-  const lib=_rlGet();
-  const rlItem=lib.categories.flatMap(cat=>cat.items||[]).find(it=>it.id===rateItemId);
-  if(!rlItem)return;
-  if(_prrCrew.some(c=>c.rate_item_id===rateItemId)){toast('Already in crew','info');return;}
-  const pref=(rlItem.companies||[]).find(c=>c.preferred)||(rlItem.companies||[])[0]||null;
-  _prrCrew.push({
-    rate_item_id:rateItemId,name:rlItem.name,unit:rlItem.unit||'',quantity:1,
-    company_id:pref?.id||'',company_name:pref?.company||'',rate:pref?.day_rate||0,
-    companies:(rlItem.companies||[]).map(c=>({id:c.id,company:c.company,day_rate:c.day_rate||0}))
-  });
-  const si=document.getElementById('prr-crew-search');if(si)si.value='';
-  document.getElementById('prr-crew-results').innerHTML='';
-  _prrRenderCrew();
 };
 
 window._prrRemoveCrew=function(idx){_prrCrew.splice(idx,1);_prrRenderCrew();};
@@ -4164,13 +4256,11 @@ function _prrRenderCrew(){
   }
   const rows=_prrCrew.map((c,i)=>{
     const day=_prrDayRate(c)*(c.quantity||1);
-    const cos=c.companies||[];
-    const selCo=cos.find(co=>co.id===c.company_id)||cos[0]||null;
-    const compCell=cos.length>1
-      ?'<div style="display:flex;flex-direction:column;gap:3px"><select class="form-input" style="padding:2px 6px;font-size:.76rem" onchange="window._prrSetCompany('+i+',this.value)">'+cos.map(co=>'<option value="'+co.id+'"'+(co.id===c.company_id?' selected':'')+'>'+esc(co.company)+'</option>').join('')+'</select><span style="font-size:.72rem;color:var(--muted2);padding-left:2px">$'+((selCo?.day_rate||0)).toLocaleString()+'/'+(c.unit||'shift')+'</span></div>'
-      :cos.length===1
-      ?'<div><span style="font-size:.8rem;font-weight:500">'+esc(cos[0].company)+'</span><br><span style="font-size:.72rem;color:var(--muted2)">$'+(cos[0].day_rate||0).toLocaleString()+'/'+(c.unit||'shift')+'</span></div>'
-      :'<input type="number" class="form-input" style="width:90px;padding:3px 6px;font-size:.78rem" placeholder="Rate" value="'+(c.rate||0)+'" oninput="window._prrSetRate('+i+',this.value)">';
+    const company=c.company||c.company_name||'';
+    const compCell='<div style="display:flex;flex-direction:column;gap:3px">'
+      +(company?'<span style="font-size:.8rem;font-weight:500;margin-bottom:1px">'+esc(company)+'</span>':'<span style="font-size:.78rem;color:var(--muted2);font-style:italic">No company</span>')
+      +'<input type="number" class="form-input" style="width:90px;padding:3px 6px;font-size:.78rem" value="'+(c.rate||0)+'" oninput="window._prrSetRate('+i+',this.value)">'
+      +'</div>';
     return'<tr>'
       +'<td style="font-weight:500">'+esc(c.name)+'</td>'
       +'<td><input type="number" min="0.5" step="0.5" value="'+(c.quantity||1)+'" class="form-input" style="width:62px;padding:3px 7px;font-size:.82rem" oninput="window._prrSetQty('+i+',this.value)"></td>'
@@ -4186,7 +4276,7 @@ function _prrRenderCrew(){
 
 window.showProdRecordSheet=function(id){
   const r=DB.getProductivity().find(x=>x.id===id&&x.record_type==='record')||{};
-  _prrCrew=r.crew_items?r.crew_items.map(c=>({...c,companies:_getRLItemCompanies(c.rate_item_id)})):[];
+  _prrCrew=r.crew_items?r.crew_items.map(c=>({...c,company:c.company||c.company_name||'',companies:[]})):[];
   const types=['pipe_installation','trench_excavation','electrical_conduit_trenching','pit_installation','backfill_compaction','pavement_preparation','concrete_works','spoil_disposal','traffic_control','testing_qa'];
   const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
   const isCustom=r.project_id==='custom'||(r.project_name&&!projects.find(p=>p.id===r.project_id));
@@ -4487,7 +4577,7 @@ window.toggleCatalogueLock=function(){
 
 window.archiveSR=function(id){
   const items=_srGet();const i=items.find(x=>x.id===id);
-  if(!i||!confirm('Archive "'+i.company+'"?'))return;
+  if(!i||!confirm('Archive "'+i.company+'"? This will hide it from active rates.'))return;
   i.lifecycle_status='archived';i.archived_at=new Date().toISOString();
   _srSave(items);toast('Archived.','success');renderCatalogue();
 };
@@ -4590,6 +4680,274 @@ window._srLoadFile=function(file){
   };
   r.readAsDataURL(file);
 };
+window._rlAIFile=null;window._rlAIFileType=null;window._rlAIFileName=null;
+window._rlDragOver=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('rl-drop-zone');if(z)z.classList.add('drag-over');};
+window._rlDragLeave=function(e){const z=document.getElementById('rl-drop-zone');if(z)z.classList.remove('drag-over');};
+window._rlDrop=function(e){e.preventDefault();e.stopPropagation();const z=document.getElementById('rl-drop-zone');if(z)z.classList.remove('drag-over');const f=e.dataTransfer?.files?.[0];if(f)_rlLoadFile(f);};
+window._rlFileChange=function(e){const f=e.target?.files?.[0];if(f)_rlLoadFile(f);};
+async function _extractDocxText(bytes){
+  const target='word/document.xml';
+  let i=0;
+  while(i<bytes.length-30){
+    if(bytes[i]===0x50&&bytes[i+1]===0x4B&&bytes[i+2]===0x03&&bytes[i+3]===0x04){
+      const comp=bytes[i+8]|(bytes[i+9]<<8);
+      const cSize=bytes[i+18]|(bytes[i+19]<<8)|(bytes[i+20]<<16)|(bytes[i+21]<<24);
+      const fnLen=bytes[i+26]|(bytes[i+27]<<8);
+      const exLen=bytes[i+28]|(bytes[i+29]<<8);
+      const fname=new TextDecoder().decode(bytes.slice(i+30,i+30+fnLen));
+      const dataOff=i+30+fnLen+exLen;
+      if(fname===target){
+        const cData=bytes.slice(dataOff,dataOff+cSize);
+        let xml;
+        if(comp===0){xml=new TextDecoder().decode(cData);}
+        else if(comp===8){
+          try{
+            const ds=new DecompressionStream('deflate-raw');
+            const w=ds.writable.getWriter();const rd=ds.readable.getReader();
+            w.write(cData);w.close();
+            const chunks=[];let done=false;
+            while(!done){const{value,done:d}=await rd.read();if(value)chunks.push(value);done=d;}
+            const tot=chunks.reduce((a,b)=>a+b.length,0);const out=new Uint8Array(tot);let pos=0;
+            for(const ch of chunks){out.set(ch,pos);pos+=ch.length;}
+            xml=new TextDecoder().decode(out);
+          }catch(e){return null;}
+        }
+        if(xml){
+          const parts=[];let m;const re=/<w:t[^>]*>([^<]*)<\/w:t>/g;
+          while((m=re.exec(xml))!==null)parts.push(m[1]);
+          return parts.join(' ').replace(/\s+/g,' ').trim()||null;
+        }
+      }
+      i=dataOff+Math.max(cSize,0);
+    }else{i++;}
+  }
+  return null;
+}
+window._rlLoadFile=function(file){
+  const zone=document.getElementById('rl-drop-zone');
+  const label=document.getElementById('rl-drop-label');
+  const textArea=document.getElementById('ai-rl-text');
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='txt'||ext==='csv'){
+    const r=new FileReader();
+    r.onload=ev=>{if(textArea)textArea.value=ev.target.result;if(label)label.innerHTML='<p class="sr-file-name">&#128196; '+file.name+' — text loaded below</p>';if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}};
+    r.readAsText(file);window._rlAIFile=null;return;
+  }
+  if(ext==='docx'){
+    const r=new FileReader();
+    r.onload=async ev=>{
+      try{
+        const text=await _extractDocxText(new Uint8Array(ev.target.result));
+        if(text){
+          if(textArea)textArea.value=text;
+          if(label)label.innerHTML='<p class="sr-file-name">&#128196; '+file.name+' — text extracted below</p>';
+          if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}
+          window._rlAIFile=null;
+        }else{toast('Could not extract text from Word doc. Please paste the content instead.','warning');}
+      }catch(e){toast('Error reading Word document.','warning');}
+    };
+    r.readAsArrayBuffer(file);return;
+  }
+  const allowed=['pdf','jpg','jpeg','png','webp'];
+  if(!allowed.includes(ext)){toast('Unsupported file type. Use PDF, Word doc, image, or text file.','warning');return;}
+  const r=new FileReader();
+  r.onload=ev=>{
+    const b64=ev.target.result.split(',')[1];
+    window._rlAIFile=b64;
+    window._rlAIFileType=ext==='pdf'?'application/pdf':'image/'+ext;
+    window._rlAIFileName=file.name;
+    const ic=ext==='pdf'?'&#128196;':'&#128247;';
+    if(label)label.innerHTML='<p class="sr-file-name">'+ic+' '+file.name+'</p><p>Ready — click Analyse</p>';
+    if(zone){zone.classList.remove('drag-over');zone.classList.add('file-ready');}
+  };
+  r.readAsDataURL(file);
+};
+window._rlShowReview=function(data){
+  const company=data.company||'';
+  const items=data.items||[];
+  if(!items.length){toast('No rates found in document.','warning');return;}
+  const CATS=['personnel','excavators','loaders_skid_steers','rollers_compaction','trucks_tippers','dumpers','water_carts','vac_trucks','attachments','small_plant','traffic_control','survey','testing_qa','mobilisation_float'];
+  const CL={personnel:'Personnel',excavators:'Excavators',loaders_skid_steers:'Loaders/Skid Steers',rollers_compaction:'Rollers/Compaction',trucks_tippers:'Trucks/Tippers',dumpers:'Dumpers',water_carts:'Water Carts',vac_trucks:'Vac Trucks',attachments:'Attachments',small_plant:'Small Plant',traffic_control:'Traffic Control',survey:'Survey',testing_qa:'Testing/QA',mobilisation_float:'Mob/Float'};
+  const rows=items.map(function(it,i){
+    const selOpts=CATS.map(function(k){return '<option value="'+k+'"'+(k===it.category?' selected':'')+'>'+CL[k]+'</option>';}).join('');
+    const pct=Math.round(it.confidence||0);
+    const col=pct>=80?'var(--green)':pct>=55?'var(--amber)':'var(--red)';
+    const badge='<span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:.7rem;font-weight:700;background:'+col+'22;color:'+col+';white-space:nowrap">'+pct+'%</span>';
+    return '<tr id="rl-rv-'+i+'" style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:3px 5px"><select class="form-input" style="font-size:.72rem;padding:2px 4px;width:100%" data-f="cat">'+selOpts+'</select></td>'
+      +'<td style="padding:3px 5px"><input class="form-input" style="font-size:.76rem;padding:2px 6px;min-width:155px;width:100%" data-f="desc" value="'+esc(it.description||'')+'"></td>'
+      +'<td style="padding:3px 5px"><input class="form-input" style="font-size:.76rem;padding:2px 5px;width:50px;text-align:center" data-f="unit" value="'+esc(it.unit||'hr')+'"></td>'
+      +'<td style="padding:3px 5px"><input class="form-input" style="font-size:.76rem;padding:2px 5px;width:72px;text-align:right" type="number" min="0" step="0.01" data-f="day" value="'+(parseFloat(it.day_rate)||0)+'"></td>'
+      +'<td style="padding:3px 5px"><input class="form-input" style="font-size:.76rem;padding:2px 5px;width:72px;text-align:right" type="number" min="0" step="0.01" data-f="night" value="'+(parseFloat(it.night_rate)||0)+'"></td>'
+      +'<td style="padding:3px 5px"><input class="form-input" style="font-size:.76rem;padding:2px 5px;width:72px;text-align:right" type="number" min="0" step="0.01" data-f="wknd" value="'+(parseFloat(it.weekend_rate)||0)+'"></td>'
+      +'<td style="padding:3px 5px;text-align:center">'+badge+'</td>'
+      +'<td style="padding:3px 5px"><button class="btn btn-ghost btn-xs" style="color:var(--red);padding:1px 5px" onclick="_rlDelRow('+i+')">&#10005;</button></td>'
+      +'</tr>';
+  }).join('');
+  const avg=items.length?Math.round(items.reduce(function(a,b){return a+(b.confidence||0);},0)/items.length):0;
+  const aCls=avg>=80?'badge-green':avg>=55?'badge-amber':'badge-red';
+  const lowConf=items.filter(function(it){return (it.confidence||0)<70;}).length;
+  const body='<div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:200px"><label class="form-label">Company / Source</label>'
+    +'<input class="form-input" id="rl-rv-company" value="'+esc(company)+'" placeholder="Company name" style="font-weight:600"></div>'
+    +'<div style="display:flex;gap:14px;align-items:flex-end;padding-bottom:2px">'
+    +'<div style="text-align:center"><div style="font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Rates found</div><div style="font-size:1.3rem;font-weight:700;line-height:1">'+items.length+'</div></div>'
+    +'<div style="text-align:center"><div style="font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">AI confidence</div><span class="badge '+aCls+'" style="font-size:.78rem;padding:3px 10px">'+avg+'% avg</span></div>'
+    +(lowConf?'<div style="text-align:center"><div style="font-size:.64rem;color:var(--amber);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Review needed</div><div style="font-size:1.1rem;font-weight:700;color:var(--amber);line-height:1">'+lowConf+' items</div></div>':'')
+    +'</div></div>'
+    +'<div style="overflow-x:auto;max-height:52vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:.8rem">'
+    +'<thead style="position:sticky;top:0;z-index:2"><tr style="background:var(--s2)">'
+    +'<th style="padding:6px 8px;text-align:left;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Category</th>'
+    +'<th style="padding:6px 8px;text-align:left;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Description</th>'
+    +'<th style="padding:6px 8px;text-align:left;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Unit</th>'
+    +'<th style="padding:6px 8px;text-align:right;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Day $</th>'
+    +'<th style="padding:6px 8px;text-align:right;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Night $</th>'
+    +'<th style="padding:6px 8px;text-align:right;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">W/End $</th>'
+    +'<th style="padding:6px 8px;text-align:center;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Conf.</th>'
+    +'<th style="padding:6px 8px"></th>'
+    +'</tr></thead>'
+    +'<tbody id="rl-rv-body">'+rows+'</tbody>'
+    +'</table></div>'
+    +'<p style="font-size:.72rem;color:var(--muted);margin:8px 0 0">Edit any values before importing. Confidence below 70% — double-check against the source document. Night/Weekend values are only shown if the AI found them explicitly stated.</p>';
+  closeModal();
+  showModal({wide:true,title:'Review Extracted Rates',body,
+    actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button>'
+    +'<button class="btn btn-blue" onclick="_rlImportRates()">&#10003; Import to Library</button>'
+  });
+};
+window._rlDelRow=function(i){const r=document.getElementById('rl-rv-'+i);if(r)r.remove();};
+window._rlImportRates=function(){
+  const company=(document.getElementById('rl-rv-company')?.value||'').trim();
+  const body=document.getElementById('rl-rv-body');
+  if(!body){toast('Review data lost — please re-analyse.','warning');return;}
+  const validCats=new Set(['personnel','excavators','loaders_skid_steers','rollers_compaction','trucks_tippers','dumpers','water_carts','vac_trucks','attachments','small_plant','traffic_control','survey','testing_qa','mobilisation_float']);
+  const rates=DB.getRates();
+  let added=0;
+  body.querySelectorAll('tr[id^="rl-rv-"]').forEach(function(row){
+    const g=function(f){return row.querySelector('[data-f="'+f+'"]')?.value;};
+    const desc=(g('desc')||'').trim();if(!desc)return;
+    const cat=g('cat')||'small_plant';
+    const unit=g('unit')||'hr';
+    const dayRate=parseFloat(g('day'))||0;
+    const nightRate=parseFloat(g('night'))||0;
+    const wkndRate=parseFloat(g('wknd'))||0;
+    const isPersonnel=cat==='personnel';
+    const obj={id:uid(),company:company,rate_code:company,
+      category:validCats.has(cat)?cat:'small_plant',description:desc,unit:unit,
+      labour_rate:isPersonnel?dayRate:0,plant_rate:isPersonnel?0:dayRate,
+      material_rate:0,subcontractor_rate:0,other_cost:0,default_margin_pct:15,notes:'',
+      has_night_shift:nightRate>0,
+      night_shift_loading:nightRate>0&&dayRate>0?Math.round((nightRate/dayRate-1)*100):null,
+      night_shift_total:nightRate>0?nightRate:null,
+      weekend_rate:wkndRate>0?wkndRate:null,
+      lifecycle_status:'active',status:'active',productivity_assumption:'',
+      created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+    rates.push(obj);added++;
+  });
+  DB.saveRates(rates);
+  closeModal();
+  toast(added+' rate'+(added!==1?'s':'')+' imported to library.','success');
+  renderRateLibrary();
+};
+window.showRateLibraryAISheet=function(){
+  const key=DB.getSettings().ai_key;
+  if(!key){toast('Add your AI API key in Settings first.','warning');return;}
+  window._rlAIFile=null;window._rlAIFileType=null;window._rlAIFileName=null;
+  showModal({wide:true,title:'AI Analyse — Rate Schedule',body:
+    '<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Drop a PDF or image of a rate schedule. The AI will extract items and sort them into the correct categories automatically.</p>'
+    +'<div class="sr-drop-zone" id="rl-drop-zone" ondragover="_rlDragOver(event)" ondragleave="_rlDragLeave(event)" ondrop="_rlDrop(event)" onclick="document.getElementById(\'rl-file-input\').click()">'
+    +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+    +'<div id="rl-drop-label"><p>Drop PDF or image here</p><p>or click to browse &mdash; PDF, JPG, PNG, TXT</p></div>'
+    +'<input type="file" id="rl-file-input" style="display:none" accept=".pdf,.docx,.jpg,.jpeg,.png,.webp,.txt,.csv" onchange="_rlFileChange(event)">'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin:10px 0 4px"><div style="flex:1;height:1px;background:var(--border)"></div><span style="font-size:.73rem;color:var(--muted)">or paste text</span><div style="flex:1;height:1px;background:var(--border)"></div></div>'
+    +'<div class="form-group"><label class="form-label">Rate Schedule Text</label><textarea class="form-input" id="ai-rl-text" rows="5" placeholder="Paste rate schedule content here…" style="font-family:monospace;font-size:.78rem"></textarea></div>'
+    +'<div id="ai-rl-status" style="display:none;padding:8px 12px;border-radius:7px;font-size:.8rem;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.15);color:var(--blue);margin-top:8px"></div>',
+  actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button>'
+    +'<button class="btn btn-blue" data-action="ai-extract-rl">&#10022; Analyse with AI</button>'
+  });
+};
+window._srShowReview=function(parsed,companyHint){
+  const items=parsed.items||[];
+  const company=companyHint||parsed.company||'';
+  const tradeCats=[
+    ['earthworks','Earthworks'],['civil','Civil'],['drainage','Drainage'],
+    ['water','Water'],['sewer','Sewer'],['electrical','Electrical'],
+    ['communications','Communications'],['concrete','Concrete'],
+    ['landscaping','Landscaping'],['traffic','Traffic'],
+    ['fencing','Fencing'],['demolition','Demolition'],['other','Other']
+  ];
+  const catOpts=tradeCats.map(function(tc){
+    return'<option value="'+tc[0]+'"'+(parsed.trade_category===tc[0]?' selected':'')+'>'+tc[1]+'</option>';
+  }).join('');
+  const thead='<tr style="background:rgba(255,255,255,.02)">'
+    +'<th style="padding:7px 10px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Description</th>'
+    +'<th style="padding:7px 6px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);width:70px">Unit</th>'
+    +'<th style="padding:7px 6px;text-align:right;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);width:110px">Rate (excl.)</th>'
+    +'<th style="padding:7px 6px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Notes</th>'
+    +'<th style="border-bottom:1px solid var(--border);width:32px"></th>'
+    +'</tr>';
+  const rows=items.map(function(it,i){
+    return'<tr id="sr-rv-'+i+'">'
+      +'<td style="padding:4px 10px"><input class="form-input" id="sr-rv-desc-'+i+'" value="'+esc(it.description||'')+'" style="width:100%;padding:4px 7px;font-size:.81rem"></td>'
+      +'<td style="padding:4px 6px"><input class="form-input" id="sr-rv-unit-'+i+'" value="'+esc(it.unit||'hr')+'" style="width:62px;padding:4px 7px;font-size:.81rem"></td>'
+      +'<td style="padding:4px 6px"><input class="form-input" id="sr-rv-rate-'+i+'" type="number" min="0" step="0.01" value="'+(parseFloat(it.rate)||0)+'" style="width:100px;padding:4px 7px;font-size:.81rem;text-align:right"></td>'
+      +'<td style="padding:4px 6px"><input class="form-input" id="sr-rv-notes-'+i+'" value="'+esc(it.notes||'')+'" style="width:100%;padding:4px 7px;font-size:.81rem"></td>'
+      +'<td style="padding:4px 6px;text-align:center"><button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="_srDelRow('+i+')" title="Remove">&#10005;</button></td>'
+      +'</tr>';
+  }).join('');
+  const body='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Company Name</label><input class="form-input" id="sr-rv-company" value="'+esc(company)+'"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">ABN</label><input class="form-input" id="sr-rv-abn" value="'+esc(parsed.abn||'')+'" placeholder="Optional"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Contact Name</label><input class="form-input" id="sr-rv-contact-name" value="'+esc(parsed.contact_name||'')+'" placeholder="Optional"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Contact Email</label><input class="form-input" id="sr-rv-contact-email" value="'+esc(parsed.contact_email||'')+'" placeholder="Optional"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Contact Phone</label><input class="form-input" id="sr-rv-contact-phone" value="'+esc(parsed.contact_phone||'')+'" placeholder="Optional"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Trade Category</label><select class="form-input" id="sr-rv-trade-cat">'+catOpts+'</select></div>'
+    +'</div>'
+    +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">'+items.length+' rate item'+(items.length!==1?'s':'')+' extracted — review and remove any incorrect rows before importing.</div>'
+    +'<div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:7px">'
+      +'<table style="width:100%;border-collapse:collapse;font-size:.82rem">'
+        +'<thead>'+thead+'</thead>'
+        +'<tbody id="sr-rv-tbody">'+rows+'</tbody>'
+      +'</table>'
+    +'</div>';
+  closeModal();
+  showModal({wide:true,title:'Review Extracted Rates',body:body,
+    actions:'<button class="btn btn-outline" onclick="closeModal()">Cancel</button>'
+      +'<button class="btn btn-blue" onclick="_srImportFromReview()">Import to Supplier Rates</button>'
+  });
+};
+window._srDelRow=function(i){document.getElementById('sr-rv-'+i)?.remove();};
+window._srImportFromReview=function(){
+  const company=document.getElementById('sr-rv-company')?.value.trim()||'Unknown';
+  const abn=document.getElementById('sr-rv-abn')?.value.trim()||'';
+  const contactName=document.getElementById('sr-rv-contact-name')?.value.trim()||'';
+  const contactEmail=document.getElementById('sr-rv-contact-email')?.value.trim()||'';
+  const contactPhone=document.getElementById('sr-rv-contact-phone')?.value.trim()||'';
+  const tradeCat=document.getElementById('sr-rv-trade-cat')?.value||'other';
+  const tbody=document.getElementById('sr-rv-tbody');
+  const rowItems=[];
+  if(tbody){
+    tbody.querySelectorAll('tr[id^="sr-rv-"]').forEach(function(row){
+      const i=row.id.replace('sr-rv-','');
+      const desc=(document.getElementById('sr-rv-desc-'+i)?.value||'').trim();
+      const unit=(document.getElementById('sr-rv-unit-'+i)?.value||'hr').trim();
+      const rate=parseFloat(document.getElementById('sr-rv-rate-'+i)?.value)||0;
+      const notes=(document.getElementById('sr-rv-notes-'+i)?.value||'').trim();
+      if(desc)rowItems.push({id:uid(),description:desc,unit:unit,rate:rate,notes:notes});
+    });
+  }
+  const all=_srGet();
+  const obj={id:uid(),company:company,abn:abn,contact_name:contactName,contact_email:contactEmail,
+    contact_phone:contactPhone,trade_category:tradeCat,notes:'',source:'ai',lifecycle_status:'active',
+    created_at:new Date().toISOString(),items:rowItems};
+  all.push(obj);
+  _srSave(all);
+  closeModal();
+  toast('Imported '+rowItems.length+' rates for '+company+'.','success');
+  renderCatalogue();
+};
 window.showCatalogueAISheet=function(){
   const key=DB.getSettings().ai_key;
   if(!key){toast('Add your AI API key in Settings first.','warning');return;}
@@ -4632,6 +4990,18 @@ window.deleteSRRate=function(sid,rid){
   sup.items=(sup.items||[]).filter(i=>i.id!==rid);
   _srSave(items);toast('Rate removed.','success');renderCatalogue();
 };
+window.addSRToContacts=function(sid){
+  const s=_srGet().find(x=>x.id===sid);
+  if(!s)return;
+  const name=s.contact_name||s.company;
+  if(!confirm('Add "'+name+'" to Contacts?'))return;
+  const contacts=DB.getContacts();
+  const obj={id:uid(),company_name:s.company||'',contact_person:s.contact_name||'',contact_type:'supplier',trade_category:s.trade_category||'other',email:s.contact_email||s.email||'',phone:s.contact_phone||s.phone||'',location:'',status:'active',notes:''};
+  contacts.push(obj);
+  DB.saveContacts(contacts);
+  toast((s.contact_name||s.company)+' added to Contacts.','success');
+  renderCatalogue();
+};
 function renderCatalogue(){
   const lc=_catLifecycle;
   const all=_srGet();
@@ -4648,7 +5018,7 @@ function renderCatalogue(){
       const slc=_srGetLc(s);
       const items=s.items||[];
       const catLabel=CAT_LABELS[s.trade_category]||'Other';
-      const contactParts=[s.contact_name,s.email,s.phone].filter(Boolean);
+      const contactParts=[s.contact_name,s.email,s.phone].filter(Boolean);const _ce=(s.contact_email||s.email||'').toLowerCase();const inContacts=!!(_ce||s.contact_name)&&contacts.some(ct=>(_ce&&(ct.email||'').toLowerCase()===_ce)||(s.contact_name&&(ct.contact_person||'').toLowerCase()===(s.contact_name||'').toLowerCase()));
       const chevronSVG='<svg class="sr-acc-chevron" style="transform:rotate('+(open?'90':'0')+'deg)" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
 
       const headerHTML='<div class="sr-acc-row" onclick="toggleSR(\''+s.id+'\')">'
@@ -4686,6 +5056,7 @@ function renderCatalogue(){
           +(slc==='active'?'<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();archiveSR(\''+s.id+'\')" style="margin-left:auto">Archive</button>':'')
           +(slc==='archived'?'<button class="btn btn-sm btn-outline btn-xs" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">Delete</button>':'')
           +(slc==='deleted'?'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();restoreSR(\''+s.id+'\')">↩ Restore</button><button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();permDeleteSR(\''+s.id+'\')" style="color:var(--red)">Permanently Delete</button>':'')
+          +(!inContacts&&(s.contact_name||s.contact_email||s.email)?'<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();window.addSRToContacts(\''+s.id+'\')" style="color:var(--blue);border-color:rgba(59,130,246,.4)">+ Add to Contacts</button>':'')
           +(slc==='active'?'<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();deleteSR(\''+s.id+'\')" style="color:var(--red)">Delete</button>':'')
         +'</div>'
       +'</div>';
@@ -5166,7 +5537,7 @@ window.refreshStatusExtra=function(projId){
   const status=document.getElementById('us-status')?.value;
   const box=document.getElementById('us-extra');if(!box)return;
   const lostReasons=['Price too high','Scope mismatch','Competitor preferred','Client cancelled','Other'];
-  const todayStr=new Date().toISOString().split('T')[0];
+  const todayStr=(function(){const _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');})();
   if(status==='awarded'){
     box.innerHTML=`<div class="form-group"><label class="form-label">Awarded Value ($AUD) *</label><input class="form-input" type="number" id="us-award-val" placeholder="Enter awarded contract value" step="any" min="0"></div>`;
   }else if(status==='lost'){
@@ -5188,7 +5559,7 @@ function renderFinancial(){
   const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
   const quotes=DB.getQuotes();
   const today=new Date();
-  const todayStr=today.toISOString().split('T')[0];
+  const todayStr=_localISO(today);
   const nowMonth=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
 
   /* ---- KPI calculations ---- */
@@ -5959,9 +6330,9 @@ window.spQuickDate=function(label){
   if(!label)return;
   const d=new Date();
   if(label==='Today'){_spFilters.from=today();_spFilters.to=today();}
-  else if(label==='This Week'){const mon=new Date(d);mon.setDate(d.getDate()-((d.getDay()+6)%7));_spFilters.from=mon.toISOString().split('T')[0];_spFilters.to=today();}
+  else if(label==='This Week'){const mon=new Date(d);mon.setDate(d.getDate()-((d.getDay()+6)%7));_spFilters.from=_localISO(mon);_spFilters.to=today();}
   else if(label==='This Month'){_spFilters.from=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';_spFilters.to=today();}
-  else if(label==='Last 30 Days'){const x=new Date(d);x.setDate(d.getDate()-30);_spFilters.from=x.toISOString().split('T')[0];_spFilters.to=today();}
+  else if(label==='Last 30 Days'){const x=new Date(d);x.setDate(d.getDate()-30);_spFilters.from=_localISO(x);_spFilters.to=today();}
   else{_spFilters.from='';_spFilters.to='';}
   // Sync the manual From/To fields if visible
   const fi=document.getElementById('sp-f-from');const ti=document.getElementById('sp-f-to');
@@ -6023,7 +6394,7 @@ async function _spReverseGeocodeCoords(lat,lng){
 async function _spExtractMeta(file,apiKey){
   const r={date:null,time:null,source:null,gpsLat:null,gpsLng:null,device:null,locationName:null};
   // Method 1: EXIF
-  try{if(window.exifr){const exif=await exifr.parse(file,{pick:['DateTimeOriginal','GPSLatitude','GPSLongitude','Make','Model']});if(exif?.DateTimeOriginal){const d=new Date(exif.DateTimeOriginal);r.date=d.toISOString().split('T')[0];r.time=d.toTimeString().slice(0,8);r.source='exif';}if(exif?.GPSLatitude!=null&&exif?.GPSLongitude!=null){r.gpsLat=exif.GPSLatitude;r.gpsLng=exif.GPSLongitude;}if(exif?.Make||exif?.Model)r.device=[exif.Make,exif.Model].filter(Boolean).join(' ');}}catch{}
+  try{if(window.exifr){const exif=await exifr.parse(file,{pick:['DateTimeOriginal','GPSLatitude','GPSLongitude','Make','Model']});if(exif?.DateTimeOriginal){const d=new Date(exif.DateTimeOriginal);r.date=_localISO(d);r.time=d.toTimeString().slice(0,8);r.source='exif';}if(exif?.GPSLatitude!=null&&exif?.GPSLongitude!=null){r.gpsLat=exif.GPSLatitude;r.gpsLng=exif.GPSLongitude;}if(exif?.Make||exif?.Model)r.device=[exif.Make,exif.Model].filter(Boolean).join(' ');}}catch{}
   // Method 2: AI vision (only if no date and key available)
   if(!r.date&&apiKey){try{const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(file);});const mime=file.type||'image/jpeg';const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':apiKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:80,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:'Look at this photo. If there is a date/time stamp visible in the image extract it and return ONLY JSON: {"date":"YYYY-MM-DD","time":"HH:MM:SS","location":"location if visible or null"}. If no date stamp visible return: {"date":null}'}]}]})});if(resp.ok){const data=await resp.json();const text=data.content?.[0]?.text||'';const m=text.match(/\{[\s\S]*\}/);if(m){const parsed=JSON.parse(m[0]);if(parsed.date){r.date=parsed.date;r.time=parsed.time||null;r.source='ai';}}}}catch{}}
   // Method 3: filename
@@ -6261,7 +6632,7 @@ function renderCalendar(){
   while(cells.length<42)cells.push({d:new Date(year,month+1,cells.length-startOffset-lastDay.getDate()+1),cur:false});
 
   const gridHTML=cells.map(({d,cur})=>{
-    const ds=d.toISOString().split('T')[0];
+    const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     const evs=byDate[ds]||[];const isToday=ds===todayStr;
     const isWE=d.getDay()===0||d.getDay()===6;
     const show=evs.slice(0,3);const more=evs.length-show.length;
@@ -6305,7 +6676,7 @@ function renderCalendar(){
 
 function _calUpcoming(allEvts,todayStr){
   const next30=new Date();next30.setDate(next30.getDate()+30);
-  const n30=next30.toISOString().split('T')[0];
+  const n30=next30.getFullYear()+'-'+String(next30.getMonth()+1).padStart(2,'0')+'-'+String(next30.getDate()).padStart(2,'0');
   const upcoming=allEvts.filter(e=>e.date>=todayStr&&e.date<=n30).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,20);
   if(!upcoming.length)return`<div class="card"><div class="card-title">Upcoming — 30 days</div><div style="font-size:.8rem;color:var(--muted2);text-align:center;padding:20px 0">No events in the next 30 days</div></div>`;
   let lastDate='';
@@ -7728,7 +8099,7 @@ if(action==='save-prod-record'){
       estimated_rate:parseFloat(document.getElementById('prr-est')?.value)||null,
       achieved_rate:parseFloat(document.getElementById('prr-ach')?.value)||null,
       unit:document.getElementById('prr-unit')?.value.trim()||'m/day',
-      crew_items:_prrCrew.map(c=>({rate_item_id:c.rate_item_id,name:c.name,unit:c.unit,quantity:c.quantity,company_id:c.company_id,company_name:c.company_name,rate:c.rate})),
+      crew_items:_prrCrew.map(c=>({rate_id:c.rate_id||c.rate_item_id,rate_item_id:c.rate_id||c.rate_item_id,name:c.name,unit:c.unit,quantity:c.quantity,company:c.company||c.company_name||'',company_name:c.company||c.company_name||'',rate:c.rate})),
       notes:document.getElementById('prr-notes')?.value.trim(),
       date_completed:document.getElementById('prr-date')?.value||'',
       lifecycle_status:'active',
@@ -7872,7 +8243,7 @@ if(action==='save-prod-record'){
     const aiFile=window._srAIFile;
     const aiFileType=window._srAIFileType;
     if(!aiFile&&!text){toast('Drop a file or paste some text first.','warning');return;}
-    if(statusEl){statusEl.style.display='block';statusEl.textContent='Extracting with AI…';}
+    if(statusEl){statusEl.style.display='block';statusEl.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px"><svg style="animation:spin 1s linear infinite;flex-shrink:0;width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Extracting with AI…</span>';}
     el.disabled=true;
     const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty"}]}\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
     let msgContent;
@@ -7885,22 +8256,64 @@ if(action==='save-prod-record'){
     }else{
       msgContent=promptText;
     }
-    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4096,messages:[{role:'user',content:msgContent}]})})
+    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:msgContent}]})})
     .then(r=>r.json()).then(data=>{
       el.disabled=false;window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
       if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
       try{
         const raw=data.content?.[0]?.text||'{}';
         const parsed=JSON.parse(raw.replace(/^```json\n?/,'').replace(/```$/,'').trim());
-        const items=_srGet();
-        const obj={id:uid(),company:companyHint||parsed.company||'Unknown',abn:parsed.abn||'',
-          contact_name:parsed.contact_name||'',contact_email:parsed.contact_email||'',contact_phone:parsed.contact_phone||'',
-          trade_category:parsed.trade_category||'other',notes:'',source:'ai',lifecycle_status:'active',
-          created_at:new Date().toISOString(),
-          items:(parsed.items||[]).map(it=>({id:uid(),description:it.description||'',unit:it.unit||'hr',rate:parseFloat(it.rate)||0,notes:it.notes||''}))};
-        items.push(obj);_srSave(items);closeModal();toast('Extracted '+obj.items.length+' items for '+obj.company+'.','success');renderCatalogue();
+        _srShowReview(parsed,companyHint);
       }catch(e){if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Could not parse AI response. Try again.';} el.disabled=false;}
     }).catch(e=>{el.disabled=false;if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Error: '+e.message;}});
+    return;
+  }
+if(action==='ai-extract-rl'){
+    const key=DB.getSettings().ai_key;if(!key){toast('No AI key set in Settings.','warning');return;}
+    const text=document.getElementById('ai-rl-text')?.value.trim();
+    const statusEl=document.getElementById('ai-rl-status');
+    const aiFile=window._rlAIFile;
+    const aiFileType=window._rlAIFileType;
+    if(!aiFile&&!text){toast('Drop a file or paste some text first.','warning');return;}
+    if(statusEl){statusEl.style.display='block';statusEl.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px"><svg style="animation:spin 1s linear infinite;flex-shrink:0;width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Analysing with AI…</span>';}
+    el.disabled=true;
+    const promptText='Extract all plant and labour rates from this rate schedule. Return ONLY valid JSON with no markdown:\n{"company":"full company or supplier name from the document","items":[{"description":"rate item description","unit":"hr|day|m|m2|m3|ea|t|load|wk","day_rate":number,"night_rate":number or null if not explicitly stated,"weekend_rate":number or null if not explicitly stated,"category":"one of: personnel,excavators,loaders_skid_steers,rollers_compaction,trucks_tippers,dumpers,water_carts,vac_trucks,attachments,small_plant,traffic_control,survey,testing_qa,mobilisation_float","notes":"any relevant notes or empty string","confidence":integer 0 to 100}]}\n\ncompany: extract the full company/supplier name from the document header, footer, or letterhead.\nconfidence: 100=rate clearly and explicitly stated, 75=rate stated but category is uncertain, 50=rate inferred or partially legible, 25=rate estimated or unclear, 0=not found.\nnight_rate: ONLY include if the document explicitly states a night/after-hours/shift rate — otherwise set to null.\nweekend_rate: ONLY include if the document explicitly states a weekend/Saturday/Sunday/public-holiday rate — otherwise set to null.\n\nCategory guide:\n- personnel: labour, operators (labour component only), supervisors, offsiders, flaggers\n- excavators: excavators, backhoes, trenchers\n- loaders_skid_steers: loaders, skid steers, bobcats\n- rollers_compaction: rollers, plate compactors, vibrating rollers\n- trucks_tippers: trucks, tippers, semi-trailers\n- dumpers: site dumpers, articulated dump trucks\n- water_carts: water carts, water tankers\n- vac_trucks: vacuum trucks, hydro excavation units\n- attachments: buckets, hydraulic hammers, rippers, grabs, augers\n- small_plant: generators, pumps, compressors, hand tools, lighting towers\n- traffic_control: traffic control equipment (not labour)\n- survey: survey equipment, GPS, total stations\n- testing_qa: compaction testing, concrete testing, NATA inspections\n- mobilisation_float: float hire, low loader, mobilisation and demobilisation charges\n\n'+(text?'Rate schedule:\n'+text:'');
+    let msgContent;
+    if(aiFile){
+      if(aiFileType==='application/pdf'){
+        msgContent=[{type:'document',source:{type:'base64',media_type:'application/pdf',data:aiFile}},{type:'text',text:promptText}];
+      }else{
+        msgContent=[{type:'image',source:{type:'base64',media_type:aiFileType,data:aiFile}},{type:'text',text:promptText}];
+      }
+    }else{
+      msgContent=promptText;
+    }
+    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:msgContent}]})})
+    .then(r=>r.json()).then(function(data){
+      el.disabled=false;window._rlAIFile=null;window._rlAIFileType=null;window._rlAIFileName=null;
+      if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
+      try{
+        const raw=data.content?.[0]?.text||'';
+        const wasTrunc=data.stop_reason==='max_tokens';
+        let _s=raw.replace(/```json[\s]*/g,'').replace(/```[\s]*/g,'').trim();
+        if(!_s.startsWith('{')&&!_s.startsWith('['))_s=(raw.match(/\{[\s\S]*\}/)||[''])[0]||'{}';
+        let parsed;
+        try{
+          parsed=JSON.parse(_s||'{}');
+        }catch(e){
+          const li=_s.lastIndexOf('},');
+          if(li>0){
+            try{parsed=JSON.parse(_s.substring(0,li+1)+']}');}
+            catch(e2){throw new Error(wasTrunc?'PDF was too large and the response was cut off. Try pasting the rate pages as text instead.':e.message);}
+          }else{throw new Error(wasTrunc?'PDF too large for AI — paste text instead.':e.message);}
+        }
+        if(wasTrunc&&parsed&&statusEl){statusEl.style.display='block';statusEl.style.background='rgba(245,158,11,.07)';statusEl.style.borderColor='rgba(245,158,11,.2)';statusEl.style.color='var(--amber)';statusEl.textContent='Large document — only partial rates recovered. Review before importing.';}
+        if(!(parsed.items&&parsed.items.length)){if(statusEl){statusEl.style.background='rgba(245,158,11,.07)';statusEl.style.borderColor='rgba(245,158,11,.2)';statusEl.style.color='var(--amber)';statusEl.textContent='No rates found. Try a clearer document or paste the text manually.';}el.disabled=false;return;}
+        _rlShowReview(parsed);
+      }catch(err){
+        if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Could not parse AI response ('+err.message+'). Try again.';}
+      }
+    }).catch(function(e){el.disabled=false;if(statusEl){statusEl.style.color='var(--red)';statusEl.textContent='Network error: '+e.message;}});
     return;
   }
 if(action==='save-sr-rate'){
