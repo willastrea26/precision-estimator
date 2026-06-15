@@ -4894,6 +4894,7 @@ window._srShowReview=function(parsed,companyHint){
     +'<th style="padding:7px 6px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);width:70px">Unit</th>'
     +'<th style="padding:7px 6px;text-align:right;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);width:110px">Rate (excl.)</th>'
     +'<th style="padding:7px 6px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Notes</th>'
+    +'<th style="padding:7px 6px;text-align:center;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);width:82px">Confidence</th>'
     +'<th style="border-bottom:1px solid var(--border);width:32px"></th>'
     +'</tr>';
   const rows=items.map(function(it,i){
@@ -4902,6 +4903,7 @@ window._srShowReview=function(parsed,companyHint){
       +'<td style="padding:4px 6px"><input class="form-input" id="sr-rv-unit-'+i+'" value="'+esc(it.unit||'hr')+'" style="width:62px;padding:4px 7px;font-size:.81rem"></td>'
       +'<td style="padding:4px 6px"><input class="form-input" id="sr-rv-rate-'+i+'" type="number" min="0" step="0.01" value="'+(parseFloat(it.rate)||0)+'" style="width:100px;padding:4px 7px;font-size:.81rem;text-align:right"></td>'
       +'<td style="padding:4px 6px"><input class="form-input" id="sr-rv-notes-'+i+'" value="'+esc(it.notes||'')+'" style="width:100%;padding:4px 7px;font-size:.81rem"></td>'
+      +'<td style="padding:4px 6px;text-align:center">'+(function(){const conf=it.confidence!=null?parseInt(it.confidence):null;if(conf==null)return'<span style="font-size:.72rem;color:var(--muted2)">—</span>';const col=conf>=90?'var(--green)':conf>=70?'var(--amber)':conf>=50?'#f97316':'var(--red)';return'<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:.73rem;font-weight:700;color:'+col+'">'+conf+'%</span>';}())+'</td>'
       +'<td style="padding:4px 6px;text-align:center"><button class="btn btn-ghost btn-xs" style="color:var(--red)" onclick="_srDelRow('+i+')" title="Remove">&#10005;</button></td>'
       +'</tr>';
   }).join('');
@@ -4978,6 +4980,15 @@ window.toggleSR=function(id){
   if(_srOpenIds.has(id))_srOpenIds.delete(id);else _srOpenIds.add(id);
   renderCatalogue();
 };
+window._srSearch={};
+window.filterSRRates=function(id,val){
+  window._srSearch[id]=val||'';
+  renderCatalogue();
+  requestAnimationFrame(function(){
+    const el=document.getElementById('sr-search-'+id);
+    if(el){el.focus();el.setSelectionRange((val||'').length,(val||'').length);}
+  });
+};
 window.showAddRateSheet=function(sid,rid){
   const all=_srGet();const sup=all.find(s=>s.id===sid);if(!sup)return;
   const it=rid?(sup.items||[]).find(i=>i.id===rid):null;
@@ -5025,6 +5036,8 @@ function renderCatalogue(){
       const open=_srOpenIds.has(s.id);
       const slc=_srGetLc(s);
       const items=s.items||[];
+      const _srSq=((window._srSearch)||{})[s.id]?((window._srSearch)||{})[s.id].toLowerCase():'';
+      const filteredItems=_srSq?items.filter(function(it){return(it.description||'').toLowerCase().includes(_srSq);}):items;
       const catLabel=CAT_LABELS[s.trade_category]||'Other';
       const contactParts=[s.contact_name,s.email,s.phone].filter(Boolean);const _ce=(s.contact_email||s.email||'').toLowerCase();const inContacts=!!(_ce||s.contact_name)&&contacts.some(ct=>(_ce&&(ct.email||'').toLowerCase()===_ce)||(s.contact_name&&(ct.contact_person||'').toLowerCase()===(s.contact_name||'').toLowerCase()));
       const chevronSVG='<svg class="sr-acc-chevron" style="transform:rotate('+(open?'90':'0')+'deg)" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
@@ -5044,9 +5057,10 @@ function renderCatalogue(){
       +'</div>';
 
       const bodyHTML=!open?'':'<div class="sr-acc-body">'
+        +'<div style="margin-bottom:10px"><input class="form-input" id="sr-search-'+s.id+'" placeholder="Search rates…" value="'+esc(((window._srSearch)||{})[s.id]||'')+'" oninput="window.filterSRRates(\''+s.id+'\',this.value)" style="padding:6px 10px;font-size:.83rem;max-width:300px"></div>'
         +(items.length
           ?'<table class="sr-rates-tbl"><thead><tr><th style="width:40%">Description</th><th>Unit</th><th>Rate (ex GST)</th><th style="width:30%">Notes</th><th style="width:48px"></th></tr></thead><tbody>'
-            +items.map(it=>'<tr>'
+            +filteredItems.map(it=>'<tr>'
               +'<td>'+esc(it.description)+'</td>'
               +'<td style="color:var(--muted)">'+esc(it.unit)+'</td>'
               +'<td style="font-weight:600;font-variant-numeric:tabular-nums">$'+parseFloat(it.rate||0).toFixed(2)+'</td>'
@@ -8253,7 +8267,7 @@ if(action==='save-prod-record'){
     if(!aiFile&&!text){toast('Drop a file or paste some text first.','warning');return;}
     if(statusEl){statusEl.style.display='block';statusEl.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px"><svg style="animation:spin 1s linear infinite;flex-shrink:0;width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Extracting with AI…</span>';}
     el.disabled=true;
-    const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty"}]}\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
+    const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty","confidence":number}]}\n\nFor confidence: 100=rate clearly stated, 75=rate stated but unit ambiguous, 50=rate inferred or partially legible, 25=estimated.\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
     let msgContent;
     if(aiFile){
       if(aiFileType==='application/pdf'){
