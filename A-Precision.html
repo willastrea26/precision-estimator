@@ -6747,7 +6747,7 @@ window.openFieldPop=function(e,projId,field,label,type,currentVal,options){
   document.getElementById('_fp_inp')?.focus();
   document.getElementById('_fp_inp')?.select?.();
   _fpDismiss=function(ev){const fp=document.getElementById('_fp');if(fp&&!fp.contains(ev.target))_closeFP();};
-  setTimeout(()=>document.addEventListener('mousedown',_fpDismiss),0);
+  setTimeout(()=>document.addEventListener('click',_fpDismiss),0);
 };
 
 window._saveFieldQ=function(projId,field,value){
