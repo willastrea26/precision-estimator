@@ -18,6 +18,12 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/css/pluginsCss.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/plugins.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/css/luckysheet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/assets/iconfont/iconfont.css"/>
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/js/plugin.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/luckysheet.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1582,135 +1588,76 @@ window.toggleLCMenu=function(id){document.getElementById('lc-'+id)?.classList.to
 document.addEventListener('click',e=>{if(!e.target.closest('.lifecycle-dropdown'))document.querySelectorAll('.lifecycle-menu.open').forEach(m=>m.classList.remove('open'))},{capture:true});
 
 /* ================================================================
-   WORKINGS BOOK
+   WORKINGS BOOK (Luckysheet)
 ================================================================ */
-let _wbEditing=null;
-function _wbColName(c){return c<26?String.fromCharCode(65+c):String.fromCharCode(65+Math.floor(c/26)-1)+String.fromCharCode(65+c%26);}
-function _wbRenderGrid(projId,sheet,isFirst){
-  const COLS=26,ROWS=60;
-  let h='<table class="wb-table"><colgroup><col style="width:44px">';
-  for(let c=0;c<COLS;c++)h+='<col style="min-width:120px;width:120px">';
-  h+='</colgroup><thead><tr><th class="wb-corner"></th>';
-  for(let c=0;c<COLS;c++)h+='<th class="wb-col-hdr">'+_wbColName(c)+'</th>';
-  h+='</tr></thead><tbody>';
-  for(let r=1;r<=ROWS;r++){
-    const isHdr=isFirst&&r<=3;
-    h+='<tr'+(isHdr?' class="wb-hdr-row"':'')+'>';
-    h+='<td class="wb-row-hdr">'+r+'</td>';
-    for(let c=0;c<COLS;c++){
-      const addr=_wbColName(c)+r;
-      const val=sheet.data[addr]||'';
-      let cls='wb-cell';
-      if(isHdr&&c===0)cls+=' wb-hdr-label';
-      else if(isHdr&&c===1)cls+=' wb-hdr-value';
-      h+='<td class="'+cls+'" data-addr="'+addr+'" data-pid="'+projId+'" data-sid="'+sheet.id+'" onclick="window._wbCellClick(this)">'+esc(val)+'</td>';
-    }
-    h+='</tr>';
-  }
-  h+='</tbody></table>';
-  return h;
-}
-function renderTabWorkings(p,id){
-  if(!p.workings_book){
-    const sid=uid();
-    p.workings_book={sheets:[{id:sid,name:p.name||'Sheet 1',data:{}}],active:sid};
-    const d=p.workings_book.sheets[0].data;
-    d['A1']='PROJECT'; d['B1']=p.name||'';
-    d['A2']='CLIENT';  d['B2']=p.client||'';
-    d['A3']='DUE DATE';d['B3']=p.submission_due_date||'';
+let _wbSaveTimer=null;
+let _wbActiveProjId=null;
+
+function _wbSaveLS(){
+  if(!_wbActiveProjId||typeof luckysheet==='undefined')return;
+  try{
+    const data=luckysheet.getAllSheets();
+    const p=DB.getProject(_wbActiveProjId);if(!p)return;
+    if(!p.workings_book)p.workings_book={};
+    p.workings_book.luckyData=data;
     DB.saveProject(p);_sbUp('projects',p);
-  }
-  const wb=p.workings_book;
-  const activeId=wb.active||wb.sheets[0]?.id;
-  const sheet=wb.sheets.find(s=>s.id===activeId)||wb.sheets[0];
-  const isFirst=wb.sheets[0]?.id===sheet?.id;
-  const tabsHtml=wb.sheets.map(s=>'<div class="wb-tab'+(s.id===activeId?' active':'')+'" onclick="window._wbSwitch(\''+id+'\',\''+s.id+'\')" ondblclick="window._wbRename(\''+id+'\',\''+s.id+'\')">'+esc(s.name)+(wb.sheets.length>1?'<span class="wb-tab-del" onclick="event.stopPropagation();window._wbDel(\''+id+'\',\''+s.id+'\')">✕</span>':'')+'</div>').join('')
-    +'<div class="wb-tab wb-tab-add" onclick="window._wbAdd(\''+id+'\')">＋</div>';
-  return '<div class="wb-container"><div class="wb-grid-wrap" id="wb-grid-'+id+'">'+_wbRenderGrid(id,sheet,isFirst)+'</div><div class="wb-sheets-bar">'+tabsHtml+'</div></div>';
+  }catch(e){}
 }
-window._wbCellClick=function(td){
-  if(_wbEditing){
-    if(_wbEditing.td===td)return;
-    _wbCommit();
-  }
-  const addr=td.dataset.addr,projId=td.dataset.pid,sheetId=td.dataset.sid;
-  const orig=td.textContent;
-  td.innerHTML='';
-  td.classList.add('wb-editing');
-  const inp=document.createElement('input');
-  inp.className='wb-cell-input';inp.value=orig;
-  td.appendChild(inp);inp.focus();inp.select();
-  _wbEditing={td,addr,projId,sheetId};
-  inp.addEventListener('keydown',function(e){
-    if(e.key==='Enter'){e.preventDefault();_wbCommit();}
-    else if(e.key==='Tab'){e.preventDefault();_wbCommit();_wbMoveNext(td,e.shiftKey?-1:1,0);}
-    else if(e.key==='ArrowDown'){e.preventDefault();_wbCommit();_wbMoveNext(td,0,1);}
-    else if(e.key==='ArrowUp'){e.preventDefault();_wbCommit();_wbMoveNext(td,0,-1);}
-    else if(e.key==='Escape'){e.preventDefault();td.innerHTML=esc(orig);td.classList.remove('wb-editing');_wbEditing=null;}
-  });
-  inp.addEventListener('blur',function(){setTimeout(function(){if(_wbEditing&&_wbEditing.td===td)_wbCommit();},80);});
-};
-function _wbCommit(){
-  if(!_wbEditing)return;
-  const {td,addr,projId,sheetId}=_wbEditing;
-  const inp=td.querySelector('input');
-  const val=inp?inp.value:'';
-  _wbEditing=null;
-  td.classList.remove('wb-editing');
-  td.innerHTML=esc(val);
-  const p=DB.getProject(projId);
-  if(!p||!p.workings_book)return;
-  const sh=p.workings_book.sheets.find(s=>s.id===sheetId);
-  if(!sh)return;
-  if(val==='')delete sh.data[addr];else sh.data[addr]=val;
-  DB.saveProject(p);_sbUp('projects',p);
+
+function _wbQueueSave(pid){
+  _wbActiveProjId=pid;
+  clearTimeout(_wbSaveTimer);
+  _wbSaveTimer=setTimeout(_wbSaveLS,1500);
 }
-function _wbMoveNext(td,dc,dr){
-  const row=td.parentElement;const table=row?.closest('table');if(!table)return;
-  const cells=Array.from(row.querySelectorAll('td.wb-cell'));
-  const rows=Array.from(table.querySelectorAll('tbody tr'));
-  const ci=cells.indexOf(td);const ri=rows.indexOf(row);
-  const nci=ci+dc,nri=ri+dr;
-  if(dr!==0){
-    const nr=rows[nri];if(!nr)return;
-    const nc=nr.querySelectorAll('td.wb-cell')[ci];if(nc)nc.click();
+
+function _wbInitLS(id,p,cid){
+  try{luckysheet.destroy();}catch(e){}
+  _wbActiveProjId=id;
+  let data;
+  if(p.workings_book?.luckyData){
+    data=p.workings_book.luckyData;
   } else {
-    const nc=cells[nci];
-    if(nc){nc.click();}else if(dc>0){
-      const nr=rows[ri+1];if(!nr)return;
-      const fc=nr.querySelector('td.wb-cell');if(fc)fc.click();
-    }
+    const nm=p.name||'Sheet 1';
+    const sname=nm.length>25?nm.substring(0,25)+'…':nm;
+    data=[{
+      name:sname,color:'',status:1,order:0,index:0,
+      data:[
+        [{v:'PROJECT',m:'PROJECT',bl:1,fc:'#475569',bg:'#dbeafe',ct:{fa:'General',t:'g'}},{v:p.name||'',m:p.name||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',fs:11,ct:{fa:'General',t:'g'}},...Array(24).fill({bg:'#dbeafe'})],
+        [{v:'CLIENT',m:'CLIENT',bl:1,fc:'#475569',bg:'#dbeafe',ct:{fa:'General',t:'g'}},{v:p.client||'',m:p.client||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',ct:{fa:'General',t:'g'}},...Array(24).fill({bg:'#dbeafe'})],
+        [{v:'DUE DATE',m:'DUE DATE',bl:1,fc:'#475569',bg:'#dbeafe',ct:{fa:'General',t:'g'}},{v:p.submission_due_date||'',m:p.submission_due_date||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',ct:{fa:'General',t:'g'}},...Array(24).fill({bg:'#dbeafe'})],
+        Array(26).fill(null),Array(26).fill(null),
+      ],
+      config:{columnlen:{0:110,1:220},rowlen:{0:26,1:26,2:26}}
+    }];
   }
+  luckysheet.create({
+    container:cid,data:data,lang:'en',
+    showtoolbar:true,showinfobar:false,showstatisticBar:true,
+    sheetFormulaBar:true,enableAddRow:true,showsheetbar:true,
+    devicePixelRatio:window.devicePixelRatio,
+    hook:{
+      cellUpdated:function(r,c,ov,nv,isRefresh){if(!isRefresh)_wbQueueSave(id);},
+      rangePasteAfter:function(){_wbQueueSave(id);},
+      sheetActivate:function(){_wbQueueSave(id);},
+      addSheet:function(){_wbQueueSave(id);},
+      deleteSheet:function(){_wbQueueSave(id);},
+    }
+  });
 }
-window._wbSwitch=function(projId,sheetId){
-  if(_wbEditing)_wbCommit();
-  const p=DB.getProject(projId);if(!p||!p.workings_book)return;
-  p.workings_book.active=sheetId;
-  DB.saveProject(p);navigate('project/'+projId+'/workings');
-};
-window._wbAdd=function(projId){
-  if(_wbEditing)_wbCommit();
-  const p=DB.getProject(projId);if(!p)return;
-  if(!p.workings_book)return;
-  const n=p.workings_book.sheets.length+1;
-  const s={id:uid(),name:'Sheet '+n,data:{}};
-  p.workings_book.sheets.push(s);p.workings_book.active=s.id;
-  DB.saveProject(p);_sbUp('projects',p);navigate('project/'+projId+'/workings');
-};
-window._wbDel=function(projId,sheetId){
-  const p=DB.getProject(projId);if(!p||!p.workings_book)return;
-  if(p.workings_book.sheets.length<=1){toast('Cannot delete the only sheet.','warning');return;}
-  if(!confirm('Delete this sheet?'))return;
-  p.workings_book.sheets=p.workings_book.sheets.filter(s=>s.id!==sheetId);
-  if(p.workings_book.active===sheetId)p.workings_book.active=p.workings_book.sheets[0].id;
-  DB.saveProject(p);_sbUp('projects',p);navigate('project/'+projId+'/workings');
-};
-window._wbRename=function(projId,sheetId){
-  const p=DB.getProject(projId);if(!p||!p.workings_book)return;
-  const s=p.workings_book.sheets.find(x=>x.id===sheetId);if(!s)return;
-  const n=prompt('Rename sheet:',s.name);if(!n||!n.trim())return;
-  s.name=n.trim();DB.saveProject(p);_sbUp('projects',p);navigate('project/'+projId+'/workings');
-};
+
+function renderTabWorkings(p,id){
+  const cid='wb-ls-'+id;
+  setTimeout(()=>{
+    const el=document.getElementById(cid);if(!el)return;
+    if(typeof luckysheet==='undefined'){
+      el.innerHTML='<div style="padding:40px;text-align:center;color:var(--muted2)">Loading spreadsheet engine…</div>';
+      const chk=setInterval(()=>{if(typeof luckysheet!=='undefined'){clearInterval(chk);const e2=document.getElementById(cid);if(e2)_wbInitLS(id,p,cid);}},300);
+      return;
+    }
+    _wbInitLS(id,p,cid);
+  },80);
+  return '<div id="'+cid+'" style="width:100%;height:calc(100vh - 210px)"></div>';
+}
 
 function renderTab(p,tab,id){
   switch(tab){
