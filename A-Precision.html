@@ -788,6 +788,15 @@ async function _sbLoad(){
   _c.projects=p.data||[];_c.rates=r.data||[];_c.productivity=pr.data||[];
   _c.contacts=co.data||[];_c.quotes=q.data||[];_c.compliance=cm.data||[];
   if(s.data)_c.settings={...s.data};
+  // Seed localStorage from Supabase if local copy is missing
+  if(!localStorage.getItem(_SR_KEY)&&_c.settings.supplier_rates?.length){
+    localStorage.setItem(_SR_KEY,JSON.stringify(_c.settings.supplier_rates));
+  }
+  // Push localStorage supplier rates to Supabase if Supabase doesn't have them yet
+  const _lsSR=localStorage.getItem(_SR_KEY);
+  if(_lsSR&&!_c.settings.supplier_rates?.length){
+    try{const _arr=JSON.parse(_lsSR);if(_arr.length)DB.saveSettings({supplier_rates:_arr});}catch(e){}
+  }
   return true;
 }
 
@@ -1085,6 +1094,8 @@ function clearFieldErrors(){
    SIDEBAR + SHELL RENDER
 ================================================================ */
 function renderShell(content,activePage){
+  const _wbOv=document.getElementById('wb-overlay');
+  if(_wbOv){_wbOv.remove();try{luckysheet.destroy();}catch(e){}_wbActiveProjId=null;}
   const user=Auth.getUser();
   const nav=[
     {key:'dashboard',label:'Dashboard',icon:'dashboard'},
@@ -1619,21 +1630,33 @@ function _wbInitLS(id,p,cid){
   } else {
     const nm=p.name||'Sheet 1';
     const sname=nm.length>25?nm.substring(0,25)+'…':nm;
+    const emptyRow=()=>Array(26).fill(null);
+    const hdrCell=(v,bold)=>({v,m:v,bl:bold?1:0,fc:'#1e293b',bg:'#dbeafe',ct:{fa:'General',t:'g'}});
+    const valCell=(v)=>({v:v||'',m:v||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',fs:11,ct:{fa:'General',t:'g'}});
+    const emptyBlueCell={bg:'#dbeafe'};
+    const labelRow=(label,val)=>[hdrCell(label,true),valCell(val),...Array(24).fill(emptyBlueCell)];
+    const colHdrCell=(v)=>({v,m:v,bl:1,fc:'#ffffff',bg:'#3b82f6',ct:{fa:'General',t:'g'}});
+    const colHeaders=['Description','Qty','Unit','Rate ($)','Total ($)',...Array(21).fill('')];
+    const colHdrRow=colHeaders.map(colHdrCell);
+    const rows=[
+      labelRow('PROJECT',p.name||''),
+      labelRow('CLIENT',p.client||''),
+      labelRow('DUE DATE',p.submission_due_date||''),
+      emptyRow(),
+      colHdrRow,
+      ...Array(95).fill(null).map(()=>emptyRow()),
+    ];
     data=[{
       name:sname,color:'',status:1,order:0,index:0,
-      data:[
-        [{v:'PROJECT',m:'PROJECT',bl:1,fc:'#475569',bg:'#dbeafe',ct:{fa:'General',t:'g'}},{v:p.name||'',m:p.name||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',fs:11,ct:{fa:'General',t:'g'}},...Array(24).fill({bg:'#dbeafe'})],
-        [{v:'CLIENT',m:'CLIENT',bl:1,fc:'#475569',bg:'#dbeafe',ct:{fa:'General',t:'g'}},{v:p.client||'',m:p.client||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',ct:{fa:'General',t:'g'}},...Array(24).fill({bg:'#dbeafe'})],
-        [{v:'DUE DATE',m:'DUE DATE',bl:1,fc:'#475569',bg:'#dbeafe',ct:{fa:'General',t:'g'}},{v:p.submission_due_date||'',m:p.submission_due_date||'',bl:1,fc:'#1d4ed8',bg:'#dbeafe',ct:{fa:'General',t:'g'}},...Array(24).fill({bg:'#dbeafe'})],
-        Array(26).fill(null),Array(26).fill(null),
-      ],
-      config:{columnlen:{0:110,1:220},rowlen:{0:26,1:26,2:26}}
+      data:rows,
+      luckysheetrow:rows.length,
+      config:{columnlen:{0:260,1:70,2:70,3:90,4:100},rowlen:{0:26,1:26,2:26,4:28}}
     }];
   }
   luckysheet.create({
     container:cid,data:data,lang:'en',
     showtoolbar:true,showinfobar:false,showstatisticBar:true,
-    sheetFormulaBar:true,enableAddRow:true,showsheetbar:true,
+    sheetFormulaBar:true,enableAddRow:true,enableAddBackTop:false,showsheetbar:true,
     devicePixelRatio:window.devicePixelRatio,
     hook:{
       cellUpdated:function(r,c,ov,nv,isRefresh){if(!isRefresh)_wbQueueSave(id);},
@@ -1643,20 +1666,61 @@ function _wbInitLS(id,p,cid){
       deleteSheet:function(){_wbQueueSave(id);},
     }
   });
+  setTimeout(()=>{try{luckysheet.resize();}catch(e){}},200);
+}
+
+function _wbCloseOverlay(){
+  if(document.fullscreenElement){document.exitFullscreen();}
+  document.removeEventListener('fullscreenchange',_wbOvFSChange);
+  const ov=document.getElementById('wb-overlay');
+  if(ov)ov.remove();
+  try{luckysheet.destroy();}catch(e){}
+  _wbActiveProjId=null;
+}
+
+function _wbOvFSChange(){
+  const btn=document.getElementById('wb-ov-fs-btn');
+  if(btn)btn.textContent=document.fullscreenElement?'⛶ Exit Full Screen':'⛶ Full Screen';
+  setTimeout(()=>{try{luckysheet.resize();}catch(e){}},60);
 }
 
 function renderTabWorkings(p,id){
-  const cid='wb-ls-'+id;
+  const cid='wb-ls-ov';
+  // Clean up any previous overlay from a different project
+  const prev=document.getElementById('wb-overlay');if(prev)prev.remove();
+  try{luckysheet.destroy();}catch(e){}
+
+  const ov=document.createElement('div');
+  ov.id='wb-overlay';
+  ov.style.cssText='position:fixed;top:0;left:224px;right:0;bottom:0;z-index:98;background:#fff;display:flex;flex-direction:column';
+
+  const bar=document.createElement('div');
+  bar.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;flex-shrink:0;gap:12px;height:42px;box-sizing:border-box';
+  bar.innerHTML='<span style="font-weight:600;font-size:.88rem;color:#1e293b">📊 '+esc(p.name)+' — Workings Book</span>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="wb-ov-fs-btn" onclick="(function(){const ov=document.getElementById(\'wb-overlay\');if(!document.fullscreenElement){ov.requestFullscreen().catch(()=>{});}else{document.exitFullscreen();}})()" style="background:none;border:1px solid #e2e8f0;cursor:pointer;color:#64748b;padding:3px 10px;border-radius:5px;font-size:.75rem">⛶ Full Screen</button>'
+    +'<button onclick="_wbCloseOverlay()" style="background:none;border:1px solid #e2e8f0;cursor:pointer;color:#64748b;padding:3px 10px;border-radius:5px;font-size:.75rem">✕ Back to Project</button>'
+    +'</div>';
+
+  const lsDiv=document.createElement('div');
+  lsDiv.id=cid;
+  lsDiv.style.cssText='flex:1;position:relative;min-height:0;overflow:hidden';
+
+  ov.appendChild(bar);
+  ov.appendChild(lsDiv);
+  document.body.appendChild(ov);
+
+  document.addEventListener('fullscreenchange',_wbOvFSChange);
+
   setTimeout(()=>{
-    const el=document.getElementById(cid);if(!el)return;
     if(typeof luckysheet==='undefined'){
-      el.innerHTML='<div style="padding:40px;text-align:center;color:var(--muted2)">Loading spreadsheet engine…</div>';
-      const chk=setInterval(()=>{if(typeof luckysheet!=='undefined'){clearInterval(chk);const e2=document.getElementById(cid);if(e2)_wbInitLS(id,p,cid);}},300);
-      return;
+      const chk=setInterval(()=>{if(typeof luckysheet!=='undefined'){clearInterval(chk);_wbInitLS(id,p,cid);}},300);
+    } else {
+      _wbInitLS(id,p,cid);
     }
-    _wbInitLS(id,p,cid);
   },80);
-  return '<div id="'+cid+'" style="width:100%;height:calc(100vh - 210px)"></div>';
+
+  return '<div style="padding:80px 0;text-align:center;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:8px">📊</div><div style="font-size:.9rem">Workings Book is open in the panel above.</div></div>';
 }
 
 function renderTab(p,tab,id){
@@ -3280,6 +3344,72 @@ window._uploadAndAnalyse=function(projId){
   _uploadAllDocs(projId);
 };
 
+window.showAddLinkModal=function(projId){
+  const body=`<div style="display:flex;flex-direction:column;gap:14px">
+    <div>
+      <label class="form-label">Link URL <span style="color:var(--red)">*</span></label>
+      <input id="al-url" class="form-input" placeholder="https://www.dropbox.com/s/… or SharePoint / Google Drive link" style="width:100%" oninput="window._alAutoName()">
+      <div style="font-size:.72rem;color:var(--muted2);margin-top:4px">Works with Dropbox, SharePoint, Google Drive, OneDrive or any web URL</div>
+    </div>
+    <div>
+      <label class="form-label">Document Name <span style="color:var(--red)">*</span></label>
+      <input id="al-name" class="form-input" placeholder="e.g. Tender Drawings Rev C" style="width:100%">
+    </div>
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label class="form-label">Category</label>
+        <select id="al-cat" class="form-input" style="width:100%">
+          <option value="">Select category…</option>
+          ${DOC_CATS.map(c=>`<option value="${c.k}">${c.l}</option>`).join('')}
+        </select>
+      </div>
+      <div style="flex:1">
+        <label class="form-label">Notes</label>
+        <input id="al-notes" class="form-input" placeholder="Optional notes" style="width:100%">
+      </div>
+    </div>
+  </div>`;
+  showModal({
+    title:'🔗 Add Linked Document',
+    body,
+    actions:`<button class="btn btn-ghost btn-sm" data-action="close-modal">Cancel</button>
+      <button class="btn btn-blue btn-sm" onclick="window._saveLinkDoc('${projId}')">Save Link</button>`
+  });
+  setTimeout(()=>document.getElementById('al-url')?.focus(),80);
+};
+
+window._alAutoName=function(){
+  const url=(document.getElementById('al-url')?.value||'').trim();
+  const nameEl=document.getElementById('al-name');
+  if(!nameEl||nameEl.dataset.userEdited)return;
+  try{
+    const u=new URL(url);
+    const parts=u.pathname.split('/').filter(Boolean);
+    const last=parts[parts.length-1]||'';
+    const name=decodeURIComponent(last).replace(/\.[^.]+$/,'').replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+    if(name)nameEl.value=name;
+  }catch(e){}
+};
+
+window._saveLinkDoc=function(projId){
+  const url=(document.getElementById('al-url')?.value||'').trim();
+  const name=(document.getElementById('al-name')?.value||'').trim();
+  if(!url){toast('Please enter a URL','error');return;}
+  if(!name){toast('Please enter a document name','error');return;}
+  let finalUrl=url;
+  // Convert Dropbox ?dl=0 to preview link (opens in browser, not force-download)
+  if(finalUrl.includes('dropbox.com')&&finalUrl.includes('?dl=1'))finalUrl=finalUrl.replace('?dl=1','?dl=0');
+  const cat=document.getElementById('al-cat')?.value||'';
+  const notes=document.getElementById('al-notes')?.value||'';
+  const p=DB.getProject(projId);if(!p)return;
+  if(!p.documents)p.documents=[];
+  p.documents.push({id:uid(),file_name:name,link_url:finalUrl,is_link:true,category:cat,notes,date_added:todayISO(),size_bytes:null,file_type:'link',analysis_status:'not_analysed'});
+  DB.saveProject(p);_sbUp('projects',p);
+  closeModal();
+  toast('Link saved.','success');
+  navigate('project/'+projId+'/documents');
+};
+
 window.downloadDoc=function(docId,fileName){
   const b=_docBlobs.get(docId);
   if(!b){toast('File not available — re-upload to enable download this session.','warning');return;}
@@ -4094,32 +4224,38 @@ function renderTabDocuments(p,id){
 
   const docsTable=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span style="font-size:.78rem;color:var(--muted)">${docs.length} document${docs.length!==1?'s':''}</span>
+    <button class="btn btn-outline btn-sm" onclick="showAddLinkModal('${id}')">🔗 Add Link</button>
   </div>
   ${docs.length===0?`<div style="text-align:center;padding:28px;color:var(--muted2);font-size:.82rem;background:var(--s2);border-radius:8px;border:1px solid var(--border)">
     <div style="font-size:1.5rem;margin-bottom:8px">📂</div>
-    <div style="font-weight:600;color:var(--muted);margin-bottom:5px">No documents uploaded yet</div>
-    <div>Upload the tender pack above. PDF, Word, Excel or drawing files.</div>
+    <div style="font-weight:600;color:var(--muted);margin-bottom:5px">No documents yet</div>
+    <div>Upload files above, or use <strong>Add Link</strong> to link Dropbox, SharePoint or Google Drive files.</div>
   </div>`:`<div class="tbl-wrap"><table>
     <thead><tr><th>File</th><th>Category</th><th>Added</th><th>Size</th><th>Notes</th><th>Analysis</th><th></th></tr></thead>
     <tbody>${docs.map(d=>{
-      const ext=d.file_type||(d.file_name?.split('.').pop())||'';
+      const isLink=!!d.link_url;
+      const ext=isLink?'link':(d.file_type||(d.file_name?.split('.').pop())||'');
       const [abadge,albl]=ANALYSIS_BADGE[d.analysis_status||'not_analysed']||['badge-grey','Not Analysed'];
-      const hasPdf=ext==='pdf'||ext==='docx'||ext==='doc';
+      const hasPdf=!isLink&&(ext==='pdf'||ext==='docx'||ext==='doc');
       const hasBlob=_docBlobs.has(d.id);
+      const fileIcon=isLink?'<span style="font-size:1.1rem;flex-shrink:0">🔗</span>':_docIcon(ext);
+      const openAction=isLink?`window.open('${esc(d.link_url)}','_blank')`:`downloadDoc('${d.id}','${esc(d.file_name)}')`;
       return`<tr>
         <td style="display:flex;align-items:center;gap:8px;min-width:180px">
-          ${_docIcon(ext)}
-          <span style="font-size:.8rem;font-weight:600;color:var(--blue);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;cursor:pointer;text-decoration:underline" title="Open ${esc(d.file_name)}" onclick="downloadDoc('${d.id}','${esc(d.file_name)}')">${esc(d.file_name)}</span>
+          ${fileIcon}
+          <span style="font-size:.8rem;font-weight:600;color:var(--blue);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;cursor:pointer;text-decoration:underline" title="Open ${esc(d.file_name)}" onclick="${openAction}">${esc(d.file_name)}</span>
         </td>
         <td>${badge(CAT_LABEL[d.category]||d.category||'Other',CAT_COLOR[d.category]||'badge-grey')}</td>
         <td style="font-size:.78rem">${fmtDate(d.date_added)}</td>
-        <td style="font-size:.75rem;color:var(--muted2)">${d.size_bytes?_fmtSize(d.size_bytes):'—'}</td>
+        <td style="font-size:.75rem;color:var(--muted2)">${isLink?'<span style="color:var(--muted2);font-size:.7rem">Link</span>':(d.size_bytes?_fmtSize(d.size_bytes):'—')}</td>
         <td style="font-size:.75rem;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.notes||'')}</td>
-        <td><span class="badge ${abadge}">${albl}</span></td>
+        <td>${isLink?'<span class="badge badge-cyan">Linked</span>':`<span class="badge ${abadge}">${albl}</span>`}</td>
         <td class="tbl-actions">
-          <button class="btn btn-ghost btn-xs${hasBlob?'':' '}" onclick="downloadDoc('${d.id}','${esc(d.file_name)}')" title="Download${hasBlob?'':' (re-upload to enable)'}">${icon('download')}</button>
+          ${isLink
+            ?`<button class="btn btn-ghost btn-xs" onclick="window.open('${esc(d.link_url)}','_blank')" title="Open link">${icon('link')}</button>`
+            :`<button class="btn btn-ghost btn-xs" onclick="downloadDoc('${d.id}','${esc(d.file_name)}')" title="Download${hasBlob?'':' (re-upload to enable)'}">${icon('download')}</button>
           <button class="btn btn-ghost btn-xs" onclick="previewDoc('${d.id}')" title="Preview${hasBlob?'':' (re-upload to enable)'}">${icon('link')}</button>
-          ${hasPdf?`<button class="btn btn-ghost btn-xs" onclick="analyseDoc('${d.id}','${id}')" title="Analyse with AI">✨</button>`:''}
+          ${hasPdf?`<button class="btn btn-ghost btn-xs" onclick="analyseDoc('${d.id}','${id}')" title="Analyse with AI">✨</button>`:''}`}
           <button class="btn btn-ghost btn-xs" data-action="del-document" data-id="${id}" data-did="${d.id}" title="Delete">${icon('trash')}</button>
         </td>
       </tr>`;
@@ -5552,8 +5688,16 @@ window.applyQuoteDueQuick=function(qid,newDate){
    SUPPLIER RATES — localStorage register
 ================================================================ */
 const _SR_KEY='ap_supplier_rates';
-function _srGet(){try{return JSON.parse(localStorage.getItem(_SR_KEY)||'[]');}catch{return[];}}
-function _srSave(arr){localStorage.setItem(_SR_KEY,JSON.stringify(arr));}
+function _srGet(){
+  const local=localStorage.getItem(_SR_KEY);
+  if(local){try{return JSON.parse(local);}catch{}}
+  // Fall back to Supabase-backed settings if localStorage is empty
+  return _c.settings.supplier_rates||[];
+}
+function _srSave(arr){
+  localStorage.setItem(_SR_KEY,JSON.stringify(arr));
+  DB.saveSettings({supplier_rates:arr});
+}
 function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
 
 let _catLifecycle='active';
@@ -6548,7 +6692,7 @@ window.quickSaveDue=function(projId,dateVal,context,targetId){
 /* ================================================================
    QUICK FIELD EDIT  (inline popover for project header fields)
 ================================================================ */
-const PROJ_TYPES=[{v:'drainage',l:'Drainage'},{v:'road',l:'Road'},{v:'culvert',l:'Culvert'},{v:'structural',l:'Structural'},{v:'earthworks',l:'Earthworks'},{v:'electrical',l:'Electrical'},{v:'water_main',l:'Water Main'},{v:'sewer',l:'Sewer'},{v:'mixed',l:'Mixed'}];
+const PROJ_TYPES=[{v:'road_pavement',l:'Road & Pavement Works'},{v:'stormwater',l:'Stormwater Drainage'},{v:'sewerage',l:'Sewerage Reticulation'},{v:'water_reticulation',l:'Water Reticulation'},{v:'bulk_earthworks',l:'Bulk Earthworks'},{v:'structures',l:'Structures & Culverts'},{v:'subdivision',l:'Subdivision Works'},{v:'site_development',l:'Site Development'},{v:'pump_station',l:'Pump Station'},{v:'rehabilitation',l:'Pipeline Rehabilitation'},{v:'bridge_crossing',l:'Bridge & Crossing'},{v:'utility_installation',l:'Utility Installation'},{v:'carpark_hardstand',l:'Carpark & Hardstand'},{v:'industrial_civil',l:'Industrial Civil'},{v:'mixed',l:'Mixed / General Civil'}];
 const RISK_LEVELS=[{v:'low',l:'Low',cls:'badge-green'},{v:'medium',l:'Medium',cls:'badge-amber'},{v:'high',l:'High',cls:'badge-red'},{v:'extreme',l:'Extreme',cls:'badge-darkred'}];
 
 function _closeFP(){document.getElementById('_fp')?.remove();}
