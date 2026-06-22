@@ -6714,7 +6714,11 @@ window.quickSaveDue=function(projId,dateVal,context,targetId){
 const PROJ_TYPES=[{v:'road_pavement',l:'Road & Pavement Works'},{v:'stormwater',l:'Stormwater Drainage'},{v:'sewerage',l:'Sewerage Reticulation'},{v:'water_reticulation',l:'Water Reticulation'},{v:'bulk_earthworks',l:'Bulk Earthworks'},{v:'structures',l:'Structures & Culverts'},{v:'subdivision',l:'Subdivision Works'},{v:'site_development',l:'Site Development'},{v:'pump_station',l:'Pump Station'},{v:'rehabilitation',l:'Pipeline Rehabilitation'},{v:'bridge_crossing',l:'Bridge & Crossing'},{v:'utility_installation',l:'Utility Installation'},{v:'carpark_hardstand',l:'Carpark & Hardstand'},{v:'industrial_civil',l:'Industrial Civil'},{v:'mixed',l:'Mixed / General Civil'}];
 const RISK_LEVELS=[{v:'low',l:'Low',cls:'badge-green'},{v:'medium',l:'Medium',cls:'badge-amber'},{v:'high',l:'High',cls:'badge-red'},{v:'extreme',l:'Extreme',cls:'badge-darkred'}];
 
-function _closeFP(){document.getElementById('_fp')?.remove();}
+let _fpDismiss=null;
+function _closeFP(){
+  if(_fpDismiss){document.removeEventListener('mousedown',_fpDismiss);_fpDismiss=null;}
+  document.getElementById('_fp')?.remove();
+}
 
 window.openFieldPop=function(e,projId,field,label,type,currentVal,options){
   e.stopPropagation();
@@ -6742,7 +6746,8 @@ window.openFieldPop=function(e,projId,field,label,type,currentVal,options){
   document.body.appendChild(el);
   document.getElementById('_fp_inp')?.focus();
   document.getElementById('_fp_inp')?.select?.();
-  setTimeout(()=>document.addEventListener('click',_closeFP,{once:true,capture:true}),0);
+  _fpDismiss=function(ev){const fp=document.getElementById('_fp');if(fp&&!fp.contains(ev.target))_closeFP();};
+  setTimeout(()=>document.addEventListener('mousedown',_fpDismiss),0);
 };
 
 window._saveFieldQ=function(projId,field,value){
