@@ -10990,7 +10990,18 @@ function renderAuth(page){
 </script>
 <script>
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    // When a new SW activates, reload to get the latest app version
+    navigator.serviceWorker.addEventListener('message',e=>{
+      if(e.data&&e.data.type==='SW_UPDATED')window.location.reload();
+    });
+    reg.addEventListener('updatefound',()=>{
+      const nw=reg.installing;
+      if(nw)nw.addEventListener('statechange',()=>{
+        if(nw.state==='activated')window.location.reload();
+      });
+    });
+  }).catch(()=>{});
 }
 </script>
 </body>
