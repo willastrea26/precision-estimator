@@ -6729,23 +6729,39 @@ window.openFieldPop=function(e,projId,field,label,type,currentVal,options){
   const el=document.createElement('div');
   el.id='_fp';
   el.style.cssText=`position:fixed;z-index:9998;background:var(--s2);border:1px solid var(--bh);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.55);padding:14px 16px;min-width:240px;${top};left:${Math.min(rect.left,window.innerWidth-260)}px`;
+  const isOpts=!!options;
   let inp='';
   if(options){
-    inp=`<select class="form-input" id="_fp_inp" style="margin-bottom:8px">${options.map(o=>`<option value="${o.v}"${o.v===currentVal?' selected':''}>${o.l}</option>`).join('')}</select>`;
+    inp=options.map(o=>`<div class="_fp_opt" data-v="${o.v}" style="padding:7px 10px;border-radius:6px;cursor:pointer;${o.v===currentVal?'background:var(--acc);color:#fff;font-weight:600;':''}">${o.v===currentVal?'&#10003;&nbsp;':''} ${o.l}</div>`).join('');
   }else if(type==='number'){
     inp=`<input type="number" class="form-input" id="_fp_inp" value="${currentVal||''}" step="any" placeholder="0" style="margin-bottom:8px">`;
   }else{
     inp=`<input type="text" class="form-input" id="_fp_inp" value="${esc(currentVal||'')}" style="margin-bottom:8px">`;
   }
-  el.innerHTML=`<div style="font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">${label}</div>
-    ${inp}
-    <div style="display:flex;gap:6px">
-      <button class="btn btn-blue btn-sm" onclick="_saveFieldQ('${projId}','${field}',document.getElementById('_fp_inp').value)">Save</button>
-      <button class="btn btn-ghost btn-sm" onclick="_closeFP()">Cancel</button>
-    </div>`;
+  if(isOpts){
+    el.innerHTML=`<div style="font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">${label}</div>
+      <div style="max-height:220px;overflow-y:auto;margin:0 -4px 6px">${inp}</div>
+      <div style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="_closeFP()">Cancel</button></div>`;
+  }else{
+    el.innerHTML=`<div style="font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">${label}</div>
+      ${inp}
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-blue btn-sm" onclick="_saveFieldQ('${projId}','${field}',document.getElementById('_fp_inp').value)">Save</button>
+        <button class="btn btn-ghost btn-sm" onclick="_closeFP()">Cancel</button>
+      </div>`;
+  }
   document.body.appendChild(el);
-  document.getElementById('_fp_inp')?.focus();
-  document.getElementById('_fp_inp')?.select?.();
+  if(isOpts){
+    el.querySelectorAll('._fp_opt').forEach(d=>{
+      const isSel=d.dataset.v===currentVal;
+      d.addEventListener('mouseover',()=>{if(!isSel)d.style.background='rgba(255,255,255,.08)';});
+      d.addEventListener('mouseout',()=>{if(!isSel)d.style.background='';});
+      d.addEventListener('click',(ev)=>{ev.stopPropagation();_saveFieldQ(projId,field,d.dataset.v);});
+    });
+  }else{
+    document.getElementById('_fp_inp')?.focus();
+    document.getElementById('_fp_inp')?.select?.();
+  }
   _fpDismiss=function(ev){const fp=document.getElementById('_fp');if(fp&&!fp.contains(ev.target))_closeFP();};
   setTimeout(()=>document.addEventListener('click',_fpDismiss),0);
 };
