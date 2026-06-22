@@ -5688,6 +5688,13 @@ window.applyQuoteDueQuick=function(qid,newDate){
    SUPPLIER RATES — localStorage register
 ================================================================ */
 const _SR_KEY='ap_supplier_rates';
+window._srSyncCloud=async function(){
+  const arr=_srGet();
+  if(!arr.length){toast('No rates to sync.','warning');return;}
+  toast('Syncing to cloud…','info');
+  await DB.saveSettings({supplier_rates:arr});
+  toast(arr.length+' supplier rate'+(arr.length!==1?'s':'')+' synced to cloud.','success');
+};
 function _srGet(){
   const local=localStorage.getItem(_SR_KEY);
   if(local){try{return JSON.parse(local);}catch{}}
@@ -6352,6 +6359,7 @@ function renderCatalogue(){
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-outline" onclick="window.showCatalogueAISheet()">&#10022; AI Extract</button>
+        <button class="btn btn-outline" onclick="window._srSyncCloud()" title="Push all rates to cloud so they appear on all devices">☁ Sync to Cloud</button>
         <button class="btn btn-blue" onclick="window.showCatalogueSheet('')">${icon('plus')} Add Supplier</button>
       </div>
     </div>
