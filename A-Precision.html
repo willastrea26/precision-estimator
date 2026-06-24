@@ -8225,7 +8225,7 @@ function _locShowPicker(){
   panel.style.display='block';
   setTimeout(()=>{
     if(!window.L)return;
-    if(_locMap){_locMap.invalidateSize();return;}
+    if(_locMap){if(document.contains(_locMap.getContainer())){_locMap.invalidateSize();return;}try{_locMap.remove();}catch(e){}  _locMap=null;_locMarker=null;}
     const lat=_locPickerLat||-25.2744,lng=_locPickerLng||133.7751,zoom=_locPickerLat?14:4;
     const auBounds=L.latLngBounds(L.latLng(-44.0,112.0),L.latLng(-9.0,154.0));
     _locMap=L.map('loc-map',{center:[lat,lng],zoom,scrollWheelZoom:false,maxBounds:auBounds,maxBoundsViscosity:0.9,minZoom:3});
@@ -8262,7 +8262,7 @@ function initLocPicker(existing){
 }
 
 function _locCleanup(){
-  if(_locMap){_locMap.remove();_locMap=null;_locMarker=null;}
+  if(_locMap){try{_locMap.remove();}catch(e){}  _locMap=null;_locMarker=null;}
   _locPickerLat=null;_locPickerLng=null;
   const b=document.getElementById('_loc_sug');if(b)b.remove();
 }
