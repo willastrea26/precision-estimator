@@ -5649,8 +5649,8 @@ function openQuoteStatusPicker(e,qid){
   picker.innerHTML=ALL_QUOTE_STATUSES.map(s=>'<div onmousedown="event.stopPropagation()" onclick="applyQuoteStatusQuick(\''+qid+'\',\''+s.key+'\')" style="padding:7px 12px;border-radius:5px;cursor:pointer;font-size:.8rem;font-weight:500;display:flex;align-items:center;gap:8px" onmouseenter="this.style.background=\'rgba(255,255,255,.07)\'" onmouseleave="this.style.background=\'\'">'+s.label+(q.status===s.key?' ✓':'')+'</div>').join('');
   document.body.appendChild(picker);
   _statusPickerOpen=picker;
-  _statusPickerDismiss=function(){closeStatusPicker();};
-  setTimeout(()=>document.addEventListener('mousedown',_statusPickerDismiss),0);
+  _statusPickerDismiss=function(ev){if(_statusPickerOpen&&!_statusPickerOpen.contains(ev.target))closeQuoteStatusPicker();};
+  setTimeout(()=>document.addEventListener('click',_statusPickerDismiss),0);
 }
 window.applyQuoteStatusQuick=function(qid,newStatus){
   closeQuoteStatusPicker();
