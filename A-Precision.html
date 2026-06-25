@@ -5634,13 +5634,13 @@ const ALL_QUOTE_STATUSES=[
 ];
 let _statusPickerOpen=null;
 let _statusPickerDismiss=null;
-function closeStatusPicker(){
+function closeQuoteStatusPicker(){
   if(_statusPickerDismiss){document.removeEventListener('mousedown',_statusPickerDismiss);_statusPickerDismiss=null;}
   if(_statusPickerOpen){_statusPickerOpen.remove();_statusPickerOpen=null;}
 }
 function openQuoteStatusPicker(e,qid){
   e.stopPropagation();
-  closeStatusPicker();
+  closeQuoteStatusPicker();
   const q=DB.getQuotes().find(x=>x.id===qid);if(!q)return;
   const rect=e.currentTarget.getBoundingClientRect();
   const picker=document.createElement('div');
@@ -5653,7 +5653,7 @@ function openQuoteStatusPicker(e,qid){
   setTimeout(()=>document.addEventListener('mousedown',_statusPickerDismiss),0);
 }
 window.applyQuoteStatusQuick=function(qid,newStatus){
-  closeStatusPicker();
+  closeQuoteStatusPicker();
   const quotes=DB.getQuotes();
   const q=quotes.find(x=>x.id===qid);if(!q)return;
   if(q.status===newStatus)return;
@@ -5668,7 +5668,7 @@ function closeQuoteDuePicker(){if(_duePicker){_duePicker.remove();_duePicker=nul
 window.openQuoteDuePicker=function(e,qid){
   e.stopPropagation();
   closeQuoteDuePicker();
-  closeStatusPicker();
+  closeQuoteStatusPicker();
   const q=DB.getQuotes().find(x=>x.id===qid);if(!q)return;
   const rect=e.currentTarget.getBoundingClientRect();
   const picker=document.createElement('div');
