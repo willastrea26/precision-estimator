@@ -985,6 +985,8 @@ const ICONS={
   calcheck:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>`,
   trendingup:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
   shieldcheck:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>`,
+  folder:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+  upload:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>`,
   calendar:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   camera:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
 };
@@ -1107,6 +1109,7 @@ function renderShell(content,activePage){
     {key:'contacts',label:'Contacts',icon:'contacts'},
     {key:'risks',label:'Risk Register',icon:'risks'},
     {key:'compliance',label:'Compliance',icon:'shieldcheck'},
+    {key:'team-docs',label:'Documents',icon:'folder'},
     {key:'site-photos',label:'Site Photos',icon:'camera'},
     {key:'calendar',label:'Calendar',icon:'calendar'},
     {key:'settings',label:'Settings',icon:'settings'},
@@ -3303,7 +3306,7 @@ window._uploadAllDocs=async function(projId){
       const ext=item.file.name.split('.').pop().toLowerCase();
       const storageKey=`${projId}/${item.id}.${ext}`;
       // Start storage upload immediately (runs alongside progress animation)
-      const storagePromise=_sb.storage.from('project-documents').upload(storageKey,item.file,{cacheControl:'3600',upsert:true});
+      const storagePromise=_sb.storage.from('project-documents1').upload(storageKey,item.file,{cacheControl:'3600',upsert:true});
       await new Promise(r=>setTimeout(r,Math.random()*80));
       for(const pct of[30,55,80]){
         item.progress=pct;_renderDocQueue(projId);
@@ -3319,11 +3322,10 @@ window._uploadAllDocs=async function(projId){
       // Await storage result and save permanent URL
       const {error:stErr}=await storagePromise;
       if(!stErr){
-        const {data:{publicUrl}}=_sb.storage.from('project-documents').getPublicUrl(storageKey);
         const fresh2=DB.getProject(projId);
         const dr=(fresh2.documents||[]).find(d=>d.id===item.id);
-        if(dr){dr.storage_url=publicUrl;DB.saveProject(fresh2);}
-        _docBlobs.set(item.id,{url:publicUrl,name:item.file.name,type:item.file.type});
+        if(dr){dr.storage_path=storageKey;DB.saveProject(fresh2);}
+        _docBlobs.set(item.id,{url:null,storagePath:storageKey,name:item.file.name,type:item.file.type});
       }else{
         _docBlobs.set(item.id,{url:URL.createObjectURL(item.file),name:item.file.name,type:item.file.type});
         console.warn('Storage upload failed, session-only:',stErr.message);
@@ -3410,30 +3412,41 @@ window._saveLinkDoc=function(projId){
   navigate('project/'+projId+'/documents');
 };
 
-window.downloadDoc=function(docId,fileName){
+async function _docResolveUrl(b){
+  if(!b)return null;
+  if(b.url)return b.url;
+  if(b.storagePath){
+    const{data,error}=await _sb.storage.from('project-documents1').createSignedUrl(b.storagePath,3600*8);
+    if(!error&&data?.signedUrl){b.url=data.signedUrl;return b.url;}
+  }
+  return null;
+}
+window.downloadDoc=async function(docId,fileName){
   const b=_docBlobs.get(docId);
-  if(!b){toast('File not available — re-upload to enable download this session.','warning');return;}
-  if(b.url.startsWith('blob:')){
-    const a=document.createElement('a');a.href=b.url;a.download=fileName;a.click();
+  const url=await _docResolveUrl(b);
+  if(!url){toast('File not available — re-upload required.','warning');return;}
+  if(url.startsWith('blob:')){
+    const a=document.createElement('a');a.href=url;a.download=fileName;a.click();
   }else{
-    // Remote URL (Supabase Storage) — fetch then trigger download so OS opens with correct app
     toast('Opening…','info');
-    fetch(b.url).then(r=>r.blob()).then(blob=>{
+    fetch(url).then(r=>r.blob()).then(blob=>{
       const u=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=u;a.download=fileName;a.click();
       setTimeout(()=>URL.revokeObjectURL(u),2000);
     }).catch(()=>toast('Could not download file.','error'));
   }
 };
-window.previewDoc=function(docId){
+window.previewDoc=async function(docId){
   const b=_docBlobs.get(docId);
-  if(b){window.open(b.url,'_blank');}
-  else toast('Preview not available — re-upload to enable preview this session.','warning');
+  const url=await _docResolveUrl(b);
+  if(url){window.open(url,'_blank');}
+  else toast('Preview not available — re-upload required.','warning');
 };
-window.analyseDoc=function(docId,projId){
+window.analyseDoc=async function(docId,projId){
   const b=_docBlobs.get(docId);
-  if(!b){toast('Re-upload this file to analyse it.','warning');return;}
-  fetch(b.url).then(r=>r.blob()).then(blob=>{
+  const url=await _docResolveUrl(b);
+  if(!url){toast('Re-upload this file to analyse it.','warning');return;}
+  fetch(url).then(r=>r.blob()).then(blob=>{
     _aiFile=new File([blob],b.name,{type:b.type});
     navigate(`project/${projId}/documents`);
   }).catch(()=>toast('Could not load file for analysis.','error'));
@@ -3571,9 +3584,10 @@ async function _buildCorpus(p,docIds){
   const warnings=[],chunks=[];
   for(const doc of docs){
     const blob=_docBlobs.get(doc.id);
-    if(!blob){warnings.push(`"${doc.file_name}": not available this session — re-upload to include.`);continue;}
+    const url=await _docResolveUrl(blob);
+    if(!url){warnings.push(`"${doc.file_name}": not available — re-upload to include.`);continue;}
     try{
-      const file=await fetch(blob.url).then(r=>r.blob()).then(b=>new File([b],doc.file_name,{type:b.type}));
+      const file=await fetch(url).then(r=>r.blob()).then(b=>new File([b],doc.file_name,{type:b.type}));
       let text=doc.file_type==='pdf'?await extractPDF(file):await extractDOCX(file);
       text=text.trim();
       if(text.length<500)warnings.push(`"${doc.file_name}": only ${text.length} chars extracted — may be a scanned image.`);
@@ -4179,7 +4193,7 @@ function renderTabDocuments(p,id){
   if(_pip&&_pip.projId===id&&_pip.stage!=='idle')return _renderPipelineWs(p,id);
 
   const docs=p.documents||[];
-  docs.forEach(function(d){if(d.storage_url&&!_docBlobs.has(d.id))_docBlobs.set(d.id,{url:d.storage_url,name:d.file_name,type:'application/octet-stream'});});
+  docs.forEach(function(d){if(!_docBlobs.has(d.id)){if(d.storage_path)_docBlobs.set(d.id,{url:null,storagePath:d.storage_path,name:d.file_name,type:'application/octet-stream'});else if(d.storage_url)_docBlobs.set(d.id,{url:d.storage_url,name:d.file_name,type:'application/octet-stream'});}});
   const ai=p.ai_analysis;
   const isAnalysing=_aiAnalysing&&_aiFile;
   const hasFile=_aiFile&&!isAnalysing&&(!ai||ai.status!=='complete');
@@ -8077,6 +8091,7 @@ function renderPage(page,params){
     contacts:renderContacts,
     risks:renderRisks,
     compliance:renderCompliance,
+    'team-docs':renderTeamDocs,
     'site-photos':renderSitePhotos,
     calendar:renderCalendar,
     settings:renderSettings,
@@ -8085,6 +8100,139 @@ function renderPage(page,params){
   if(dispatch[page]){dispatch[page]();}
   else renderDashboard();
 }
+
+/* ================================================================
+   TEAM DOCUMENTS
+================================================================ */
+const _TD_BUCKET='Team documetns';
+const _TD_CATS=['Specifications','Drawings','Contracts','Templates','Safety','General'];
+
+async function renderTeamDocs(){
+  const header=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div><h2 style="margin:0;font-size:1.15rem;font-weight:700">Team Documents</h2>
+    <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Shared files accessible to everyone on the team</div></div>
+    <button class="btn btn-blue" onclick="showUploadDocModal()">${icon('upload')} Upload File</button>
+  </div><div id="td-list"><div style="text-align:center;padding:40px;color:var(--muted)">Loading…</div></div>`;
+  renderShell(header,'team-docs');
+  try{
+    const{data,error}=await _sb.from('team_documents').select('*').order('created_at',{ascending:false});
+    if(error)throw error;
+    _renderTDList(data||[]);
+  }catch(e){
+    const el=document.getElementById('td-list');
+    if(el)el.innerHTML=`<div class="empty-state"><div class="empty-icon">📁</div><div class="empty-title">Could not load documents</div><div class="empty-sub">${esc(e.message||'')}</div></div>`;
+  }
+}
+
+function _renderTDList(docs){
+  const el=document.getElementById('td-list');if(!el)return;
+  if(!docs.length){
+    el.innerHTML=`<div class="empty-state"><div class="empty-icon">📁</div><div class="empty-title">No documents yet</div><div class="empty-sub">Upload files your whole team can access</div><button class="btn btn-blue" style="margin-top:14px" onclick="showUploadDocModal()">${icon('upload')} Upload File</button></div>`;
+    return;
+  }
+  const bycat={};
+  docs.forEach(d=>{const c=d.category||'General';if(!bycat[c])bycat[c]=[];bycat[c].push(d);});
+  const catOrder=[..._TD_CATS.filter(c=>bycat[c]),...Object.keys(bycat).filter(c=>!_TD_CATS.includes(c))];
+  el.innerHTML=catOrder.map(cat=>{
+    const rows=bycat[cat].map(d=>{
+      const ext=(d.name||'').split('.').pop().toLowerCase();
+      const extBadge=ext?`<span style="font-size:.6rem;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,.08);color:var(--muted);text-transform:uppercase;font-weight:600;margin-left:6px">${esc(ext)}</span>`:'';
+      const dt=d.created_at?new Date(d.created_at).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'';
+      return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);transition:background .12s" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.82rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name||'')}${extBadge}</div>
+          ${d.notes?`<div style="font-size:.7rem;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.notes)}</div>`:''}
+        </div>
+        <div style="font-size:.7rem;color:var(--muted2);flex-shrink:0">${dt}</div>
+        <button class="btn btn-ghost btn-sm" title="Download" onclick="window._tdDownload('${esc(d.storage_path)}','${esc(d.name||'')}')">${icon('download')}</button>
+        <button class="btn btn-ghost btn-sm" title="Delete" style="color:var(--red)" onclick="window._tdDelete('${d.id}','${esc(d.storage_path)}')">${icon('trash')}</button>
+      </div>`;
+    }).join('');
+    return`<div style="margin-bottom:20px;background:var(--s2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="padding:10px 14px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);background:var(--s3);border-bottom:1px solid var(--border)">${esc(cat)} <span style="font-weight:400;opacity:.6">${bycat[cat].length}</span></div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function showUploadDocModal(){
+  showModal({
+    title:'Upload Document',
+    body:`<div class="form-group mb-3">
+      <label class="form-label">File *</label>
+      <input type="file" class="form-input" id="td-file" style="padding:6px">
+    </div>
+    <div class="form-group mb-3">
+      <label class="form-label">Display Name *</label>
+      <input class="form-input" id="td-name" placeholder="e.g. Concrete Spec Rev3.pdf">
+    </div>
+    <div class="form-row mb-3">
+      <div class="form-group" style="margin:0"><label class="form-label">Category</label>
+        <select class="form-input" id="td-cat">${_TD_CATS.map(c=>`<option>${c}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes <span style="font-weight:400;color:var(--muted2)">(optional)</span></label>
+      <input class="form-input" id="td-notes" placeholder="Brief description">
+    </div>`,
+    actions:`<button class="btn btn-outline" data-action="close-modal">Cancel</button>
+      <button class="btn btn-blue" onclick="window._tdUpload()">Upload</button>`
+  });
+  document.getElementById('td-file')?.addEventListener('change',function(){
+    const f=this.files[0];if(!f)return;
+    const ni=document.getElementById('td-name');
+    if(ni&&!ni.value)ni.value=f.name;
+  });
+}
+
+window._tdUpload=async function(){
+  const fileEl=document.getElementById('td-file');
+  const name=(document.getElementById('td-name')?.value||'').trim();
+  const cat=document.getElementById('td-cat')?.value||'General';
+  const notes=(document.getElementById('td-notes')?.value||'').trim();
+  const file=fileEl?.files?.[0];
+  if(!file){toast('Please select a file','error');return;}
+  if(!name){toast('Please enter a name','error');return;}
+  const btn=document.querySelector('[onclick="window._tdUpload()"]');
+  if(btn){btn.disabled=true;btn.textContent='Uploading…';}
+  try{
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`${cat}/${Date.now()}-${safeName}`;
+    const{error:upErr}=await _sb.storage.from(_TD_BUCKET).upload(path,file,{upsert:false});
+    if(upErr)throw upErr;
+    const{error:dbErr}=await _sb.from('team_documents').insert({name,category:cat,notes:notes||null,storage_path:path});
+    if(dbErr){await _sb.storage.from(_TD_BUCKET).remove([path]);throw dbErr;}
+    closeModal();
+    toast('Document uploaded.','success');
+    renderTeamDocs();
+  }catch(e){
+    console.error('TD upload:',e);
+    toast('Upload failed: '+(e.message||e),'error');
+    if(btn){btn.disabled=false;btn.textContent='Upload';}
+  }
+};
+
+window._tdDownload=async function(storagePath,name){
+  try{
+    const{data,error}=await _sb.storage.from(_TD_BUCKET).createSignedUrl(storagePath,3600);
+    if(error)throw error;
+    const a=document.createElement('a');a.href=data.signedUrl;a.download=name||'document';a.target='_blank';a.click();
+  }catch(e){
+    toast('Download failed: '+(e.message||e),'error');
+  }
+};
+
+window._tdDelete=async function(id,storagePath){
+  if(!confirm('Delete this document? This cannot be undone.'))return;
+  try{
+    await _sb.storage.from(_TD_BUCKET).remove([storagePath]);
+    await _sb.from('team_documents').delete().eq('id',id);
+    toast('Document deleted.','success');
+    renderTeamDocs();
+  }catch(e){
+    toast('Delete failed: '+(e.message||e),'error');
+  }
+};
 
 /* ================================================================
    LOCATION PICKER  (Leaflet + Nominatim, no API key)
@@ -10009,7 +10157,7 @@ if(action==='save-risk-global'){
     const docToDelete=(p.documents||[]).find(d=>d.id===did);
     if(docToDelete&&docToDelete.storage_url){
       const ext=docToDelete.file_type||docToDelete.file_name.split('.').pop().toLowerCase();
-      _sb.storage.from('project-documents').remove([`${id}/${did}.${ext}`]);
+      _sb.storage.from('project-documents1').remove([`${id}/${did}.${ext}`]);
     }
     p.documents=(p.documents||[]).filter(d=>d.id!==did);_docBlobs.delete(did);DB.saveProject(p);navigate(`project/${id}/documents`);return;
   }
