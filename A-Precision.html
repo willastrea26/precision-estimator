@@ -3319,6 +3319,214 @@ window.exportRateLibraryExcel=async function(){
   }
 };
 
+/* ================================================================
+   SUPPLIER RATES — EXCEL EXPORT
+================================================================ */
+window.exportSupplierRatesExcel=async function(){
+  const btn=document.getElementById('sr-xl-btn');
+  const origHtml=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Generating...';}
+  try{
+    if(!window.ExcelJS)throw new Error('ExcelJS not loaded — please refresh the page.');
+    const all=_srGet();
+    const activeSups=all.filter(s=>_srGetLc(s)==='active').sort((a,b)=>(a.company||'').localeCompare(b.company||''));
+    const now=new Date();
+    const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
+    const totalItems=activeSups.reduce((n,s)=>n+(s.items||[]).length,0);
+
+    const wb=new ExcelJS.Workbook();
+    wb.creator='A Civil Estimating Intelligence';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
+    const ws=wb.addWorksheet('Supplier Rates');
+    ws.columns=[{width:44},{width:10},{width:17},{width:38}];
+
+    const NCOLS=4;
+    const C_NAVY='FF0D2137',C_BLUE='FF1D4ED8';
+    const C_HDR_BG='FFD1E4F6',C_HDR_FG='FF0D2137';
+    const C_ROW_ALT='FFF0F7FF',C_WHITE='FFFFFFFF';
+    const C_SELL_BG='FFD1FAE5',C_SELL_FG='FF065F46';
+    const C_SUM_BG='FFBFDBFE',C_BORDER='FFB0CAE8';
+    const rateFmt='_-$* #,##0.00_-;-$* #,##0.00_-;_-$* "-"??_-;_-@_-';
+    const mkFill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
+    const mkBdr=c=>({top:{style:'thin',color:{argb:c}},left:{style:'thin',color:{argb:c}},bottom:{style:'thin',color:{argb:c}},right:{style:'thin',color:{argb:c}}});
+    const COL_HDRS=['Description','Unit','Rate (ex GST)','Notes'];
+    const COL_AL=['left','center','right','left'];
+
+    let row=1;
+    ws.mergeCells(row,1,row,NCOLS);
+    const tc=ws.getCell(row,1);tc.value='Supplier Rates Library  —  '+dd+'/'+mm+'/'+yyyy;
+    tc.font={name:'Arial',bold:true,size:18,color:{argb:'FFFFFFFF'}};tc.fill=mkFill(C_NAVY);tc.alignment={horizontal:'center',vertical:'middle'};
+    ws.getRow(row).height=44;row++;
+    ws.mergeCells(row,1,row,NCOLS);
+    const sc=ws.getCell(row,1);sc.value=activeSups.length+' active supplier'+(activeSups.length!==1?'s':'')+' · '+totalItems+' rate'+(totalItems!==1?'s':'')+' · Exported by A Civil Estimating Intelligence';
+    sc.font={name:'Arial',italic:true,size:9,color:{argb:'FF93C5FD'}};sc.fill=mkFill(C_NAVY);sc.alignment={horizontal:'center',vertical:'middle'};
+    ws.getRow(row).height=19;row++;
+    ws.getRow(row).height=7;row++;
+
+    const CAT_LABELS={earthworks:'Earthworks',civil:'Civil',drainage:'Drainage',water:'Water',sewer:'Sewer',electrical:'Electrical',communications:'Comms',concrete:'Concrete',landscaping:'Landscaping',traffic:'Traffic',fencing:'Fencing',demolition:'Demolition',other:'Other'};
+
+    activeSups.forEach(function(s){
+      const items=s.items||[];
+      if(!items.length)return;
+      const catLabel=CAT_LABELS[s.trade_category]||s.trade_category||'';
+
+      /* Supplier heading */
+      ws.mergeCells(row,1,row,NCOLS);
+      const hCell=ws.getCell(row,1);
+      hCell.value=(s.company||'Unknown Supplier').toUpperCase();
+      hCell.font={name:'Arial',bold:true,size:12,color:{argb:'FFFFFFFF'}};
+      hCell.fill=mkFill(C_BLUE);hCell.alignment={horizontal:'left',vertical:'middle',indent:1};
+      ws.getRow(row).height=28;row++;
+
+      /* Contact sub-row */
+      const parts=[catLabel,s.contact_name,s.email||s.contact_email,s.phone].filter(Boolean);
+      if(parts.length){
+        ws.mergeCells(row,1,row,NCOLS);
+        const ci=ws.getCell(row,1);ci.value=parts.join('  ·  ');
+        ci.font={name:'Arial',italic:true,size:8,color:{argb:'FF6B8FAF'}};ci.fill=mkFill('FF1A3A5C');
+        ci.alignment={horizontal:'left',vertical:'middle',indent:1};ci.border=mkBdr(C_BORDER);
+        ws.getRow(row).height=15;row++;
+      }
+
+      /* Column headers */
+      COL_HDRS.forEach(function(h,i){
+        const cell=ws.getCell(row,i+1);
+        cell.value=h;cell.font={name:'Arial',bold:true,size:8.5,color:{argb:C_HDR_FG}};
+        cell.fill=mkFill(C_HDR_BG);cell.alignment={horizontal:COL_AL[i],vertical:'middle'};cell.border=mkBdr(C_BORDER);
+      });
+      ws.getRow(row).height=18;row++;
+
+      /* Item rows */
+      items.forEach(function(it,ri){
+        const bg=ri%2===1?C_ROW_ALT:C_WHITE;
+        const vals=[it.description||'',it.unit||'',parseFloat(it.rate)||0,it.notes||''];
+        vals.forEach(function(v,i){
+          const cell=ws.getCell(row,i+1);cell.value=v;cell.font={name:'Arial',size:9};
+          cell.border=mkBdr(C_BORDER);cell.alignment={horizontal:COL_AL[i],vertical:'middle'};
+          if(i===2){cell.numFmt=rateFmt;cell.fill=mkFill(C_SELL_BG);cell.font={name:'Arial',size:9,bold:true,color:{argb:C_SELL_FG}};}
+          else{cell.fill=mkFill(bg);}
+        });
+        ws.getRow(row).height=16;row++;
+      });
+
+      /* Summary row */
+      for(let c=1;c<=NCOLS;c++){const cell=ws.getCell(row,c);cell.fill=mkFill(C_SUM_BG);cell.font={name:'Arial',bold:true,size:9,color:{argb:C_HDR_FG}};cell.border=mkBdr(C_BORDER);cell.alignment={horizontal:'right',vertical:'middle'};}
+      ws.getCell(row,1).value=(s.company||'')+'  —  '+items.length+' rate'+(items.length!==1?'s':'');
+      ws.getCell(row,1).alignment={horizontal:'left',vertical:'middle',indent:1};
+      ws.getRow(row).height=17;row++;
+      ws.getRow(row).height=8;row++;
+    });
+
+    ws.views=[{state:'frozen',ySplit:3}];
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download=dd+'-'+mm+'-'+yyyy+' - Supplier Rates.xlsx';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    toast('Supplier Rates exported successfully.','success');
+  }catch(e){console.error('Supplier export error:',e);toast('Export failed: '+(e.message||'Unknown error'),'error');}
+  finally{if(btn){btn.disabled=false;btn.innerHTML=origHtml;}}
+};
+
+/* ================================================================
+   PRODUCTIVITY LIBRARY — EXCEL EXPORT
+================================================================ */
+window.exportProductivityExcel=async function(){
+  const btn=document.getElementById('prod-xl-btn');
+  const origHtml=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Generating...';}
+  try{
+    if(!window.ExcelJS)throw new Error('ExcelJS not loaded — please refresh the page.');
+    const all=DB.getProductivity();
+    const assumptions=all.filter(a=>(!a.record_type||a.record_type==='assumption')&&_getProdLc(a)==='active').sort((a,b)=>(a.activity_name||'').localeCompare(b.activity_name||''));
+    const records=all.filter(r=>r.record_type==='record'&&_getProdLc(r)==='active').sort((a,b)=>(b.date_completed||'').localeCompare(a.date_completed||''));
+    const now=new Date();
+    const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
+
+    const wb=new ExcelJS.Workbook();
+    wb.creator='A Civil Estimating Intelligence';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
+
+    const C_NAVY='FF0D2137',C_BLUE='FF1D4ED8';
+    const C_HDR_BG='FFD1E4F6',C_HDR_FG='FF0D2137';
+    const C_ROW_ALT='FFF0F7FF',C_WHITE='FFFFFFFF';
+    const C_AMBER_BG='FFFEF3C7',C_AMBER_FG='FF92400E';
+    const C_GREEN_BG='FFD1FAE5',C_GREEN_FG='FF065F46';
+    const C_SUM_BG='FFBFDBFE',C_BORDER='FFB0CAE8';
+    const rateFmt='_-$* #,##0.00_-;-$* #,##0.00_-;_-$* "-"??_-;_-@_-';
+    const mkFill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
+    const mkBdr=c=>({top:{style:'thin',color:{argb:c}},left:{style:'thin',color:{argb:c}},bottom:{style:'thin',color:{argb:c}},right:{style:'thin',color:{argb:c}}});
+
+    function writeTitleRows(ws,title,sub,n){
+      let r=1;
+      ws.mergeCells(r,1,r,n);const tc=ws.getCell(r,1);tc.value=title;
+      tc.font={name:'Arial',bold:true,size:18,color:{argb:'FFFFFFFF'}};tc.fill=mkFill(C_NAVY);tc.alignment={horizontal:'center',vertical:'middle'};
+      ws.getRow(r).height=44;r++;
+      ws.mergeCells(r,1,r,n);const sc=ws.getCell(r,1);sc.value=sub;
+      sc.font={name:'Arial',italic:true,size:9,color:{argb:'FF93C5FD'}};sc.fill=mkFill(C_NAVY);sc.alignment={horizontal:'center',vertical:'middle'};
+      ws.getRow(r).height=19;r++;ws.getRow(r).height=7;r++;return r;
+    }
+
+    const WORK_LABELS={pipe_installation:'Pipe Installation',trench_excavation:'Trench Excavation',electrical_conduit_trenching:'Electrical Conduit Trenching',pit_installation:'Pit Installation',backfill_compaction:'Backfill & Compaction',pavement_preparation:'Pavement Preparation',concrete_works:'Concrete Works',spoil_disposal:'Spoil Disposal',traffic_control:'Traffic Control',testing_qa:'Testing / QA'};
+
+    /* ── Sheet 1: Assumptions ── */
+    const wsA=wb.addWorksheet('Assumptions');
+    wsA.columns=[{width:36},{width:22},{width:10},{width:16},{width:26},{width:30},{width:26},{width:36}];
+    const HDRS_A=['Activity Name','Work Type','Unit','Output / Day','Crew Type','Plant Required','Labour Required','Notes'];
+    const AL_A=['left','left','center','center','left','left','left','left'];
+    let rowA=writeTitleRows(wsA,'Productivity — Assumptions  ·  '+dd+'/'+mm+'/'+yyyy,assumptions.length+' active assumption'+(assumptions.length!==1?'s':'')+' · Exported by A Civil Estimating Intelligence',8);
+    HDRS_A.forEach(function(h,i){
+      const cell=wsA.getCell(rowA,i+1);cell.value=h;cell.font={name:'Arial',bold:true,size:8.5,color:{argb:C_HDR_FG}};
+      cell.fill=mkFill(C_HDR_BG);cell.alignment={horizontal:AL_A[i],vertical:'middle'};cell.border=mkBdr(C_BORDER);
+    });
+    wsA.getRow(rowA).height=18;rowA++;
+    assumptions.forEach(function(i,ri){
+      const bg=ri%2===1?C_ROW_ALT:C_WHITE;
+      const vals=[i.activity_name||'',WORK_LABELS[i.work_type]||i.work_type||'',i.unit||'',i.productivity_per_day!=null?i.productivity_per_day+' '+(i.unit||''):'',i.crew_type||'',i.plant_required||'',i.labour_required||'',i.notes||''];
+      vals.forEach(function(v,ci){
+        const cell=wsA.getCell(rowA,ci+1);cell.value=v;cell.font={name:'Arial',size:9};
+        cell.border=mkBdr(C_BORDER);cell.alignment={horizontal:AL_A[ci],vertical:'middle'};cell.fill=mkFill(bg);
+      });
+      wsA.getRow(rowA).height=16;rowA++;
+    });
+    wsA.views=[{state:'frozen',ySplit:3}];
+
+    /* ── Sheet 2: Records ── */
+    const wsR=wb.addWorksheet('Records');
+    wsR.columns=[{width:36},{width:26},{width:16},{width:12},{width:10},{width:18},{width:15},{width:15},{width:10},{width:18},{width:36}];
+    const HDRS_R=['Activity Name','Project','Date Completed','Pipe Size','Depth (m)','Soil Type','Est. Rate','Achieved Rate','Unit','Daily Crew Cost','Notes'];
+    const AL_R=['left','left','center','center','center','left','right','right','center','right','left'];
+    let rowR=writeTitleRows(wsR,'Productivity — Records  ·  '+dd+'/'+mm+'/'+yyyy,records.length+' historical record'+(records.length!==1?'s':'')+' · Exported by A Civil Estimating Intelligence',11);
+    HDRS_R.forEach(function(h,i){
+      const cell=wsR.getCell(rowR,i+1);cell.value=h;cell.font={name:'Arial',bold:true,size:8.5,color:{argb:C_HDR_FG}};
+      cell.fill=mkFill(C_HDR_BG);cell.alignment={horizontal:AL_R[i],vertical:'middle'};cell.border=mkBdr(C_BORDER);
+    });
+    wsR.getRow(rowR).height=18;rowR++;
+    records.forEach(function(r,ri){
+      const bg=ri%2===1?C_ROW_ALT:C_WHITE;
+      const dailyCrew=r.crew_items?.reduce((s,c)=>s+_prrDayRate(c)*(parseFloat(c.quantity)||1),0)||0;
+      const dateStr=r.date_completed?new Date(r.date_completed).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'';
+      const vals=[r.activity_name||'',r.project_name||'',dateStr,r.pipe_size||'',r.depth_avg!=null?r.depth_avg:'',r.soil_type||'',r.estimated_rate!=null?r.estimated_rate:'',r.achieved_rate!=null?r.achieved_rate:'',r.unit||'',dailyCrew||0,r.notes||''];
+      vals.forEach(function(v,ci){
+        const cell=wsR.getCell(rowR,ci+1);cell.value=v;cell.font={name:'Arial',size:9};
+        cell.border=mkBdr(C_BORDER);cell.alignment={horizontal:AL_R[ci],vertical:'middle'};
+        if(ci===6){cell.fill=mkFill(C_AMBER_BG);cell.font={name:'Arial',size:9,color:{argb:C_AMBER_FG}};}
+        else if(ci===7){cell.fill=mkFill(C_GREEN_BG);cell.font={name:'Arial',size:9,bold:true,color:{argb:C_GREEN_FG}};}
+        else if(ci===9){cell.numFmt=rateFmt;cell.fill=mkFill(C_SUM_BG);}
+        else{cell.fill=mkFill(bg);}
+      });
+      wsR.getRow(rowR).height=16;rowR++;
+    });
+    wsR.views=[{state:'frozen',ySplit:3}];
+
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download=dd+'-'+mm+'-'+yyyy+' - Productivity Library.xlsx';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    toast('Productivity Library exported successfully.','success');
+  }catch(e){console.error('Productivity export error:',e);toast('Export failed: '+(e.message||'Unknown error'),'error');}
+  finally{if(btn){btn.disabled=false;btn.innerHTML=origHtml;}}
+};
+
 function renderTabRisk(p,id){
   const risks=p.risks||[];
   const wps=p.work_packages||[];
@@ -5687,6 +5895,7 @@ function renderProductivity(){
         +(locked?'<span class="badge badge-amber" style="font-size:.7rem">🔒 Locked'+(lockedAt?' '+lockedAt:'')+'</span>':(updatedAt?'<span style="font-size:.71rem;color:var(--muted2)">Updated '+updatedAt+'</span>':''))
       +'</div>'
       +'<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'
+        +'<button id="prod-xl-btn" class="btn btn-sm btn-green" onclick="exportProductivityExcel()">&#8681; Extract to Excel</button>'
         +'<button class="btn btn-sm" onclick="toggleProductivityLock()" style="'+(locked?'border:1px solid var(--amber);color:var(--amber);background:rgba(245,158,11,.08)':'border:1px solid var(--border);background:transparent;color:var(--muted2)')+'" title="'+(locked?'Unlock to edit activities':'Lock to prevent changes')+'">'+(locked?'🔓 Unlock':'🔒 Lock')+'</button>'
         +(!locked&&view==='records'?'<button class="btn btn-blue" onclick="showProdRecordSheet(\'\')" style="flex-shrink:0">'+icon('plus')+' Log Record</button>':'')
         +(!locked&&view==='assumptions'?'<button class="btn btn-blue" data-action="add-productivity" style="flex-shrink:0">'+icon('plus')+' Add Activity</button>':'')
@@ -6587,6 +6796,7 @@ function renderCatalogue(){
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-outline" onclick="window.showCatalogueAISheet()">&#10022; AI Extract</button>
+        <button id="sr-xl-btn" class="btn btn-green" onclick="exportSupplierRatesExcel()">&#8681; Extract to Excel</button>
         <button class="btn btn-outline" onclick="window._srSyncCloud()" title="Push all rates to cloud so they appear on all devices">☁ Sync to Cloud</button>
         <button class="btn btn-blue" onclick="window.showCatalogueSheet('')">${icon('plus')} Add Supplier</button>
       </div>
