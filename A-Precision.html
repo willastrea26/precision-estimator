@@ -3116,6 +3116,209 @@ window.exportBOQExcel=async function(projId){
   }
 };
 
+/* ================================================================
+   RATE LIBRARY — EXCEL EXPORT
+================================================================ */
+window.exportRateLibraryExcel=async function(){
+  const btn=document.getElementById('rl-xl-btn');
+  const origHtml=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Generating...';}
+  try{
+    if(!window.ExcelJS)throw new Error('ExcelJS not loaded — please refresh the page.');
+    const allRates=DB.getRates();
+    const activeRates=allRates.filter(r=>_getRateLc(r)==='active');
+    const now=new Date();
+    const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
+
+    const CATS=[
+      {key:'personnel',label:'Personnel'},{key:'excavators',label:'Excavators'},
+      {key:'loaders_skid_steers',label:'Loaders / Skid Steers'},{key:'rollers_compaction',label:'Rollers / Compaction'},
+      {key:'trucks_tippers',label:'Trucks / Tippers'},{key:'dumpers',label:'Dumpers'},
+      {key:'water_carts',label:'Water Carts'},{key:'vac_trucks',label:'Vac Trucks'},
+      {key:'attachments',label:'Attachments'},{key:'small_plant',label:'Small Plant'},
+      {key:'saw_cut',label:'Saw Cut'},{key:'traffic_control',label:'Traffic Control'},
+      {key:'survey',label:'Survey'},{key:'testing_qa',label:'Testing / QA'},
+      {key:'mobilisation_float',label:'Mobilisation / Float'},{key:'crane_hire',label:'Crane Hire'},
+    ];
+    const validKeys=new Set(CATS.map(c=>c.key));
+
+    const wb=new ExcelJS.Workbook();
+    wb.creator='A Civil Estimating Intelligence';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
+
+    const ws=wb.addWorksheet('Rate Library');
+    ws.columns=[
+      {width:44},{width:22},{width:10},
+      {width:13},{width:13},{width:13},{width:14},{width:11},
+      {width:15},{width:10},{width:15},{width:32},
+    ];
+
+    const NCOLS=12;
+    const acctFmt='_-$* #,##0.00_-;-$* #,##0.00_-;_-$* "-"??_-;_-@_-';
+    const pctFmt='0.0%';
+
+    /* colours */
+    const C_NAVY='FF0D2137',C_BLUE='FF1D4ED8',C_BLUE2='FF2563EB';
+    const C_HDR_BG='FFD1E4F6',C_HDR_FG='FF0D2137';
+    const C_ROW_ALT='FFF0F7FF',C_WHITE='FFFFFFFF';
+    const C_TOTAL_BG='FFD1E4F6',C_SELL_BG='FFD1FAE5',C_SELL_FG='FF065F46';
+    const C_SUM_BG='FFBFDBFE',C_BORDER='FFB0CAE8';
+
+    const mkFill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
+    const mkBdr=c=>({top:{style:'thin',color:{argb:c}},left:{style:'thin',color:{argb:c}},bottom:{style:'thin',color:{argb:c}},right:{style:'thin',color:{argb:c}}});
+
+    let row=1;
+
+    /* Title */
+    ws.mergeCells(row,1,row,NCOLS);
+    const tCell=ws.getCell(row,1);
+    tCell.value='Rate Library  —  '+dd+'/'+mm+'/'+yyyy;
+    tCell.font={name:'Arial',bold:true,size:18,color:{argb:C_WHITE}};
+    tCell.fill=mkFill(C_NAVY);tCell.alignment={horizontal:'center',vertical:'middle'};
+    ws.getRow(row).height=44;row++;
+
+    /* Subtitle */
+    ws.mergeCells(row,1,row,NCOLS);
+    const sCell=ws.getCell(row,1);
+    sCell.value=activeRates.length+' active rate'+(activeRates.length!==1?'s':'')+' · Exported by A Civil Estimating Intelligence';
+    sCell.font={name:'Arial',italic:true,size:9,color:{argb:'FF93C5FD'}};
+    sCell.fill=mkFill(C_NAVY);sCell.alignment={horizontal:'center',vertical:'middle'};
+    ws.getRow(row).height=19;row++;
+
+    /* Spacer */
+    ws.getRow(row).height=7;row++;
+
+    const COL_HDRS=['Description','Company','Unit','Labour','Plant','Material','Subcontract','Other','Total Rate','Margin %','Sell Rate','Notes'];
+    const COL_AL=['left','left','center','right','right','right','right','right','right','center','right','left'];
+
+    function writeColHdrs(){
+      COL_HDRS.forEach((h,i)=>{
+        const cell=ws.getCell(row,i+1);
+        cell.value=h;
+        cell.font={name:'Arial',bold:true,size:8.5,color:{argb:C_HDR_FG}};
+        cell.fill=mkFill(C_HDR_BG);
+        cell.alignment={horizontal:COL_AL[i],vertical:'middle'};
+        cell.border=mkBdr(C_BORDER);
+      });
+      ws.getRow(row).height=18;
+    }
+
+    /* Build category groups */
+    const groups=CATS.map(c=>({label:c.label,rates:activeRates.filter(r=>r.category===c.key).sort((a,b)=>(a.description||'').localeCompare(b.description||''))}));
+    const uncatRates=activeRates.filter(r=>!validKeys.has(r.category)).sort((a,b)=>(a.description||'').localeCompare(b.description||''));
+    if(uncatRates.length)groups.push({label:'Uncategorised',rates:uncatRates});
+
+    const totalRows=[];
+
+    groups.forEach(function({label,rates:catRates}){
+      if(!catRates.length)return;
+
+      /* Category heading */
+      ws.mergeCells(row,1,row,NCOLS);
+      const catCell=ws.getCell(row,1);
+      catCell.value=label.toUpperCase();
+      catCell.font={name:'Arial',bold:true,size:12,color:{argb:C_WHITE}};
+      catCell.fill=mkFill(C_BLUE);
+      catCell.alignment={horizontal:'left',vertical:'middle',indent:1};
+      ws.getRow(row).height=28;row++;
+
+      /* Column headers */
+      writeColHdrs();row++;
+
+      const dataStart=row;
+
+      /* Data rows */
+      catRates.forEach(function(r,ri){
+        const total=(r.labour_rate||0)+(r.plant_rate||0)+(r.material_rate||0)+(r.subcontractor_rate||0)+(r.other_cost||0);
+        const marginDec=(r.default_margin_pct!=null?r.default_margin_pct:15)/100;
+        const sell=total*(1+marginDec);
+        const bg=ri%2===1?C_ROW_ALT:C_WHITE;
+
+        const vals=[
+          r.description||'',r.company||r.rate_code||'',r.unit||'',
+          r.labour_rate||0,r.plant_rate||0,r.material_rate||0,r.subcontractor_rate||0,r.other_cost||0,
+          total,marginDec,sell,r.notes||'',
+        ];
+        vals.forEach(function(v,i){
+          const cell=ws.getCell(row,i+1);
+          cell.value=v;
+          cell.font={name:'Arial',size:9};
+          cell.border=mkBdr(C_BORDER);
+          cell.alignment={horizontal:COL_AL[i],vertical:'middle',wrapText:false};
+          if(i>=3&&i<=8){cell.numFmt=acctFmt;}
+          if(i===9){cell.numFmt=pctFmt;}
+          if(i===10){cell.numFmt=acctFmt;}
+          if(i===8){cell.fill=mkFill(C_TOTAL_BG);cell.font={name:'Arial',size:9,bold:true};}
+          else if(i===10){cell.fill=mkFill(C_SELL_BG);cell.font={name:'Arial',size:9,bold:true,color:{argb:C_SELL_FG}};}
+          else{cell.fill=mkFill(bg);}
+        });
+        ws.getRow(row).height=16;row++;
+      });
+
+      const dataEnd=row-1;
+
+      /* Category totals row */
+      for(let c=1;c<=NCOLS;c++){
+        const cell=ws.getCell(row,c);
+        cell.fill=mkFill(C_SUM_BG);
+        cell.font={name:'Arial',bold:true,size:9,color:{argb:C_HDR_FG}};
+        cell.border=mkBdr(C_BORDER);
+        cell.alignment={horizontal:'right',vertical:'middle'};
+      }
+      ws.getCell(row,1).value=label+' Totals';
+      ws.getCell(row,1).alignment={horizontal:'left',vertical:'middle',indent:1};
+      [{ci:4,col:'D'},{ci:5,col:'E'},{ci:6,col:'F'},{ci:7,col:'G'},{ci:8,col:'H'},{ci:9,col:'I'},{ci:11,col:'K'}].forEach(function({ci,col}){
+        const cell=ws.getCell(row,ci);
+        cell.value={formula:'SUM('+col+dataStart+':'+col+dataEnd+')'};
+        cell.numFmt=acctFmt;
+      });
+      ws.getRow(row).height=18;
+      totalRows.push(row);
+      row++;
+
+      /* Spacer between categories */
+      ws.getRow(row).height=8;row++;
+    });
+
+    /* Grand Total row */
+    if(totalRows.length){
+      ws.mergeCells(row,1,row,3);
+      for(let c=1;c<=NCOLS;c++){
+        const cell=ws.getCell(row,c);
+        cell.fill=mkFill(C_NAVY);
+        cell.font={name:'Arial',bold:true,size:10,color:{argb:C_WHITE}};
+        cell.border=mkBdr('FF0D2137');
+        cell.alignment={horizontal:'right',vertical:'middle'};
+      }
+      ws.getCell(row,1).value='GRAND TOTAL';
+      ws.getCell(row,1).alignment={horizontal:'left',vertical:'middle',indent:1};
+      [{ci:4,col:'D'},{ci:5,col:'E'},{ci:6,col:'F'},{ci:7,col:'G'},{ci:8,col:'H'},{ci:9,col:'I'},{ci:11,col:'K'}].forEach(function({ci,col}){
+        const cell=ws.getCell(row,ci);
+        const refs=totalRows.map(r=>col+r).join(',');
+        cell.value={formula:'SUM('+refs+')'};
+        cell.numFmt=acctFmt;
+      });
+      ws.getRow(row).height=24;
+    }
+
+    /* Freeze top 3 rows */
+    ws.views=[{state:'frozen',ySplit:3}];
+
+    /* Download */
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=dd+'-'+mm+'-'+yyyy+' - Rate Library.xlsx';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    toast('Rate Library exported successfully.','success');
+  }catch(e){
+    console.error('Rate Library export error:',e);
+    toast('Export failed: '+(e.message||'Unknown error'),'error');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML=origHtml;}
+  }
+};
+
 function renderTabRisk(p,id){
   const risks=p.risks||[];
   const wps=p.work_packages||[];
@@ -4973,6 +5176,7 @@ function renderRateLibrary(){
     +'<div><div class="page-title">Rate Library</div><div class="page-sub">'+rates.length+' rate'+(rates.length!==1?'s':'')+' ('+lc+')</div></div>'
     +'<div style="display:flex;gap:8px">'
       +'<button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Companies</button>'
+      +'<button id="rl-xl-btn" class="btn btn-outline btn-sm" onclick="exportRateLibraryExcel()">&#8681; Extract to Excel</button>'
       +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()">&#10022; AI Analyse</button>'
       +'<button class="btn btn-blue" onclick="showRateSheet(\'\')">'+icon('plus')+' Add Rate</button>'
     +'</div>'
