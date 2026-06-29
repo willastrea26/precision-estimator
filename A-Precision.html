@@ -7108,6 +7108,36 @@ function renderRisks(){
 /* ================================================================
    SETTINGS
 ================================================================ */
+let _settingsUnlocked=false;
+let _settingsUnlockTimer=null;
+const _SETTINGS_LOCK_MS=10*60*1000; // 10 minutes
+
+window._unlockSettingsZone=async function(){
+  const pw=(document.getElementById('settings-pw-input')?.value||'').trim();
+  const errEl=document.getElementById('settings-unlock-err');
+  const btn=document.getElementById('settings-unlock-btn');
+  if(!pw){if(errEl)errEl.textContent='Please enter your password.';return;}
+  if(btn){btn.disabled=true;btn.textContent='Checking…';}
+  if(errEl)errEl.textContent='';
+  try{
+    const{error}=await _sb.auth.signInWithPassword({email:_c.userEmail,password:pw});
+    if(error){if(errEl)errEl.textContent='Incorrect password.';if(btn){btn.disabled=false;btn.textContent='Unlock';}return;}
+    _settingsUnlocked=true;
+    if(_settingsUnlockTimer)clearTimeout(_settingsUnlockTimer);
+    _settingsUnlockTimer=setTimeout(function(){_settingsUnlocked=false;_settingsUnlockTimer=null;if(getRoute().page==='settings')renderSettings();},_SETTINGS_LOCK_MS);
+    renderSettings();
+  }catch(e){
+    if(errEl)errEl.textContent='Error: '+(e.message||'Could not verify password.');
+    if(btn){btn.disabled=false;btn.textContent='Unlock';}
+  }
+};
+
+window._lockSettingsZone=function(){
+  _settingsUnlocked=false;
+  if(_settingsUnlockTimer){clearTimeout(_settingsUnlockTimer);_settingsUnlockTimer=null;}
+  renderSettings();
+};
+
 function renderSettings(){
   const s=DB.getSettings();
   const hasKey=!!(s.ai_key&&s.ai_key.length>10);
@@ -7140,17 +7170,42 @@ function renderSettings(){
         <div class="form-hint mb-3">Used for AI Package Analyser and Quote Email Drafter. Get your key at console.anthropic.com</div>
         <button class="btn btn-blue btn-sm" data-action="save-ai-key">Save API Key</button><div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Models in use</div><div style="display:flex;flex-direction:column;gap:5px;font-size:.83rem"><div>AI Package Analyser &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-opus-4-5</code></div><div>Quote Analysis &amp; Email Drafter &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-sonnet-4-5</code></div><div>Supplier Rate Extraction &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-haiku-4-5</code></div></div></div>
       </div>
-      <div class="card mb-4">
-        <div class="card-title">Data Management</div>
+      ${_settingsUnlocked?`
+      <div class="card mb-4" style="border-color:rgba(16,185,129,.3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="margin:0">Data Management</div>
+          <span style="display:flex;align-items:center;gap:8px;font-size:.75rem;color:var(--green)">🔓 Unlocked <button onclick="_lockSettingsZone()" style="background:none;border:1px solid rgba(255,255,255,.12);border-radius:5px;color:var(--muted);font-size:.73rem;cursor:pointer;padding:2px 8px">Lock</button></span>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" data-action="export-data">${icon('download')} Export All Data</button>
           <button class="btn btn-outline btn-sm" data-action="reset-demo">🔄 Reload Demo Data</button>
         </div>
       </div>
       <div class="card" style="border-color:rgba(239,68,68,.3)">
-        <div class="card-title" style="color:var(--red)">Danger Zone</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="color:var(--red);margin:0">Danger Zone</div>
+          <span style="font-size:.75rem;color:var(--green)">🔓 Unlocked</span>
+        </div>
         <button class="btn btn-red btn-sm" data-action="clear-all-data">${icon('trash')} Clear All Data</button>
-      </div>
+      </div>`:`
+      <div class="card" style="border-color:rgba(99,102,241,.25)">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <div style="width:38px;height:38px;border-radius:9px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0">🔒</div>
+          <div>
+            <div style="font-weight:600;font-size:.92rem;margin-bottom:2px">Protected Zone</div>
+            <div style="font-size:.76rem;color:var(--muted)">Data Management &amp; Danger Zone require re-authentication</div>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Your Password</label>
+          <input class="form-input" type="password" id="settings-pw-input" placeholder="Enter your password to unlock" onkeydown="if(event.key==='Enter')_unlockSettingsZone()">
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button id="settings-unlock-btn" class="btn btn-blue btn-sm" onclick="_unlockSettingsZone()">Unlock</button>
+          <span id="settings-unlock-err" style="font-size:.78rem;color:var(--red)"></span>
+        </div>
+      </div>`}
+
     </div>
   </div>`;
   renderShell(content,'settings');
