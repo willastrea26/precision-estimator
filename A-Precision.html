@@ -6397,7 +6397,7 @@ function renderQuotes(){
   const projects=DB.getProjects();
   const contacts=DB.getContacts();
   const todayStr=today();
-  const quotesFull=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr)}));
+  const quotesFull=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.status==='overdue'||(q.status!=='received'&&q.status!=='awaiting'&&q.due_date&&q.due_date<todayStr)}));
   const content=`
   <div class="page-header">
     <div><div class="page-title">Quote Requests</div><div class="page-sub">${quotes.length} total</div></div>
@@ -6441,7 +6441,7 @@ function renderQuoteRows(qf){
 }
 window.filterQuotes=function(filter){
   const quotes=DB.getQuotes();const projects=DB.getProjects();const contacts=DB.getContacts();const todayStr=today();
-  let qf=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr)}));
+  let qf=quotes.map(q=>({...q,contact:contacts.find(c=>c.id===q.contact_id),project:projects.find(p=>p.id===q.project_id),isOverdue:q.status==='overdue'||(q.status!=='received'&&q.status!=='awaiting'&&q.due_date&&q.due_date<todayStr)}));
   const projFilter=document.getElementById('q-proj')?.value||'';
   const statFilter=filter||document.getElementById('q-status')?.value||'';
   if(projFilter)qf=qf.filter(q=>q.project_id===projFilter);
