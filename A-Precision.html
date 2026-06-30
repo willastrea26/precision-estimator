@@ -8388,14 +8388,13 @@ async function _spReverseGeocodeCoords(lat,lng){
 }
 async function _spExtractMeta(file,apiKey){
   const r={date:null,time:null,source:null,gpsLat:null,gpsLng:null,device:null,locationName:null};
-  // Method 1: EXIF — parse all tags (no pick filter) so we catch any iPhone field name variant
+  // Method 1: EXIF via exifr (simple pick list — same approach that worked originally)
   try{
-    const exif=await exifr.parse(file,{tiff:true,exif:true,gps:true,ifd0:true,translateValues:true,reviveValues:true});
+    const exif=await exifr.parse(file,{pick:['DateTimeOriginal','DateTimeDigitized','DateTime','GPSLatitude','GPSLongitude','Make','Model']});
     if(exif){
-      const dt=exif.DateTimeOriginal||exif.CreateDate||exif.DateTimeDigitized||exif.DateTime||exif.ModifyDate;
-      if(dt){const d=dt instanceof Date?dt:new Date(String(dt).replace(/^(\d{4}):(\d{2}):(\d{2})/,'$1-$2-$3'));if(!isNaN(d)&&d.getFullYear()>=2000){r.date=_localISO(d);r.time=d.toTimeString().slice(0,8);r.source='exif';}}
-      if(exif.latitude!=null&&exif.longitude!=null){r.gpsLat=exif.latitude;r.gpsLng=exif.longitude;}
-      else if(exif.GPSLatitude!=null&&exif.GPSLongitude!=null){r.gpsLat=exif.GPSLatitude;r.gpsLng=exif.GPSLongitude;}
+      const dt=exif.DateTimeOriginal||exif.DateTimeDigitized||exif.DateTime;
+      if(dt){const d=new Date(dt);if(!isNaN(d)&&d.getFullYear()>=2000){r.date=_localISO(d);r.time=d.toTimeString().slice(0,8);r.source='exif';}}
+      if(exif.GPSLatitude!=null&&exif.GPSLongitude!=null){r.gpsLat=exif.GPSLatitude;r.gpsLng=exif.GPSLongitude;}
       if(exif.Make||exif.Model)r.device=[exif.Make,exif.Model].filter(Boolean).join(' ');
     }
   }catch{}
