@@ -318,12 +318,12 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 .modal-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
 
 /* SLIDE-OVER */
-.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400}
-.sheet{position:fixed;top:0;right:0;width:480px;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:401;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease;box-shadow:-10px 0 40px rgba(0,0,0,.4)}
+.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;cursor:pointer}
+.sheet{position:fixed;top:0;right:0;width:480px;height:100vh;height:-webkit-fill-available;background:var(--surface);border-left:1px solid var(--border);z-index:10001;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease;box-shadow:-10px 0 40px rgba(0,0,0,.4)}
 .sheet.open{transform:translateX(0)}
 .sheet-head{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .sheet-title{font-size:.95rem;font-weight:600}
-.sheet-body{padding:20px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1}
+.sheet-body{padding:20px;overflow-y:scroll;-webkit-overflow-scrolling:touch;touch-action:pan-y;flex:1;min-height:0}
 @media(max-width:540px){.sheet{width:100vw}}
 .sheet-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
 
