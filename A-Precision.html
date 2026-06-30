@@ -8173,7 +8173,11 @@ function _spRenderGrid(photos){
     ${_spFilters.project||_spFilters.tag||_spFilters.search||_spFilters.from?`<button class="btn btn-outline btn-sm" onclick="window.spClearFilters()">Clear filters</button>`:`<button class="btn btn-blue btn-sm" onclick="showSpUploadSheet()">+ Add Photos</button>`}
   </div>`;
 
-  const sorted=[...photos].sort((a,b)=>b.dateTaken.localeCompare(a.dateTaken));
+  const sorted=[...photos].sort((a,b)=>{
+    const d=(b.dateTaken||'').localeCompare(a.dateTaken||'');
+    if(d!==0)return d;
+    return(b.uploadedAt||'').localeCompare(a.uploadedAt||'');
+  });
 
   const tileHTML=(photo,idx)=>{
     const col=_spProjColor(photo.projectId);
