@@ -112,6 +112,21 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 @media(max-width:1280px){.page{padding:24px 28px}}
 @media(max-width:900px){.page{padding:20px 20px}}
 @media(max-width:768px){.main{margin-left:0;width:100%}.sidebar{display:none}.page{padding:16px 14px}}
+/* MOBILE MODE */
+.mob-toggle{position:absolute;top:12px;right:10px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);border-radius:6px;color:var(--blue);cursor:pointer;padding:5px 7px;display:flex;align-items:center;justify-content:center;transition:all .15s;opacity:.65}
+.mob-toggle:hover{background:rgba(59,130,246,.18);opacity:1}
+.mob-toggle.active{background:rgba(59,130,246,.22);opacity:1;border-color:rgba(59,130,246,.4)}
+.mob-toggle svg{width:13px;height:13px}
+.app-mobile .sidebar{transform:translateX(-100%);transition:transform .26s cubic-bezier(.4,0,.2,1);position:fixed;z-index:300;box-shadow:8px 0 40px rgba(0,0,0,.75)}
+.app-mobile .sidebar.mob-open{transform:translateX(0)}
+.app-mobile .main{margin-left:0;width:100%}
+.app-mobile .page{padding:14px 14px}
+.mob-topbar{height:52px;background:linear-gradient(180deg,#0C1626,#080D18);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:12px;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.3)}
+.mob-ham{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text);cursor:pointer;padding:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;transition:background .15s}
+.mob-ham:active{background:rgba(255,255,255,.1)}
+.mob-topbar-title{font-size:.85rem;font-weight:600;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mob-topbar-logo{font-size:.65rem;font-weight:700;color:var(--blue);letter-spacing:.14em;text-transform:uppercase;opacity:.7}
+.mob-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:250;-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}
 /* DASHBOARD BACKGROUND IMAGES */
 .dash-bg-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
 .dash-bg-img{position:absolute;mix-blend-mode:screen;user-select:none}
@@ -1095,6 +1110,27 @@ function clearFieldErrors(){
 /* ================================================================
    SIDEBAR + SHELL RENDER
 ================================================================ */
+let _mobileMode=localStorage.getItem('ap-mobile-mode')==='1';
+let _mobSidebarOpen=false;
+function _mobOpen(){
+  _mobSidebarOpen=true;
+  document.querySelector('.app-mobile .sidebar')?.classList.add('mob-open');
+  if(!document.getElementById('mob-ov')){
+    const ov=document.createElement('div');ov.id='mob-ov';ov.className='mob-overlay';
+    ov.onclick=_mobClose;document.body.appendChild(ov);
+  }
+}
+function _mobClose(){
+  _mobSidebarOpen=false;
+  document.querySelector('.sidebar')?.classList.remove('mob-open');
+  document.getElementById('mob-ov')?.remove();
+}
+window._mobOpen=_mobOpen;window._mobClose=_mobClose;
+window.toggleMobileMode=function(){
+  _mobileMode=!_mobileMode;_mobSidebarOpen=false;
+  localStorage.setItem('ap-mobile-mode',_mobileMode?'1':'0');
+  const r=getRoute();navigate(r.page,r.params);
+};
 function renderShell(content,activePage){
   const _wbOv=document.getElementById('wb-overlay');
   if(_wbOv){_wbOv.remove();try{luckysheet.destroy();}catch(e){}_wbActiveProjId=null;}
@@ -1119,12 +1155,17 @@ function renderShell(content,activePage){
     return`<a class="nav-item${activePage===n.key?' active':''}" href="#${n.key}" style="display:flex;gap:10px;align-items:center">${icon(n.icon)} <span style="flex:1">${esc(n.label)}</span>${bdg}</a>`;
   }).join('');
   const initials=(user?.email||'U')[0].toUpperCase();
+  _mobSidebarOpen=false;
+  const mobToggleBtn=`<button class="mob-toggle${_mobileMode?' active':''}" onclick="window.toggleMobileMode()" title="${_mobileMode?'Exit mobile mode':'Switch to mobile mode'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="17" r=".5" fill="currentColor"/></svg></button>`;
+  const navLabel=nav.find(n=>n.key===activePage)?.label||'';
+  const mobTopbar=_mobileMode?`<div class="mob-topbar"><button class="mob-ham" onclick="window._mobOpen()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button><span class="mob-topbar-title">${esc(navLabel)}</span><span class="mob-topbar-logo">A Civil</span></div>`:'';
   document.getElementById('app').innerHTML=`
-    <div class="shell">
+    <div class="shell${_mobileMode?' app-mobile':''}">
       <aside class="sidebar">
-        <div class="sb-logo">
+        <div class="sb-logo" style="position:relative">
           <img src="${_ACLOGO}" alt="A Civil" style="width:148px;display:block;margin-bottom:1px">
           <div class="tag">Estimating Intelligence</div>
+          ${mobToggleBtn}
         </div>
         <nav class="sb-nav">${navHTML}</nav>
         <div class="sb-foot">
@@ -1135,8 +1176,31 @@ function renderShell(content,activePage){
           <button class="btn-signout" data-action="logout">${icon('logout')} Sign Out</button>
         </div>
       </aside>
-      <main class="main" id="main-content"><div class="page">${content}</div></main>
+      <main class="main" id="main-content">${mobTopbar}<div class="page">${content}</div></main>
     </div>`;
+  if(_mobileMode){
+    setTimeout(()=>{
+      const main=document.getElementById('main-content');
+      const sb=document.querySelector('.sidebar');
+      let tx=0,ty=0;
+      if(main){
+        main.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
+        main.addEventListener('touchend',e=>{
+          const dx=e.changedTouches[0].clientX-tx;const dy=Math.abs(e.changedTouches[0].clientY-ty);
+          if(dx>55&&dy<80&&tx<44)_mobOpen();
+          else if(dx<-55&&dy<80&&_mobSidebarOpen)_mobClose();
+        },{passive:true});
+      }
+      if(sb){
+        let stx=0,sty=0;
+        sb.addEventListener('touchstart',e=>{stx=e.touches[0].clientX;sty=e.touches[0].clientY;},{passive:true});
+        sb.addEventListener('touchend',e=>{
+          const dx=e.changedTouches[0].clientX-stx;const dy=Math.abs(e.changedTouches[0].clientY-sty);
+          if(dx<-55&&dy<80)_mobClose();
+        },{passive:true});
+      }
+    },0);
+  }
 }
 
 /* ================================================================
