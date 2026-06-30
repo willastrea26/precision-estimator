@@ -8428,17 +8428,22 @@ function _spFileRowHTML(item,i){
 
 let _spPendingFiles=[];
 window.spPreviewFiles=async function(fileList){
-  _spPendingFiles=[...fileList].filter(f=>f.size<=20*1024*1024).map(f=>({file:f,meta:null}));
   const tooBig=[...fileList].filter(f=>f.size>20*1024*1024);
   if(tooBig.length)toast(tooBig.length+' file(s) over 20MB skipped.','warning');
-  if(!_spPendingFiles.length)return;
+  const newFiles=[...fileList].filter(f=>f.size<=20*1024*1024).map(f=>({file:f,meta:null}));
+  if(!newFiles.length)return;
+  const startIdx=_spPendingFiles.length;
+  _spPendingFiles=[..._spPendingFiles,...newFiles];
+  // Reset file input so same file can be re-selected if needed
+  const inp=document.getElementById('sp-file-inp');if(inp)inp.value='';
   const prev=document.getElementById('sp-preview');const list=document.getElementById('sp-preview-list');const btn=document.getElementById('sp-up-btn');
   if(prev)prev.style.display='block';
   if(btn){btn.style.display='block';btn.textContent=`Upload ${_spPendingFiles.length} Photo${_spPendingFiles.length!==1?'s':''}`;}
   if(list)list.innerHTML=_spPendingFiles.map((item,i)=>_spFileRowHTML(item,i)).join('');
-  // Extract metadata for all files in parallel
+  // Extract metadata for newly added files only
   const apiKey=DB.getSettings().ai_key||'';
-  await Promise.all(_spPendingFiles.map(async(item,i)=>{
+  await Promise.all(newFiles.map(async(item,j)=>{
+    const i=startIdx+j;
     const meta=await _spExtractMeta(item.file,apiKey);
     item.meta=meta;
     if(meta.gpsLat!=null&&meta.gpsLng!=null&&!meta.locationName){meta.locationName=await _spReverseGeocodeCoords(meta.gpsLat,meta.gpsLng);}
