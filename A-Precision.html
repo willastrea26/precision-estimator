@@ -8388,14 +8388,20 @@ async function _spReverseGeocodeCoords(lat,lng){
 }
 async function _spExtractMeta(file,apiKey){
   const r={date:null,time:null,source:null,gpsLat:null,gpsLng:null,device:null,locationName:null};
-  // Method 1: EXIF
-  try{if(window.exifr){const exif=await exifr.parse(file,{pick:['DateTimeOriginal','GPSLatitude','GPSLongitude','Make','Model']});if(exif?.DateTimeOriginal){const d=new Date(exif.DateTimeOriginal);r.date=_localISO(d);r.time=d.toTimeString().slice(0,8);r.source='exif';}if(exif?.GPSLatitude!=null&&exif?.GPSLongitude!=null){r.gpsLat=exif.GPSLatitude;r.gpsLng=exif.GPSLongitude;}if(exif?.Make||exif?.Model)r.device=[exif.Make,exif.Model].filter(Boolean).join(' ');}}catch{}
+  // Method 1: EXIF (try/catch handles missing library — no window.exifr guard)
+  try{
+    const exif=await exifr.parse(file,{pick:['DateTimeOriginal','DateTimeDigitized','DateTime','GPSLatitude','GPSLongitude','Make','Model'],translateValues:true});
+    if(exif){
+      const dt=exif.DateTimeOriginal||exif.DateTimeDigitized||exif.DateTime;
+      if(dt){const d=new Date(dt);if(!isNaN(d)&&d.getFullYear()>=2000){r.date=_localISO(d);r.time=d.toTimeString().slice(0,8);r.source='exif';}}
+      if(exif.GPSLatitude!=null&&exif.GPSLongitude!=null){r.gpsLat=exif.GPSLatitude;r.gpsLng=exif.GPSLongitude;}
+      if(exif.Make||exif.Model)r.device=[exif.Make,exif.Model].filter(Boolean).join(' ');
+    }
+  }catch{}
   // Method 2: AI vision (only if no date and key available)
   if(!r.date&&apiKey){try{const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(file);});const mime=file.type||'image/jpeg';const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':apiKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:80,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:'Look at this photo. If there is a date/time stamp visible in the image extract it and return ONLY JSON: {"date":"YYYY-MM-DD","time":"HH:MM:SS","location":"location if visible or null"}. If no date stamp visible return: {"date":null}'}]}]})});if(resp.ok){const data=await resp.json();const text=data.content?.[0]?.text||'';const m=text.match(/\{[\s\S]*\}/);if(m){const parsed=JSON.parse(m[0]);if(parsed.date){r.date=parsed.date;r.time=parsed.time||null;r.source='ai';}}}}catch{}}
   // Method 3: filename
   if(!r.date){const fd=_spParseFilenameDate(file.name);if(fd){r.date=fd;r.source='filename';}}
-  // Method 4: file.lastModified — iOS camera roll always sets this to capture time
-  if(!r.date&&file.lastModified){const d=new Date(file.lastModified);if(d.getFullYear()>=2000&&d.getFullYear()<=2100){r.date=_localISO(d);r.time=d.toTimeString().slice(0,8);r.source='modified';}}
   return r;
 }
 function _spDateLabel(meta){
