@@ -6331,7 +6331,9 @@ function _srGet(){
 }
 function _srSave(arr){
   localStorage.setItem(_SR_KEY,JSON.stringify(arr));
-  DB.saveSettings({supplier_rates:arr});
+  _c.settings.supplier_rates=arr;
+  _sb.from('app_settings').upsert({user_id:_c.userId,supplier_rates:arr},{onConflict:'user_id'})
+    .then(({error})=>{if(error)console.error('SR save:',error.message);});
 }
 function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
 
