@@ -8448,6 +8448,8 @@ window.spDoUpload=async function(){
   const caption=document.getElementById('sp-up-caption')?.value.trim()||'';
   const notes=document.getElementById('sp-up-notes')?.value.trim()||'';
   const progress=document.getElementById('sp-up-progress');
+  const{data:{user:_spUser}}=await _sb.auth.getUser();
+  const _spUserId=_spUser?.id||null;
   let done=0;
   for(const item of _spPendingFiles){
     try{
@@ -8457,7 +8459,7 @@ window.spDoUpload=async function(){
       const storagePath=`${projId}/${uid()}.${ext}`;
       const{error:upErr}=await _sb.storage.from(SP_BUCKET).upload(storagePath,item.file,{contentType:item.file.type||'image/jpeg'});
       if(upErr)throw upErr;
-      const row={id:uid(),filename:item.file.name,storage_path:storagePath,project_id:projId,project_name:projName,date_taken:dateTaken,tag,caption,notes,uploaded_at:new Date().toISOString(),size:item.file.size,gps_lat:meta.gpsLat||null,gps_lng:meta.gpsLng||null,location_name:meta.locationName||null,device:meta.device||null,date_source:meta.source||'manual'};
+      const row={id:uid(),filename:item.file.name,storage_path:storagePath,project_id:projId,project_name:projName,date_taken:dateTaken,tag,caption,notes,uploaded_at:new Date().toISOString(),size:item.file.size,gps_lat:meta.gpsLat||null,gps_lng:meta.gpsLng||null,location_name:meta.locationName||null,device:meta.device||null,date_source:meta.source||'manual',user_id:_spUserId};
       const{error:insErr}=await _sb.from('site_photos').insert(row);
       if(insErr){await _sb.storage.from(SP_BUCKET).remove([storagePath]);throw insErr;}
       done++;if(progress)progress.innerHTML=`<div style="font-size:.76rem;color:var(--green)">${done} / ${_spPendingFiles.length} uploaded…</div>`;
