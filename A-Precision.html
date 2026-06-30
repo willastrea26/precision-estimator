@@ -117,7 +117,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 .mob-toggle:hover{background:rgba(59,130,246,.18);opacity:1}
 .mob-toggle.active{background:rgba(59,130,246,.22);opacity:1;border-color:rgba(59,130,246,.4)}
 .mob-toggle svg{width:13px;height:13px}
-.app-mobile .sidebar{transform:translateX(-100%);transition:transform .26s cubic-bezier(.4,0,.2,1);position:fixed;z-index:300;box-shadow:8px 0 40px rgba(0,0,0,.75)}
+.app-mobile .sidebar{transform:translateX(-100%);transition:transform .26s cubic-bezier(.4,0,.2,1);position:fixed;z-index:9999;box-shadow:8px 0 40px rgba(0,0,0,.75)}
 .app-mobile .sidebar.mob-open{transform:translateX(0)}
 .app-mobile .main{margin-left:0;width:100%}
 .app-mobile .page{padding:14px 14px}
@@ -126,7 +126,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 .mob-ham:active{background:rgba(255,255,255,.1)}
 .mob-topbar-title{font-size:.85rem;font-weight:600;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mob-topbar-logo{font-size:.65rem;font-weight:700;color:var(--blue);letter-spacing:.14em;text-transform:uppercase;opacity:.7}
-.mob-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:250;-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}
+.mob-overlay{position:fixed;top:0;left:var(--sw);right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9998}
 /* DASHBOARD BACKGROUND IMAGES */
 .dash-bg-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
 .dash-bg-img{position:absolute;mix-blend-mode:screen;user-select:none}
