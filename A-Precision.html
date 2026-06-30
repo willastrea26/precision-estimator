@@ -117,8 +117,9 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 .mob-toggle:hover{background:rgba(59,130,246,.18);opacity:1}
 .mob-toggle.active{background:rgba(59,130,246,.22);opacity:1;border-color:rgba(59,130,246,.4)}
 .mob-toggle svg{width:13px;height:13px}
-.app-mobile .sidebar{transform:translateX(-100%);transition:transform .26s cubic-bezier(.4,0,.2,1);position:fixed;z-index:9999;box-shadow:8px 0 40px rgba(0,0,0,.75)}
+.app-mobile .sidebar{transform:translateX(-100%);transition:transform .26s cubic-bezier(.4,0,.2,1);position:fixed;z-index:9999;box-shadow:8px 0 40px rgba(0,0,0,.75);height:100vh;overflow:hidden}
 .app-mobile .sidebar.mob-open{transform:translateX(0)}
+.app-mobile .sb-nav{overflow-y:scroll;-webkit-overflow-scrolling:touch}
 .app-mobile .main{margin-left:0;width:100%}
 .app-mobile .page{padding:14px 14px}
 .mob-topbar{height:52px;background:linear-gradient(180deg,#0C1626,#080D18);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:12px;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.3)}
@@ -1189,14 +1190,6 @@ function renderShell(content,activePage){
           const dx=e.changedTouches[0].clientX-tx;const dy=Math.abs(e.changedTouches[0].clientY-ty);
           if(dx>55&&dy<80&&tx<44)_mobOpen();
           else if(dx<-55&&dy<80&&_mobSidebarOpen)_mobClose();
-        },{passive:true});
-      }
-      if(sb){
-        let stx=0,sty=0;
-        sb.addEventListener('touchstart',e=>{stx=e.touches[0].clientX;sty=e.touches[0].clientY;},{passive:true});
-        sb.addEventListener('touchend',e=>{
-          const dx=e.changedTouches[0].clientX-stx;const dy=Math.abs(e.changedTouches[0].clientY-sty);
-          if(dx<-55&&dy<80)_mobClose();
         },{passive:true});
       }
     },0);
