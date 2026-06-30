@@ -805,14 +805,13 @@ async function _sbLoad(){
   _c.projects=p.data||[];_c.rates=r.data||[];_c.productivity=pr.data||[];
   _c.contacts=co.data||[];_c.quotes=q.data||[];_c.compliance=cm.data||[];
   if(s.data)_c.settings={...s.data};
-  // Seed localStorage from Supabase if local copy is missing
-  if(!localStorage.getItem(_SR_KEY)&&_c.settings.supplier_rates?.length){
+  // Always use Supabase as source of truth for supplier rates so all devices stay in sync
+  if(_c.settings.supplier_rates?.length){
     localStorage.setItem(_SR_KEY,JSON.stringify(_c.settings.supplier_rates));
-  }
-  // Push localStorage supplier rates to Supabase if Supabase doesn't have them yet
-  const _lsSR=localStorage.getItem(_SR_KEY);
-  if(_lsSR&&!_c.settings.supplier_rates?.length){
-    try{const _arr=JSON.parse(_lsSR);if(_arr.length)DB.saveSettings({supplier_rates:_arr});}catch(e){}
+  } else {
+    // Supabase empty — push up from localStorage if it has data (first-time migration)
+    const _lsSR=localStorage.getItem(_SR_KEY);
+    if(_lsSR){try{const _arr=JSON.parse(_lsSR);if(_arr.length)DB.saveSettings({supplier_rates:_arr});}catch(e){}}
   }
   return true;
 }
