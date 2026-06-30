@@ -8060,34 +8060,37 @@ window.showCompDetail=function(id){
 };
 
 /* ================================================================
-   SITE PHOTOS  (IndexedDB storage — no localStorage size limits)
+   SITE PHOTOS  (Supabase Storage — shared across all users)
 ================================================================ */
 const SP_TAGS=['Excavation','Pipe laying','Concrete','Backfill','Reinstatement','Traffic control','Safety','Progress','Defect','Other'];
 const SP_PROJ_COLORS=['#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#EC4899','#6366F1','#F97316','#14B8A6'];
 let _spFilters={project:'',from:'',to:'',tag:'',search:'',groupBy:'date'};
 let _spLB={photos:[],idx:0};
-let _photoDB=null;
+const SP_BUCKET='site-photos';
 
-// IndexedDB wrapper
-async function _spDB(){
-  if(_photoDB)return _photoDB;
-  return new Promise((res,rej)=>{
-    const req=indexedDB.open('APrecisionPhotos',1);
-    req.onupgradeneeded=e=>{
-      const db=e.target.result;
-      if(!db.objectStoreNames.contains('photos')){
-        const s=db.createObjectStore('photos',{keyPath:'id'});
-        s.createIndex('projectId','projectId');s.createIndex('dateTaken','dateTaken');
-      }
-    };
-    req.onsuccess=e=>{_photoDB=e.target.result;res(_photoDB);};
-    req.onerror=e=>rej(e.target.error);
-  });
+async function _spGetAll(){
+  const{data,error}=await _sb.from('site_photos').select('*').order('date_taken',{ascending:false}).order('uploaded_at',{ascending:false});
+  if(error){console.error('Photo load:',error);return[];}
+  return(data||[]).map(r=>({
+    id:r.id,filename:r.filename,storagePath:r.storage_path,
+    url:_sb.storage.from(SP_BUCKET).getPublicUrl(r.storage_path).data.publicUrl,
+    projectId:r.project_id,projectName:r.project_name,dateTaken:r.date_taken,
+    tag:r.tag,caption:r.caption,notes:r.notes,uploadedAt:r.uploaded_at,
+    size:r.size,gpsLat:r.gps_lat,gpsLng:r.gps_lng,locationName:r.location_name,
+    device:r.device,dateSource:r.date_source
+  }));
 }
-async function _spGetAll(){const db=await _spDB();return new Promise((res,rej)=>{const tx=db.transaction('photos','readonly');const r=tx.objectStore('photos').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);});}
-async function _spAdd(photo){const db=await _spDB();return new Promise((res,rej)=>{const tx=db.transaction('photos','readwrite');const r=tx.objectStore('photos').put(photo);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});}
-async function _spDel(id){const db=await _spDB();return new Promise((res,rej)=>{const tx=db.transaction('photos','readwrite');const r=tx.objectStore('photos').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});}
-async function _spUpdate(photo){return _spAdd(photo);}
+async function _spDel(id){
+  const{data}=await _sb.from('site_photos').select('storage_path').eq('id',id).single();
+  if(data?.storage_path)await _sb.storage.from(SP_BUCKET).remove([data.storage_path]);
+  await _sb.from('site_photos').delete().eq('id',id);
+}
+async function _spUpdate(photo){
+  await _sb.from('site_photos').update({
+    caption:photo.caption,project_id:photo.projectId,project_name:photo.projectName,
+    date_taken:photo.dateTaken,tag:photo.tag,notes:photo.notes
+  }).eq('id',photo.id);
+}
 
 function _spProjColor(projId){
   const projects=DB.getProjects();const idx=projects.findIndex(p=>p.id===projId);
@@ -8117,7 +8120,7 @@ function _spRenderGrid(photos){
   const tileHTML=(photo,idx)=>{
     const col=_spProjColor(photo.projectId);
     return`<div class="sp-tile" onclick="window.spOpenLB('${photo.id}')">
-      <img src="${photo.data}" alt="${esc(photo.filename)}" loading="lazy">
+      <img src="${photo.url}" alt="${esc(photo.filename)}" loading="lazy">
       <div class="sp-overlay"></div>
       ${photo.dateTaken?`<div class="sp-timestamp">${new Date(photo.dateTaken+'T00:00:00').toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'})}</div>`:''}
       ${photo.caption?`<div class="sp-tile-caption">${esc(photo.caption)}</div>`:''}
@@ -8391,10 +8394,15 @@ window.spDoUpload=async function(){
   let done=0;
   for(const item of _spPendingFiles){
     try{
-      const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=rej;fr.readAsDataURL(item.file);});
       const meta=item.meta||{};
       const dateTaken=overrideDate||meta.date||today();
-      await _spAdd({id:uid(),filename:item.file.name,data:b64,projectId:projId,projectName:projName,dateTaken,tag,caption,notes,uploadedAt:new Date().toISOString(),size:item.file.size,gpsLat:meta.gpsLat||null,gpsLng:meta.gpsLng||null,locationName:meta.locationName||null,device:meta.device||null,dateSource:meta.source||'manual'});
+      const ext=(item.file.name.split('.').pop()||'jpg').toLowerCase();
+      const storagePath=`${projId}/${uid()}.${ext}`;
+      const{error:upErr}=await _sb.storage.from(SP_BUCKET).upload(storagePath,item.file,{contentType:item.file.type||'image/jpeg'});
+      if(upErr)throw upErr;
+      const row={id:uid(),filename:item.file.name,storage_path:storagePath,project_id:projId,project_name:projName,date_taken:dateTaken,tag,caption,notes,uploaded_at:new Date().toISOString(),size:item.file.size,gps_lat:meta.gpsLat||null,gps_lng:meta.gpsLng||null,location_name:meta.locationName||null,device:meta.device||null,date_source:meta.source||'manual'};
+      const{error:insErr}=await _sb.from('site_photos').insert(row);
+      if(insErr){await _sb.storage.from(SP_BUCKET).remove([storagePath]);throw insErr;}
       done++;if(progress)progress.innerHTML=`<div style="font-size:.76rem;color:var(--green)">${done} / ${_spPendingFiles.length} uploaded…</div>`;
     }catch(e){toast('Error uploading '+item.file.name+': '+e.message,'error');}
   }
@@ -8426,7 +8434,7 @@ function _spRenderLB(){
     </div>
     <div class="sp-lb-main">
       <button class="sp-lb-nav sp-lb-prev" onclick="window.spLBNav(-1)">‹</button>
-      <img src="${p.data}" alt="${esc(p.filename)}" style="max-height:calc(100vh - 110px)">
+      <img src="${p.url}" alt="${esc(p.filename)}" style="max-height:calc(100vh - 110px)">
       <button class="sp-lb-nav sp-lb-next" onclick="window.spLBNav(1)">›</button>
     </div>
     <div class="sp-lb-bottom">
@@ -8462,8 +8470,9 @@ window.spGenCaption=async function(photoId){
   try{
     const photo=_spLB.photos.find(p=>p.id===photoId);if(!photo)throw new Error('Photo not found');
     const key=DB.getSettings().ai_key||'';if(!key)throw new Error('No API key — add it in Settings');
-    const mimeType=photo.data.split(';')[0].replace('data:','');
-    const b64=photo.data.split(',')[1];
+    const imgResp=await fetch(photo.url);if(!imgResp.ok)throw new Error('Could not fetch photo');
+    const imgBlob=await imgResp.blob();const mimeType=imgBlob.type||'image/jpeg';
+    const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(imgBlob);});
     const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model:'claude-opus-4-5',max_tokens:150,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:'You are a civil construction site inspector. Describe what you see in this site photo in 1-2 sentences using civil construction terminology. Focus on: what activity is happening, what materials or plant are visible, approximate stage of work, and any visible safety observations. Be concise and professional.'}]}]})});
     if(!resp.ok)throw new Error('API error '+resp.status);
@@ -8485,7 +8494,8 @@ window.spDownloadPhoto=async function(photoId){
   let p=_spLB.photos.find(x=>x.id===photoId);
   if(!p){const all=await _spGetAll();p=all.find(x=>x.id===photoId);}
   if(!p)return;
-  const a=document.createElement('a');a.href=p.data;a.download=p.filename;a.click();
+  try{const resp=await fetch(p.url);const blob=await resp.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=p.filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000);}
+  catch{window.open(p.url,'_blank');}
 };
 window.spDeletePhoto=async function(photoId){
   if(!confirm('Delete this photo? This cannot be undone.'))return;
