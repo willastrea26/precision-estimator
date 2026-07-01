@@ -8361,7 +8361,13 @@ window.spQuickDate=function(label){
 // Upload sheet
 window.showSpUploadSheet=function(){
   const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
+  const _spLastProj=localStorage.getItem('ap_sp_last_project')||'';
   showSheet({title:'Add Site Photos',body:`
+    <button class="btn btn-blue" id="sp-camera-btn" style="width:100%;padding:14px;font-size:.95rem;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px" onclick="document.getElementById('sp-camera-inp').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      Take Photo
+    </button>
+    <input type="file" id="sp-camera-inp" accept="image/*" capture="environment" style="display:none">
     <div class="doc-drop-zone" id="sp-dz" style="margin-bottom:14px">
       <input type="file" id="sp-file-inp" accept=".jpg,.jpeg,.png,.heic,.webp" multiple>
       <div class="doc-drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:42px;height:42px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
@@ -8372,7 +8378,7 @@ window.showSpUploadSheet=function(){
     <div id="sp-preview" style="display:none">
       <div id="sp-preview-list" style="margin-bottom:12px;max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:7px;padding:8px"></div>
       <div class="form-group mb-3"><label class="form-label">Project * (applies to all photos)</label>
-        <select class="form-input" id="sp-up-proj"><option value="">Select project…</option>${projects.map(p=>`<option value="${p.id}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('')}</select>
+        <select class="form-input" id="sp-up-proj"><option value=""${projects.some(p=>p.id===_spLastProj)?'':' selected'}>Select project…</option>${projects.map(p=>`<option value="${p.id}" data-name="${esc(p.name)}"${p.id===_spLastProj?' selected':''}>${esc(p.name)}</option>`).join('')}</select>
       </div>
       <div class="form-row mb-3">
         <div class="form-group" style="margin:0">
@@ -8391,8 +8397,10 @@ window.showSpUploadSheet=function(){
   // Wire up file input
   setTimeout(()=>{
     const inp=document.getElementById('sp-file-inp');
+    const cam=document.getElementById('sp-camera-inp');
     const dz=document.getElementById('sp-dz');
     if(inp)inp.addEventListener('change',()=>window.spPreviewFiles(inp.files));
+    if(cam)cam.addEventListener('change',()=>{window.spPreviewFiles(cam.files,true);cam.value='';});
     if(dz){
       dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
       dz.addEventListener('dragleave',e=>{if(!dz.contains(e.relatedTarget))dz.classList.remove('dragover');});
@@ -8409,7 +8417,7 @@ function _spParseFilenameDate(name){
 async function _spReverseGeocodeCoords(lat,lng){
   try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,{headers:{'Accept-Language':'en-AU,en;q=0.8'}});const d=await r.json();if(d.address){const a=d.address;return[a.suburb||a.city_district||a.town||a.city||a.village,a.state_district||a.state].filter(Boolean).join(', ');}return`${lat.toFixed(4)}, ${lng.toFixed(4)}`;}catch{return`${lat.toFixed(4)}, ${lng.toFixed(4)}`;}
 }
-async function _spExtractMeta(file,apiKey){
+async function _spExtractMeta(file,apiKey,fromCamera){
   const r={date:null,time:null,source:null,gpsLat:null,gpsLng:null,device:null,locationName:null};
   // Method 1: EXIF via exifr (simple pick list — same approach that worked originally)
   try{
@@ -8421,6 +8429,8 @@ async function _spExtractMeta(file,apiKey){
       if(exif.Make||exif.Model)r.device=[exif.Make,exif.Model].filter(Boolean).join(' ');
     }
   }catch{}
+  // Camera capture: the photo was just taken, so "now" is a reliable fallback if EXIF is stripped
+  if(!r.date&&fromCamera){const now=new Date();r.date=_localISO(now);r.time=now.toTimeString().slice(0,8);r.source='camera';}
   // Method 2: AI vision (only if no date and key available)
   if(!r.date&&apiKey){try{const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(file);});const mime=file.type||'image/jpeg';const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':apiKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:80,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:'Look at this photo. If there is a date/time stamp visible in the image extract it and return ONLY JSON: {"date":"YYYY-MM-DD","time":"HH:MM:SS","location":"location if visible or null"}. If no date stamp visible return: {"date":null}'}]}]})});if(resp.ok){const data=await resp.json();const text=data.content?.[0]?.text||'';const m=text.match(/\{[\s\S]*\}/);if(m){const parsed=JSON.parse(m[0]);if(parsed.date){r.date=parsed.date;r.time=parsed.time||null;r.source='ai';}}}}catch{}}
   // Method 3: filename
@@ -8432,7 +8442,7 @@ function _spDateLabel(meta){
   if(!meta.date)return'<span style="color:var(--amber)">📅 No date detected — set manually</span>';
   const d=new Date(meta.date+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
   const t=meta.time?` at ${meta.time.slice(0,5)}`:'';
-  const src=meta.source==='exif'?'EXIF':meta.source==='ai'?'photo stamp':meta.source==='filename'?'filename':'detected';
+  const src=meta.source==='exif'?'EXIF':meta.source==='ai'?'photo stamp':meta.source==='filename'?'filename':meta.source==='camera'?'just taken':'detected';
   return`<span style="color:var(--green)">📅 ${d}${t} <span style="color:var(--muted2)">(${src})</span></span>`;
 }
 function _spFileRowHTML(item,i){
@@ -8449,7 +8459,7 @@ function _spFileRowHTML(item,i){
 }
 
 let _spPendingFiles=[];
-window.spPreviewFiles=async function(fileList){
+window.spPreviewFiles=async function(fileList,fromCamera){
   const tooBig=[...fileList].filter(f=>f.size>20*1024*1024);
   if(tooBig.length)toast(tooBig.length+' file(s) over 20MB skipped.','warning');
   const newFiles=[...fileList].filter(f=>f.size<=20*1024*1024).map(f=>({file:f,meta:null}));
@@ -8466,7 +8476,7 @@ window.spPreviewFiles=async function(fileList){
   const apiKey=DB.getSettings().ai_key||'';
   await Promise.all(newFiles.map(async(item,j)=>{
     const i=startIdx+j;
-    const meta=await _spExtractMeta(item.file,apiKey);
+    const meta=await _spExtractMeta(item.file,apiKey,fromCamera);
     item.meta=meta;
     if(meta.gpsLat!=null&&meta.gpsLng!=null&&!meta.locationName){meta.locationName=await _spReverseGeocodeCoords(meta.gpsLat,meta.gpsLng);}
     const row=document.getElementById(`sp-fr-${i}`);if(row)row.outerHTML=_spFileRowHTML(item,i);
@@ -8478,6 +8488,7 @@ window.spDoUpload=async function(){
   const projId=projSel?.value;const projName=projSel?.selectedOptions[0]?.dataset.name||projSel?.selectedOptions[0]?.text||'';
   if(!projId){toast('Please select a project.','warning');return;}
   if(!_spPendingFiles.length)return;
+  localStorage.setItem('ap_sp_last_project',projId);
   const btn=document.getElementById('sp-up-btn');if(btn){btn.disabled=true;btn.textContent='Uploading…';}
   const overrideDate=document.getElementById('sp-up-date-override')?.value||'';
   const tag=document.getElementById('sp-up-tag')?.value||'Progress';
