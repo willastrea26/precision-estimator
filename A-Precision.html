@@ -1838,6 +1838,7 @@ function renderTabSummary(p,id){
   const exclItems=parseList(exclRaw);
   const assumeItems=parseList(sf.key_assumptions||'');
   const rfiItems=parseList(sf.missing_information||'');
+  const keyDates=Array.isArray(sf.key_dates)?sf.key_dates:[];
 
   const pb=(label,cur,tot,cls='')=>{
     const pct=tot>0?Math.round(cur/tot*100):0;
@@ -2018,6 +2019,23 @@ function renderTabSummary(p,id){
           </div>`,'')}
       </div>
 
+      <!-- Key Dates -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div class="card-title" style="margin:0">Key Dates</div>
+        </div>
+        ${keyDates.map((d,i)=>`<div class="sow-item" style="align-items:center">
+          <span class="sow-icon" style="color:var(--blue)">📅</span>
+          <span class="sow-text"><b style="color:var(--text)">${esc(d.label||'')}</b>${d.date?` — ${new Date(d.date+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}`:' — <span style="color:var(--muted2)">no date</span>'}${d.source?`<span style="font-size:.66rem;color:var(--muted2);font-style:italic"> · ${esc(d.source)}</span>`:''}</span>
+          <button class="sow-del" data-action="del-key-date" data-id="${id}" data-idx="${i}" title="Remove">×</button>
+        </div>`).join('')}
+        <div style="display:flex;gap:6px;margin-top:${keyDates.length?'8':'0'}px">
+          <input class="form-input" id="kd-add-label-${id}" placeholder="Milestone (e.g. Tender Close)…" style="flex:1;font-size:.79rem;padding:5px 8px" onkeydown="if(event.key==='Enter'){event.preventDefault();window._sfAddKeyDate('${id}');}">
+          <input class="form-input" id="kd-add-date-${id}" type="date" style="width:145px;font-size:.79rem;padding:5px 8px">
+          <button class="btn btn-ghost btn-xs" style="color:var(--blue);border-color:rgba(59,130,246,.3);padding:4px 9px" onclick="window._sfAddKeyDate('${id}')">+</button>
+        </div>
+      </div>
+
     </div>
   </div>
   ${(function(){
@@ -2032,7 +2050,8 @@ function renderTabSummary(p,id){
           +'<div style="width:36px;height:36px;border-radius:50%;background:'+col+';display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.95rem;flex-shrink:0">'+initial+'</div>'
           +'<input class="form-input" style="font-weight:600;font-size:.85rem;flex:1;min-width:0" value="'+esc(person.name||'')+'" placeholder="Full name…" onblur="window.saveKeyPersonField(\''+id+'\',\''+person.id+'\',\'name\',this.value)">'
         +'</div>'
-        +'<input class="form-input" style="font-size:.78rem;color:var(--muted);width:100%;box-sizing:border-box" value="'+esc(person.role||'')+'" placeholder="Role / Position…" onblur="window.saveKeyPersonField(\''+id+'\',\''+person.id+'\',\'role\',this.value)">'
+        +'<input class="form-input" style="font-size:.78rem;color:var(--muted);width:100%;box-sizing:border-box;margin-bottom:6px" value="'+esc(person.role||'')+'" placeholder="Role / Position…" onblur="window.saveKeyPersonField(\''+id+'\',\''+person.id+'\',\'role\',this.value)">'
+        +'<input class="form-input" style="font-size:.78rem;color:var(--muted);width:100%;box-sizing:border-box" value="'+esc(person.company||'')+'" placeholder="Company…" onblur="window.saveKeyPersonField(\''+id+'\',\''+person.id+'\',\'company\',this.value)">'
       +'</div>';
     }).join('');
     return '<div class="card" style="margin-top:16px">'
@@ -2044,6 +2063,55 @@ function renderTabSummary(p,id){
         ?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">'+cards+'</div>'
         :'<div style="font-size:.82rem;color:var(--muted2)">No key personnel added yet.</div>')
     +'</div>';
+  })()}
+  ${(function(){
+    const rtcs=Array.isArray(sf.required_trade_categories)?sf.required_trade_categories:[];
+    const shortlist=Array.isArray(sf.shortlisted_suppliers)?sf.shortlisted_suppliers:[];
+    const findEntry=(cat,srid)=>shortlist.find(e=>e.category===cat&&(e.supplier_rate_id||null)===(srid||null));
+    const allSups=_srGet().filter(s=>_srGetLc(s)==='active');
+    const catLabel=c=>(SR_CAT_LABELS&&SR_CAT_LABELS[c])||c;
+    const qBtn=(entry)=>entry.status==='quote_created'
+      ? `<button class="btn btn-xs btn-outline" onclick="navigate('quotes')" style="color:var(--green);border-color:rgba(16,185,129,.35)" title="Draft quote created">✓ Quote created</button>`
+      : `<button class="btn btn-xs btn-blue" data-action="create-shortlist-quote" data-id="${id}" data-entry="${entry.id}">Create draft quote</button>`;
+    const rows=rtcs.map(rtc=>{
+      const cat=rtc.category;const label=catLabel(cat);
+      const matches=allSups.filter(s=>_srGetCats(s).includes(cat));
+      const supRows=matches.map(s=>{
+        const entry=findEntry(cat,s.id);
+        const on=!!entry;
+        const rateCount=(s.items||[]).length;
+        const toggle=`<button class="btn btn-xs ${on?'btn-green':'btn-outline'}" onclick="window._toggleShortlist('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})" title="${on?'Remove from shortlist':'Add to shortlist'}">${on?'✓ Shortlisted':'+ Shortlist'}</button>`;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+          <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</span> <span style="font-size:.7rem;color:var(--muted2)">${rateCount} rate${rateCount!==1?'s':''}</span></div>
+          ${entry&&entry.status!=='quote_created'?qBtn(entry):''}
+          ${entry&&entry.status==='quote_created'?qBtn(entry):toggle}
+        </div>`;
+      }).join('');
+      // "Not on file" entry (category-level, supplier_rate_id null)
+      const nofEntry=findEntry(cat,null);
+      const notOnFile=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;${matches.length?'border-top:1px dashed rgba(255,255,255,.08);margin-top:4px':''}">
+        <div style="flex:1;min-width:0;font-size:.76rem;color:var(--muted2)">${matches.length?'None of these? ':'⚠ No supplier on file for this trade. '}<button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button></div>
+        ${nofEntry&&nofEntry.status==='quote_created'?qBtn(nofEntry):''}
+        ${nofEntry&&nofEntry.status!=='quote_created'?qBtn(nofEntry):''}
+        <button class="btn btn-xs ${nofEntry?'btn-green':'btn-outline'}" onclick="window._toggleShortlist('${id}','${cat}',null,'${esc(label)} (not on file)')" title="Shortlist this trade without a specific supplier">${nofEntry?'✓ Shortlisted':'+ Shortlist trade'}</button>
+      </div>`;
+      return `<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:.82rem;font-weight:700;color:var(--text)">${esc(label)}</span>
+          ${matches.length?`<span class="badge badge-green" style="font-size:.58rem">${matches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`}
+        </div>
+        ${rtc.reason?`<div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;font-style:italic">${esc(rtc.reason)}</div>`:''}
+        ${supRows}
+        ${notOnFile}
+      </div>`;
+    }).join('');
+    return `<div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title" style="margin:0">Key Suppliers</div>
+        <span style="font-size:.72rem;color:var(--muted2)">Shortlist → create draft quotes</span>
+      </div>
+      ${rtcs.length?rows:`<div style="font-size:.82rem;color:var(--muted2)">No trade categories identified yet. Run the AI Analyser on this project's documents to identify the suppliers this job needs.</div>`}
+    </div>`;
   })()}
   ${(function(){
     const imgs=p.key_images||[];
@@ -2255,11 +2323,84 @@ window.saveKeyPersonField=function(projId,personId,field,value){
   var person=(p.key_personnel||[]).find(function(x){return x.id===personId;});
   if(person){person[field]=value;DB.saveProject(p);}
 };
+window._sfAddKeyDate=function(projId){
+  var labelEl=document.getElementById('kd-add-label-'+projId);
+  var dateEl=document.getElementById('kd-add-date-'+projId);
+  var label=(labelEl&&labelEl.value||'').trim();
+  var date=(dateEl&&dateEl.value||'').trim();
+  if(!label)return;
+  var p=DB.getProject(projId);if(!p)return;
+  if(!p.summary_fields)p.summary_fields={};
+  if(!Array.isArray(p.summary_fields.key_dates))p.summary_fields.key_dates=[];
+  p.summary_fields.key_dates.push({id:uid(),label:label,date:date||null,source:''});
+  DB.saveProject(p);navigate('project/'+projId+'/summary');
+};
+window._sfDelKeyDate=function(projId,idx){
+  var p=DB.getProject(projId);if(!p||!p.summary_fields||!Array.isArray(p.summary_fields.key_dates))return;
+  p.summary_fields.key_dates.splice(idx,1);
+  DB.saveProject(p);navigate('project/'+projId+'/summary');
+};
+// Toggle a supplier (or "not on file" category) on/off the quote shortlist
+window._toggleShortlist=function(projId,category,supplierRateId,supplierName){
+  var p=DB.getProject(projId);if(!p)return;
+  if(!p.summary_fields)p.summary_fields={};
+  if(!Array.isArray(p.summary_fields.shortlisted_suppliers))p.summary_fields.shortlisted_suppliers=[];
+  var arr=p.summary_fields.shortlisted_suppliers;
+  var srid=supplierRateId||null;
+  var idx=arr.findIndex(function(e){return e.category===category&&(e.supplier_rate_id||null)===srid;});
+  if(idx>=0){
+    if(arr[idx].status==='quote_created'){toast('A draft quote already exists — remove it from the Quotes tab first.','warning');return;}
+    arr.splice(idx,1);
+  }else{
+    arr.push({id:uid(),category:category,supplier_rate_id:srid,supplier_name:supplierName||'',status:'shortlisted',quote_id:null});
+  }
+  DB.saveProject(p);navigate('project/'+projId+'/summary');
+};
+// Confirm a shortlisted supplier → create a draft quote linked to the All Quotes section
+window.createQuoteFromShortlist=function(projId,entryId){
+  var p=DB.getProject(projId);if(!p||!p.summary_fields)return;
+  var arr=p.summary_fields.shortlisted_suppliers||[];
+  var entry=arr.find(function(e){return e.id===entryId;});
+  if(!entry)return;
+  if(entry.status==='quote_created'){toast('Draft quote already created.','warning');return;}
+  var contacts=DB.getContacts();
+  var contactId=null;
+  var supplierName=entry.supplier_name||'';
+  if(entry.supplier_rate_id){
+    var sr=_srGet().find(function(s){return s.id===entry.supplier_rate_id;});
+    if(sr){
+      supplierName=sr.company||supplierName;
+      var match=_srFindContactMatch(sr,contacts);
+      if(match){contactId=match.id;}
+      else{
+        var newC={id:uid(),company_name:sr.company||'',contact_person:sr.contact_name||'',contact_type:'supplier',trade_category:sr.trade_category||'other',email:sr.contact_email||sr.email||'',phone:sr.contact_phone||sr.phone||'',location:'',status:'active',notes:''};
+        contacts.push(newC);DB.saveContacts(contacts);contactId=newC.id;
+      }
+    }
+  }
+  var catLabel=(typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[entry.category])||entry.category||'General';
+  var scope=(p.summary_fields.description||'').trim();
+  if(!scope){var rtc=(p.summary_fields.required_trade_categories||[]).find(function(t){return t.category===entry.category;});scope=(rtc&&rtc.reason)||'';}
+  var quotes=DB.getQuotes();
+  var q={id:uid(),project_id:projId,contact_id:contactId,trade_package:catLabel,scope_requested:scope,status:'not_requested',request_date:today(),due_date:null,quoted_amount:null,notes:'Created from AI supplier shortlist.'};
+  quotes.push(q);DB.saveQuotes(quotes);
+  entry.status='quote_created';entry.quote_id=q.id;entry.supplier_name=supplierName;
+  DB.saveProject(p);
+  toast('Draft quote created for '+esc(supplierName||catLabel)+'. See the Quotes tab.','success');
+  navigate('project/'+projId+'/summary');
+};
 
 function renderTabGeotech(p,id){
   const gf=p.geotech_fields||{};
+  const st=gf.structured||null;
   const risks=p.risks||[];
   const geoRisks=risks.filter(r=>r.category==='geotechnical');
+
+  // Confidence badge (mirrors _renderReviewUI cb())
+  const gcb=c=>c?`<span class="badge ${c==='high'?'badge-green':c==='low'?'badge-red':'badge-amber'}" style="font-size:.58rem;margin-left:6px">${esc(c)}</span>`:'';
+  const srcLine=s=>s?`<div style="font-size:.68rem;color:var(--muted2);margin-top:5px;font-style:italic">Source: ${esc(s)}</div>`:'';
+  // Presence pill (yes/no/unknown)
+  const presPill=v=>{const col=v==='yes'?'badge-red':v==='no'?'badge-green':'badge-grey';return`<span class="badge ${col}" style="font-size:.62rem">${esc(v||'unknown')}</span>`;};
 
   const gField=(k,label,rows=3)=>`
     <div class="geo-field-section">
@@ -2277,7 +2418,86 @@ function renderTabGeotech(p,id){
       </div>
     </div>`;
 
+  // Structured (AI-extracted) editable text card: edits structured[section][subfield]
+  const structTextCard=(section,label,value,confidence,source,rows=3)=>`
+    <div class="geo-field-section">
+      <div class="geo-field-section-label">
+        <span>${label}${gcb(confidence)}</span>
+        <button class="btn btn-ghost btn-xs" data-action="edit-geo-structured" data-section="${section}">${icon('edit')}</button>
+      </div>
+      <div id="geo-view-${section}">
+        <div style="font-size:.81rem;color:var(--muted);white-space:pre-wrap;line-height:1.6">${value?esc(value):`<span style="color:var(--muted2)">Not extracted</span>`}</div>
+        ${srcLine(source)}
+      </div>
+      <div id="geo-edit-${section}" style="display:none">
+        <textarea class="form-input" id="geo-ed-${section}" rows="${rows}">${esc(value||'')}</textarea>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-blue btn-sm" data-action="save-geo-structured" data-id="${id}" data-section="${section}">Save</button>
+          <button class="btn btn-ghost btn-sm" data-action="cancel-geo-structured" data-section="${section}">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+
+  // Structured presence+depth card (rock / groundwater)
+  const structPresCard=(section,label,obj)=>{
+    obj=obj||{};
+    return`
+    <div class="geo-field-section">
+      <div class="geo-field-section-label">
+        <span>${label}</span>
+        <button class="btn btn-ghost btn-xs" data-action="edit-geo-structured" data-section="${section}">${icon('edit')}</button>
+      </div>
+      <div id="geo-view-${section}">
+        <div style="font-size:.81rem;color:var(--muted);line-height:1.6">${presPill(obj.present)}${obj.depth_m!=null&&obj.depth_m!==''?` <span style="color:var(--text)">at ${esc(String(obj.depth_m))} m</span>`:''}</div>
+        ${srcLine(obj.source)}
+      </div>
+      <div id="geo-edit-${section}" style="display:none">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select class="form-input" id="geo-ed-${section}-present" style="width:auto">
+            ${['unknown','yes','no'].map(o=>`<option value="${o}"${(obj.present||'unknown')===o?' selected':''}>${o}</option>`).join('')}
+          </select>
+          <input class="form-input" id="geo-ed-${section}-depth" type="number" step="0.1" placeholder="Depth (m)" value="${obj.depth_m!=null?esc(String(obj.depth_m)):''}" style="width:120px">
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-blue btn-sm" data-action="save-geo-structured" data-id="${id}" data-section="${section}">Save</button>
+          <button class="btn btn-ghost btn-sm" data-action="cancel-geo-structured" data-section="${section}">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  };
+
+  const structuredZone=st?`
+  <div class="card mb-3" style="border-color:rgba(59,130,246,.25)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div class="card-title" style="margin:0">Geotechnical Findings</div>
+      <span class="badge badge-blue" style="font-size:.58rem">AI extracted</span>
+    </div>
+    <div class="geo-grid" style="margin-bottom:0">
+      <div>
+        ${structTextCard('ground_conditions','Ground Conditions',st.ground_conditions?.value,st.ground_conditions?.confidence,st.ground_conditions?.source,3)}
+        ${structPresCard('rock','Rock',st.rock)}
+        ${structPresCard('groundwater','Groundwater',st.groundwater)}
+      </div>
+      <div>
+        ${structTextCard('contamination','Contamination',st.contamination?.details,null,null,3)}
+        <div class="geo-field-section">
+          <div class="geo-field-section-label"><span>Contamination Suspected</span></div>
+          <div style="font-size:.81rem;color:var(--muted);line-height:1.6">${presPill(st.contamination?.suspected)}</div>
+        </div>
+        ${structTextCard('excavation_method','Excavation Method',st.excavation_method,null,null,2)}
+      </div>
+    </div>
+    ${(st.report_references||[]).length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);margin-bottom:5px">Geotechnical Reports Cited</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${st.report_references.map(r=>`<li>${esc(r)}</li>`).join('')}</ul></div>`:''}
+    ${(st.required_allowances||[]).length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--amber);margin-bottom:6px">Required Allowances</div>${st.required_allowances.map(a=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)"><div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(a.type||'')}</span>${gcb(a.confidence)}<div style="font-size:.76rem;color:var(--muted);line-height:1.5">${esc(a.description||'')}</div>${a.source?`<div style="font-size:.66rem;color:var(--muted2);font-style:italic;margin-top:2px">Source: ${esc(a.source)}</div>`:''}</div></div>`).join('')}</div>`:''}
+  </div>`:`
+  <div class="card mb-3" style="border-style:dashed">
+    <div class="card-title">Geotechnical Findings</div>
+    <div style="font-size:.82rem;color:var(--muted2)">No structured geotechnical data extracted yet. Run the AI Analyser (Geotech stage) on this project's documents, or fill in the manual fields below.</div>
+  </div>`;
+
   return`
+  ${structuredZone}
+  <div class="card-title" style="font-size:.8rem;color:var(--muted2);margin:4px 0 10px">Manual Notes</div>
   <div class="geo-grid">
     <div class="card">
       <div class="card-title">Ground Conditions</div>
@@ -4219,12 +4439,15 @@ INSTRUCTIONS:
 - Separate inclusions (work included in the contract) from exclusions (work explicitly NOT included).
 - List all estimating assumptions you had to make due to gaps or ambiguities in the documents.
 - Flag all missing information that an estimator would need to price the job accurately.
+- Extract key personnel named or implied in the documents (e.g. Superintendent, Principal, Project Manager, Client Contact, Design Consultant) — give role, and name/company where stated.
+- Extract key dates and milestones (e.g. Tender Close, Site Possession, Practical Completion, RFI deadline) — give the date in YYYY-MM-DD if determinable, else null.
+- Identify which trade categories this job will require, so the estimator can line up suppliers/subcontractors. Choose ONLY from this exact list of category keys: ${Object.keys(SR_CAT_LABELS).join('|')}. For each, give a short reason grounded in the scope.
 
 TENDER DOCUMENTS TO ANALYSE:
 ${corpus}
 
 Return ONLY this JSON (no markdown):
-{"project_summary":"2-4 sentence overview of the project","project_type":"drainage|roadworks|earthworks|utilities|electrical_infra|subdivision|mixed","primary_work_types":["string"],"scope_inclusions":["detailed included scope item — be specific, include quantities/specs/standards where stated in documents"],"scope_exclusions":["item explicitly excluded from scope per contract documents"],"key_assumptions":["specific estimating assumption made due to missing or ambiguous information — state what was assumed and why"],"missing_information":["specific piece of information needed to complete the estimate — be precise about what is missing and where it should come from"],"key_dimensions":[{"label":"string","value":"string","unit":"string","source":"string"}],"confidence_note":"string"}`;
+{"project_summary":"2-4 sentence overview of the project","project_type":"drainage|roadworks|earthworks|utilities|electrical_infra|subdivision|mixed","primary_work_types":["string"],"scope_inclusions":["detailed included scope item — be specific, include quantities/specs/standards where stated in documents"],"scope_exclusions":["item explicitly excluded from scope per contract documents"],"key_assumptions":["specific estimating assumption made due to missing or ambiguous information — state what was assumed and why"],"missing_information":["specific piece of information needed to complete the estimate — be precise about what is missing and where it should come from"],"key_dimensions":[{"label":"string","value":"string","unit":"string","source":"string"}],"key_personnel":[{"role":"e.g. Superintendent, Principal, Project Manager, Site Contact","name":"person name or null","company":"company or null","source":"where found in documents"}],"key_dates":[{"label":"e.g. Tender Close, Site Possession, Practical Completion","date":"YYYY-MM-DD or null","source":"where found in documents"}],"required_trade_categories":[{"category":"one of: ${Object.keys(SR_CAT_LABELS).join('|')}","reason":"why this job needs this trade"}],"confidence_note":"string"}`;
 };
 
 const _pStage=(n,corpus,confirmed,extra='')=>{
@@ -4379,7 +4602,10 @@ function _renderReviewUI(p,id){
       ${(r1.scope_inclusions||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--green);margin-bottom:4px">Scope Inclusions</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.scope_inclusions||[]).map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
       ${(r1.scope_exclusions||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--red);margin-bottom:4px">Exclusions</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.scope_exclusions||[]).map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
       ${(r1.key_assumptions||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--amber);margin-bottom:4px">Key Assumptions</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.key_assumptions||[]).map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
-      ${(r1.missing_information||[]).length?`<div><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);margin-bottom:4px">Missing Information</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.missing_information||[]).map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
+      ${(r1.missing_information||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);margin-bottom:4px">Missing Information</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.missing_information||[]).map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
+      ${(r1.key_personnel||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);margin-bottom:4px">Key Personnel</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.key_personnel||[]).map(k=>`<li><b style="color:var(--text)">${esc(k.role||'')}</b>${k.name?' — '+esc(k.name):''}${k.company?' ('+esc(k.company)+')':''}</li>`).join('')}</ul></div>`:''}
+      ${(r1.key_dates||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);margin-bottom:4px">Key Dates</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.key_dates||[]).map(d=>`<li><b style="color:var(--text)">${esc(d.label||'')}</b>${d.date?' — '+esc(d.date):''}</li>`).join('')}</ul></div>`:''}
+      ${(r1.required_trade_categories||[]).length?`<div><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--green);margin-bottom:4px">Trades / Suppliers Needed</div><div style="display:flex;gap:5px;flex-wrap:wrap">${(r1.required_trade_categories||[]).map(t=>`<span class="badge badge-grey" title="${esc(t.reason||'')}">${esc((typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[t.category])||t.category||'')}</span>`).join('')}</div></div>`:''}
     </div>
     ${iAct('1_sum')}
   </div></div>`:''}
@@ -4757,6 +4983,16 @@ window.applyAIPipeline=async function(id){
     if(r2.rock)p.geotech_fields.rock_assumptions=`Rock: ${r2.rock.present}${r2.rock.depth_m?` at ${r2.rock.depth_m}m`:''}`;
     if(r2.groundwater)p.geotech_fields.groundwater_notes=`Groundwater: ${r2.groundwater.present}${r2.groundwater.depth_m?` at ${r2.groundwater.depth_m}m`:''}`;
     if(r2.excavation_method)p.geotech_fields.ground_conditions=(p.geotech_fields.ground_conditions||'')+'\nMethod: '+r2.excavation_method;
+    // Preserve full structured findings for the interactive Geotech tab
+    p.geotech_fields.structured={
+      ground_conditions:r2.ground_conditions||null,
+      rock:r2.rock||null,
+      groundwater:r2.groundwater||null,
+      contamination:r2.contamination||null,
+      excavation_method:r2.excavation_method||null,
+      required_allowances:(r2.required_allowances||[]).map(a=>({id:uid(),type:a.type||'',description:a.description||'',source:a.source||'',confidence:a.confidence||''})),
+      report_references:r2.report_references||[]
+    };
     applied++;
   }
   (r2?.required_allowances||[]).forEach((item,i)=>{if(_pip.itemStates[`2_${i}`]==='accepted'){if(!p.geotech_fields)p.geotech_fields={};p.geotech_fields.required_allowances=(p.geotech_fields.required_allowances?p.geotech_fields.required_allowances+'\n':'')+getV(`2_${i}`,`${item.type}: ${item.description}`);applied++;}});
@@ -4785,6 +5021,30 @@ window.applyAIPipeline=async function(id){
     if(!p.summary_fields.scope_summary){const incl=r1apply.scope_inclusions||[];const excl=r1apply.scope_exclusions||[];if(incl.length||excl.length){let sc='';if(incl.length)sc+='INCLUSIONS:\n'+incl.map(s=>'- '+s).join('\n');if(excl.length)sc+=(sc?'\n':'')+'EXCLUSIONS:\n'+excl.map(s=>'- '+s).join('\n');p.summary_fields.scope_summary=sc;}}
     if((r1apply.key_assumptions||[]).length&&!p.summary_fields.key_assumptions)p.summary_fields.key_assumptions=r1apply.key_assumptions.map(s=>'- '+s).join('\n');
     if((r1apply.missing_information||[]).length&&!p.summary_fields.missing_information)p.summary_fields.missing_information=r1apply.missing_information.map(s=>'- '+s).join('\n');
+    // Key personnel → top-level p.key_personnel (dedup by name+role so re-runs don't duplicate)
+    if((r1apply.key_personnel||[]).length){
+      if(!p.key_personnel)p.key_personnel=[];
+      const existKey=x=>((x.name||'')+'|'+(x.role||'')).toLowerCase().trim();
+      const have=new Set(p.key_personnel.map(existKey));
+      r1apply.key_personnel.forEach(k=>{
+        const row={id:uid(),name:k.name||'',role:k.role||'',company:k.company||'',source:k.source||''};
+        if(!have.has(existKey(row))){p.key_personnel.push(row);have.add(existKey(row));}
+      });
+    }
+    // Key dates → summary_fields.key_dates (dedup by label+date)
+    if((r1apply.key_dates||[]).length){
+      if(!Array.isArray(p.summary_fields.key_dates))p.summary_fields.key_dates=[];
+      const dKey=x=>((x.label||'')+'|'+(x.date||'')).toLowerCase().trim();
+      const haveD=new Set(p.summary_fields.key_dates.map(dKey));
+      r1apply.key_dates.forEach(d=>{
+        const row={id:uid(),label:d.label||'',date:d.date||null,source:d.source||''};
+        if(row.label&&!haveD.has(dKey(row))){p.summary_fields.key_dates.push(row);haveD.add(dKey(row));}
+      });
+    }
+    // Required trade categories → summary_fields (overwrite; drives supplier matching)
+    if((r1apply.required_trade_categories||[]).length){
+      p.summary_fields.required_trade_categories=r1apply.required_trade_categories.map(t=>({category:t.category||'',reason:t.reason||''}));
+    }
     applied++;
   }
   // Summary fields (legacy confirm flow)
@@ -6341,6 +6601,17 @@ function _srSave(arr){
     .then(({error})=>{if(error)console.error('SR save:',error.message);});
 }
 function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
+// Find an existing Contacts record matching a supplier-rate entry (by email or company name)
+function _srFindContactMatch(sr,contacts){
+  contacts=contacts||DB.getContacts();
+  const email=(sr.contact_email||sr.email||'').toLowerCase().trim();
+  const comp=(sr.company||'').toLowerCase().trim();
+  return contacts.find(function(c){
+    if(email&&(c.email||'').toLowerCase().trim()===email)return true;
+    if(comp&&(c.company_name||'').toLowerCase().trim()===comp)return true;
+    return false;
+  })||null;
+}
 
 let _catLifecycle='active';
 window.setCatLifecycle=function(lc){_catLifecycle=lc;renderCatalogue();};
@@ -6925,8 +7196,9 @@ window.addSRToContacts=function(sid){
   const s=_srGet().find(x=>x.id===sid);
   if(!s)return;
   const name=s.contact_name||s.company;
-  if(!confirm('Add "'+name+'" to Contacts?'))return;
   const contacts=DB.getContacts();
+  if(_srFindContactMatch(s,contacts)){toast((s.company||name)+' is already in Contacts.','info');return;}
+  if(!confirm('Add "'+name+'" to Contacts?'))return;
   const obj={id:uid(),company_name:s.company||'',contact_person:s.contact_name||'',contact_type:'supplier',trade_category:s.trade_category||'other',email:s.contact_email||s.email||'',phone:s.contact_phone||s.phone||'',location:'',status:'active',notes:''};
   contacts.push(obj);
   DB.saveContacts(contacts);
@@ -10027,6 +10299,32 @@ document.addEventListener('click',async function(e){
     return;
   }
 
+  /* ---- GEOTECH STRUCTURED (AI-extracted) FIELD EDIT ---- */
+  if(action==='edit-geo-structured'){
+    const s=el.dataset.section;
+    document.getElementById(`geo-view-${s}`)?.style.setProperty('display','none');
+    document.getElementById(`geo-edit-${s}`)?.style.setProperty('display','block');
+    return;
+  }
+  if(action==='cancel-geo-structured'){
+    const s=el.dataset.section;
+    document.getElementById(`geo-view-${s}`)?.style.setProperty('display','block');
+    document.getElementById(`geo-edit-${s}`)?.style.setProperty('display','none');
+    return;
+  }
+  if(action==='save-geo-structured'){
+    const id=el.dataset.id,section=el.dataset.section;
+    const p=DB.getProject(id);if(!p)return;
+    if(!p.geotech_fields)p.geotech_fields={};
+    if(!p.geotech_fields.structured)p.geotech_fields.structured={};
+    const gst=p.geotech_fields.structured;
+    if(section==='ground_conditions'){if(!gst.ground_conditions)gst.ground_conditions={};gst.ground_conditions.value=document.getElementById('geo-ed-ground_conditions')?.value||'';}
+    else if(section==='contamination'){if(!gst.contamination)gst.contamination={};gst.contamination.details=document.getElementById('geo-ed-contamination')?.value||'';}
+    else if(section==='excavation_method'){gst.excavation_method=document.getElementById('geo-ed-excavation_method')?.value||'';}
+    else if(section==='rock'||section==='groundwater'){if(!gst[section])gst[section]={};gst[section].present=document.getElementById(`geo-ed-${section}-present`)?.value||'unknown';const d=document.getElementById(`geo-ed-${section}-depth`)?.value;gst[section].depth_m=(d===''||d==null)?null:parseFloat(d);}
+    DB.saveProject(p);toast('Saved.','success');navigate(`project/${id}/geotech`);return;
+  }
+
   /* ---- BOQ ---- */
   if(action==='add-boq'){
     const id=el.dataset.id;const p=DB.getProject(id);if(!p)return;
@@ -10640,6 +10938,14 @@ if(action==='save-risk-global'){
   if(action==='del-sf-item'){
     const id=el.dataset.id;const field=el.dataset.field;const idx=parseInt(el.dataset.idx);
     window._sfDelItem(id,field,idx);return;
+  }
+  if(action==='del-key-date'){
+    const id=el.dataset.id;const idx=parseInt(el.dataset.idx);
+    window._sfDelKeyDate(id,idx);return;
+  }
+  if(action==='create-shortlist-quote'){
+    const id=el.dataset.id;const entryId=el.dataset.entry;
+    window.createQuoteFromShortlist(id,entryId);return;
   }
   if(action==='add-key-person'){
     const id=el.dataset.id;
