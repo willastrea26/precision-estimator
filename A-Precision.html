@@ -808,7 +808,15 @@ async function _sbLoad(){
   if(s.data)_c.settings={...s.data};
   // Shared supplier_rates table (not user-scoped) is the source of truth so all devices/logins stay in sync
   if(sr.data?.data?.length){
-    localStorage.setItem(_SR_KEY,JSON.stringify(sr.data.data));
+    let _srChanged=false;
+    const _srArr=sr.data.data.map(s=>{
+      if(s.trade_category==null&&s.trade_categories==null)return s;
+      _srChanged=true;
+      const{trade_category,trade_categories,...rest}=s;
+      return rest;
+    });
+    localStorage.setItem(_SR_KEY,JSON.stringify(_srArr));
+    if(_srChanged)_srSave(_srArr);
   } else {
     // Table empty — push up from localStorage if it has data (first-time migration)
     const _lsSR=localStorage.getItem(_SR_KEY);
@@ -6376,7 +6384,7 @@ let _srItems=[];
 let _srSelectedCats=['plantHire'];
 const SR_CAT_LABELS={plantHire:'Plant Hire',quarrySupply:'Quarry Supply',wasteDisposal:'Waste Disposal',labourHire:'Labour Hire',precastElements:'Pre-Cast Elements',trafficControl:'Traffic Control',pipes:'Pipes',steelReinforcement:'Steel Reinforcement',shoringHire:'Shoring Hire',sawCutting:'Saw Cutting',generalTesting:'General Testing',environmental:'Environmental',design:'Design',miscHireItems:'Misc Hire Items',generalMaterials:'General Materials',craneHire:'Crane Hire',other:'Other'};
 const SR_CAT_COLORS={plantHire:{bg:'rgba(245,158,11,.2)',text:'#fbbf24'},quarrySupply:{bg:'rgba(180,100,30,.22)',text:'#c87840'},wasteDisposal:{bg:'rgba(239,68,68,.2)',text:'#f87171'},labourHire:{bg:'rgba(59,130,246,.18)',text:'#60a5fa'},precastElements:{bg:'rgba(148,163,184,.15)',text:'#94a3b8'},trafficControl:{bg:'rgba(251,146,60,.2)',text:'#fb923c'},pipes:{bg:'rgba(6,182,212,.18)',text:'#22d3ee'},steelReinforcement:{bg:'rgba(99,102,241,.18)',text:'#818cf8'},shoringHire:{bg:'rgba(139,92,246,.18)',text:'#a78bfa'},sawCutting:{bg:'rgba(244,63,94,.18)',text:'#fb7185'},generalTesting:{bg:'rgba(20,184,166,.18)',text:'#2dd4bf'},environmental:{bg:'rgba(34,197,94,.18)',text:'#4ade80'},design:{bg:'rgba(234,179,8,.22)',text:'#facc15'},miscHireItems:{bg:'rgba(168,85,247,.18)',text:'#c084fc'},generalMaterials:{bg:'rgba(132,204,22,.18)',text:'#a3e635'},craneHire:{bg:'rgba(14,165,233,.18)',text:'#38bdf8'},other:{bg:'rgba(100,116,139,.18)',text:'#94a3b8'}};
-function _srGetCats(s){return Array.isArray(s.trade_categories)&&s.trade_categories.length?s.trade_categories:s.trade_category?[s.trade_category]:['other'];}
+function _srGetCats(s){return Array.isArray(s.trade_categories)&&s.trade_categories.length?s.trade_categories:s.trade_category?[s.trade_category]:[];}
 function _srCatBadges(cats){return cats.map(c=>{const col=SR_CAT_COLORS[c]||SR_CAT_COLORS.other;return'<span style="font-size:.71rem;padding:2px 8px;border-radius:20px;white-space:nowrap;background:'+col.bg+';color:'+col.text+'">'+esc(SR_CAT_LABELS[c]||c)+'</span>';}).join('');}
 function _srRenderCatPills(selected){
   const ALL=['plantHire','quarrySupply','wasteDisposal','labourHire','precastElements','trafficControl','pipes','steelReinforcement','shoringHire','sawCutting','generalTesting','environmental','design','miscHireItems','generalMaterials','craneHire'];
