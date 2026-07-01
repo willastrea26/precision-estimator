@@ -2075,6 +2075,31 @@ function renderTabSummary(p,id){
       : `<button class="btn btn-xs btn-blue" data-action="create-shortlist-quote" data-id="${id}" data-entry="${entry.id}">Create draft quote</button>`;
     const rows=rtcs.map(rtc=>{
       const cat=rtc.category;const label=catLabel(cat);
+      // Labour & plant trades come from the internal Rate Library, not supplier quotes
+      if(_rlIsLabourPlant(cat)){
+        const rlRates=_rlMatchRates(cat);
+        const shown=rlRates.slice(0,8);
+        const rateRows=shown.map(r=>{
+          const tot=_rlRateTotal(r);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onclick="window._rlSearch=${JSON.stringify((r.description||'').toLowerCase()).replace(/"/g,'&quot;')};navigate('rate-library')" title="Open in Rate Library">
+            <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(r.description||r.rate_code||'Rate')}</span>${r.rate_code?` <span style="font-size:.66rem;color:var(--muted2)">${esc(r.rate_code)}</span>`:''}</div>
+            <div style="font-size:.8rem;font-weight:600;color:var(--text);white-space:nowrap">${fmtAUD(tot)}${r.unit?`<span style="font-size:.68rem;color:var(--muted2)">/${esc(r.unit)}</span>`:''}</div>
+          </div>`;
+        }).join('');
+        return `<div style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:.82rem;font-weight:700;color:var(--text)">${esc(label)}</span>
+            <span class="badge badge-blue" style="font-size:.58rem">Rate Library</span>
+            ${rlRates.length?`<span class="badge badge-green" style="font-size:.58rem">${rlRates.length} rate${rlRates.length!==1?'s':''}</span>`:`<span class="badge badge-amber" style="font-size:.58rem">none yet</span>`}
+          </div>
+          ${rtc.reason?`<div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;font-style:italic">${esc(rtc.reason)}</div>`:''}
+          ${rlRates.length?rateRows:`<div style="font-size:.76rem;color:var(--muted2);padding:4px 0">No matching ${esc(label.toLowerCase())} rates in your Rate Library yet.</div>`}
+          <div style="margin-top:7px">
+            <button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button>
+            ${rlRates.length>8?`<span style="font-size:.7rem;color:var(--muted2);margin-left:8px">+${rlRates.length-8} more</span>`:''}
+          </div>
+        </div>`;
+      }
       const matches=_srMatchSuppliers(cat,allSups);
       const supRows=matches.map(m=>{
         const s=m.s;
@@ -6603,25 +6628,33 @@ function _srSave(arr){
     .then(({error})=>{if(error)console.error('SR save:',error.message);});
 }
 function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
-// Keywords per trade category — used to match suppliers by their rate items / company name, not just tags
+// Keywords per trade category — used to match suppliers by their rate items / company name, not just tags.
+// Keep terms SPECIFIC: single generic words (e.g. "plant", "sand", "steel") cause false positives because
+// they appear in unrelated pricing text like "ex plant". Prefer multi-word phrases or distinctive tokens.
 const SR_CAT_KEYWORDS={
-  plantHire:['plant','excavator','dozer','bulldozer','loader','grader','roller','compactor','wet hire','dry hire','skid steer','bobcat','posi','tipper','float','backhoe','dump truck','watercart','water cart'],
-  quarrySupply:['quarry','aggregate','gravel','sand','road base','roadbase','ballast','crushed','spalls','scoria','blue metal','dgb','dgs','rubble','fill supply','select fill'],
-  wasteDisposal:['waste','disposal','tip fee','spoil','dump','bin hire','venm','enm','landfill','muck away','contaminated soil','soil removal','skip'],
-  labourHire:['labour','labourer','trades assistant','workforce','operator hire','general hand','pipelayer','pipe layer'],
-  precastElements:['precast','box culvert','headwall','junction box','precast pit','precast panel','lintel','wingwall','endwall'],
-  trafficControl:['traffic','tmp','tgs','traffic management','traffic control','signage','vms','lollipop','road closure','tma','traffic controller'],
-  pipes:['pipe','rcp','upvc','u-pvc','pvc','stormwater','drainage pipe','culvert','hdpe','poly pipe','subsoil','ag pipe','agi','sewer pipe','rrj','frc'],
-  steelReinforcement:['reinforc','rebar','mesh','reo','ligature','bar chair','sl72','sl82','n12','n16','n20','trench mesh','starter bar'],
-  shoringHire:['shoring','shore','trench shield','trench box','trench prop','drag box','sheet pile','manhole box','hydraulic brace'],
-  sawCutting:['saw cut','sawcut','saw-cut','concrete cutting','core drill','coring','road saw','demo saw','grinding','kerb cutting'],
-  generalTesting:['testing','nata','compaction test','proctor','cbr','materials testing','laboratory','geotech test','survey','set out','setout','level survey'],
-  environmental:['environmental','erosion','sediment','silt fence','esc','revegetation','dust suppress','spill','weed','arborist','tree protection'],
-  design:['design','engineering','drafting','consultant','rpeq','certification','structural design','civil design','geotechnical report','survey design'],
-  miscHireItems:['fencing hire','temp fence','toilet','amenities','generator','lighting tower','pump hire','container hire','site shed','portaloo'],
-  generalMaterials:['cement','concrete supply','geofabric','geotextile','membrane','timber','hardware','fuel','bedding sand','bidim','formwork','sika','joint sealant'],
-  craneHire:['crane','franna','hiab','mobile crane','crawler crane','rigging','dogman','rigger','lift','pick and carry']
+  plantHire:['plant hire','wet hire','dry hire','machine hire','machinery hire','excavator','dozer','bulldozer','grader','roller hire','compactor','skid steer','skid-steer','bobcat','posi track','positrack','backhoe','dump truck','water cart','watercart','float hire','plant & equipment','plant and equipment'],
+  quarrySupply:['quarry','aggregate','road base','roadbase','ballast','crushed rock','blue metal','scoria','gravel supply','sand supply','select fill','recycled aggregate','dgb20','dgs20'],
+  wasteDisposal:['waste disposal','disposal fee','tip fee','spoil disposal','dump fee','bin hire','venm','enm','landfill','muck away','contaminated soil','skip bin','soil disposal','waste removal'],
+  labourHire:['labour hire','labourer','trades assistant','general hand','pipelayer','pipe layer','labour supply','hire of labour'],
+  precastElements:['precast','box culvert','headwall','junction box','precast pit','precast panel','lintel','wingwall','endwall','pit lid','link slab'],
+  trafficControl:['traffic control','traffic management','tmp','tgs','vms board','traffic controller','road closure','swtc','traffic plan','tma'],
+  pipes:['rcp','upvc','u-pvc','pvc pipe','stormwater pipe','drainage pipe','culvert pipe','hdpe','poly pipe','subsoil pipe','ag pipe','sewer pipe','rrj','pipe supply','pipe &'],
+  steelReinforcement:['reinforc','rebar','reo bar','reo mesh','steel mesh','trench mesh','ligature','bar chair','sl72','sl82','starter bar','n12 bar','n16 bar'],
+  shoringHire:['shoring','trench shield','trench box','trench prop','drag box','sheet pile','manhole box','hydraulic brace','shore hire'],
+  sawCutting:['saw cut','sawcut','saw-cut','concrete cutting','core drill','coring','road saw','demo saw','kerb cutting','saw cutting'],
+  generalTesting:['nata','compaction test','proctor','cbr test','materials testing','geotechnical testing','soil test','concrete test','survey set out','level survey','laboratory test'],
+  environmental:['erosion','sediment control','silt fence','esc plan','revegetation','dust suppress','spill kit','weed control','arborist','tree protection','environmental management'],
+  design:['engineering design','drafting','rpeq','design certification','structural design','civil design','geotechnical report','survey design','detailed design','consulting engineer'],
+  miscHireItems:['temp fence','temporary fence','fencing hire','portable toilet','site amenities','generator hire','lighting tower','pump hire','container hire','site shed','portaloo','toilet hire'],
+  generalMaterials:['cement','concrete supply','ready mix','readymix','geofabric','geotextile','bidim','geomembrane','formwork','joint sealant','bedding sand','hardware supply'],
+  craneHire:['crane','franna','hiab','mobile crane','crawler crane','rigging','dogman','rigger','pick and carry','tower crane','crane hire']
 };
+// Whole-word match for single alphanumeric tokens (so "plant" won't hit inside "ex plant" via substring);
+// phrases / hyphenated / symbol terms use plain substring.
+function _srKwMatch(hay,kw){
+  if(/^[a-z0-9]+$/.test(kw))return new RegExp('\\b'+kw+'\\b').test(hay);
+  return hay.indexOf(kw)>-1;
+}
 // Match suppliers to a trade category by rate-item/company content first, tags as fallback.
 // Returns [{s, basis:'rate'|'tag'}]
 function _srMatchSuppliers(cat,sups){
@@ -6633,12 +6666,31 @@ function _srMatchSuppliers(cat,sups){
     let content=false;
     if(kws.length){
       const hay=((s.company||'')+' '+(s.items||[]).map(function(i){return (i.description||'')+' '+(i.notes||'');}).join(' ')).toLowerCase();
-      content=kws.some(function(k){return hay.indexOf(k)>-1;});
+      content=kws.some(function(k){return _srKwMatch(hay,k);});
     }
     if(content||tagged)out.push({s:s,basis:content?'rate':'tag'});
   });
   return out;
 }
+// Labour & plant trades are rated from the internal Rate Library (hard-hat), not quoted from suppliers.
+// Map the AI trade category to Rate Library category keys (both new resource + legacy work-type taxonomies)
+// plus description keywords, so matching is robust regardless of how a rate was categorised.
+const RL_CAT_MAP={
+  labourHire:{cats:['personnel','labour'],kws:['labourer','foreman','leading hand','ganger','operator','pipelayer','pipe layer','supervisor','trades assistant','skilled labour','offsider','dogman','spotter','general hand']},
+  plantHire:{cats:['excavators','loaders_skid_steers','rollers_compaction','trucks_tippers','dumpers','water_carts','vac_trucks','attachments','small_plant','mobilisation_float','excavation'],kws:['excavator','dozer','bulldozer','grader','roller','compactor','skid steer','posi track','positrack','bobcat','backhoe','tipper','dump truck','water cart','watercart','vac truck','loader']}
+};
+function _rlIsLabourPlant(cat){return !!RL_CAT_MAP[cat];}
+// Match Rate Library entries for a labour/plant trade category
+function _rlMatchRates(cat){
+  const m=RL_CAT_MAP[cat];if(!m)return[];
+  const catSet=new Set(m.cats);
+  return DB.getRates().filter(r=>_getRateLc(r)==='active').filter(function(r){
+    if(catSet.has(r.category))return true;
+    const hay=((r.description||'')+' '+(r.rate_code||'')).toLowerCase();
+    return m.kws.some(function(k){return _srKwMatch(hay,k);});
+  });
+}
+function _rlRateTotal(r){return (r.labour_rate||0)+(r.plant_rate||0)+(r.material_rate||0)+(r.subcontractor_rate||0)+(r.other_cost||0);}
 // Find an existing Contacts record matching a supplier-rate entry (by email or company name)
 function _srFindContactMatch(sr,contacts){
   contacts=contacts||DB.getContacts();
