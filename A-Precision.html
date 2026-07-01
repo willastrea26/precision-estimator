@@ -2075,14 +2075,16 @@ function renderTabSummary(p,id){
       : `<button class="btn btn-xs btn-blue" data-action="create-shortlist-quote" data-id="${id}" data-entry="${entry.id}">Create draft quote</button>`;
     const rows=rtcs.map(rtc=>{
       const cat=rtc.category;const label=catLabel(cat);
-      const matches=allSups.filter(s=>_srGetCats(s).includes(cat));
-      const supRows=matches.map(s=>{
+      const matches=_srMatchSuppliers(cat,allSups);
+      const supRows=matches.map(m=>{
+        const s=m.s;
         const entry=findEntry(cat,s.id);
         const on=!!entry;
         const rateCount=(s.items||[]).length;
+        const basisBadge=m.basis==='rate'?`<span class="badge badge-blue" style="font-size:.54rem" title="Matched from this supplier's rate items">rate match</span>`:`<span class="badge badge-grey" style="font-size:.54rem" title="Matched from this supplier's trade tag">tagged</span>`;
         const toggle=`<button class="btn btn-xs ${on?'btn-green':'btn-outline'}" onclick="window._toggleShortlist('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})" title="${on?'Remove from shortlist':'Add to shortlist'}">${on?'✓ Shortlisted':'+ Shortlist'}</button>`;
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-          <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</span> <span style="font-size:.7rem;color:var(--muted2)">${rateCount} rate${rateCount!==1?'s':''}</span></div>
+          <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</span> <span style="font-size:.7rem;color:var(--muted2)">${rateCount} rate${rateCount!==1?'s':''}</span> ${basisBadge}</div>
           ${entry&&entry.status!=='quote_created'?qBtn(entry):''}
           ${entry&&entry.status==='quote_created'?qBtn(entry):toggle}
         </div>`;
@@ -6601,6 +6603,42 @@ function _srSave(arr){
     .then(({error})=>{if(error)console.error('SR save:',error.message);});
 }
 function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
+// Keywords per trade category — used to match suppliers by their rate items / company name, not just tags
+const SR_CAT_KEYWORDS={
+  plantHire:['plant','excavator','dozer','bulldozer','loader','grader','roller','compactor','wet hire','dry hire','skid steer','bobcat','posi','tipper','float','backhoe','dump truck','watercart','water cart'],
+  quarrySupply:['quarry','aggregate','gravel','sand','road base','roadbase','ballast','crushed','spalls','scoria','blue metal','dgb','dgs','rubble','fill supply','select fill'],
+  wasteDisposal:['waste','disposal','tip fee','spoil','dump','bin hire','venm','enm','landfill','muck away','contaminated soil','soil removal','skip'],
+  labourHire:['labour','labourer','trades assistant','workforce','operator hire','general hand','pipelayer','pipe layer'],
+  precastElements:['precast','box culvert','headwall','junction box','precast pit','precast panel','lintel','wingwall','endwall'],
+  trafficControl:['traffic','tmp','tgs','traffic management','traffic control','signage','vms','lollipop','road closure','tma','traffic controller'],
+  pipes:['pipe','rcp','upvc','u-pvc','pvc','stormwater','drainage pipe','culvert','hdpe','poly pipe','subsoil','ag pipe','agi','sewer pipe','rrj','frc'],
+  steelReinforcement:['reinforc','rebar','mesh','reo','ligature','bar chair','sl72','sl82','n12','n16','n20','trench mesh','starter bar'],
+  shoringHire:['shoring','shore','trench shield','trench box','trench prop','drag box','sheet pile','manhole box','hydraulic brace'],
+  sawCutting:['saw cut','sawcut','saw-cut','concrete cutting','core drill','coring','road saw','demo saw','grinding','kerb cutting'],
+  generalTesting:['testing','nata','compaction test','proctor','cbr','materials testing','laboratory','geotech test','survey','set out','setout','level survey'],
+  environmental:['environmental','erosion','sediment','silt fence','esc','revegetation','dust suppress','spill','weed','arborist','tree protection'],
+  design:['design','engineering','drafting','consultant','rpeq','certification','structural design','civil design','geotechnical report','survey design'],
+  miscHireItems:['fencing hire','temp fence','toilet','amenities','generator','lighting tower','pump hire','container hire','site shed','portaloo'],
+  generalMaterials:['cement','concrete supply','geofabric','geotextile','membrane','timber','hardware','fuel','bedding sand','bidim','formwork','sika','joint sealant'],
+  craneHire:['crane','franna','hiab','mobile crane','crawler crane','rigging','dogman','rigger','lift','pick and carry']
+};
+// Match suppliers to a trade category by rate-item/company content first, tags as fallback.
+// Returns [{s, basis:'rate'|'tag'}]
+function _srMatchSuppliers(cat,sups){
+  sups=sups||_srGet().filter(s=>_srGetLc(s)==='active');
+  const kws=SR_CAT_KEYWORDS[cat]||[];
+  const out=[];
+  sups.forEach(function(s){
+    const tagged=_srGetCats(s).includes(cat);
+    let content=false;
+    if(kws.length){
+      const hay=((s.company||'')+' '+(s.items||[]).map(function(i){return (i.description||'')+' '+(i.notes||'');}).join(' ')).toLowerCase();
+      content=kws.some(function(k){return hay.indexOf(k)>-1;});
+    }
+    if(content||tagged)out.push({s:s,basis:content?'rate':'tag'});
+  });
+  return out;
+}
 // Find an existing Contacts record matching a supplier-rate entry (by email or company name)
 function _srFindContactMatch(sr,contacts){
   contacts=contacts||DB.getContacts();
