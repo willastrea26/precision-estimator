@@ -3421,12 +3421,10 @@ window.exportSupplierRatesExcel=async function(){
     ws.getRow(row).height=19;row++;
     ws.getRow(row).height=7;row++;
 
-    const CAT_LABELS={earthworks:'Earthworks',civil:'Civil',drainage:'Drainage',water:'Water',sewer:'Sewer',electrical:'Electrical',communications:'Comms',concrete:'Concrete',landscaping:'Landscaping',traffic:'Traffic',fencing:'Fencing',demolition:'Demolition',other:'Other'};
-
     activeSups.forEach(function(s){
       const items=s.items||[];
       if(!items.length)return;
-      const catLabel=CAT_LABELS[s.trade_category]||s.trade_category||'';
+      const catLabel=SR_CAT_LABELS[s.trade_category]||s.trade_category||'';
 
       /* Supplier heading */
       ws.mergeCells(row,1,row,NCOLS);
@@ -6375,13 +6373,13 @@ window.permDeleteSR=function(id){
 };
 
 let _srItems=[];
-let _srSelectedCats=['other'];
-const SR_CAT_LABELS={earthworks:'Earthworks',civil:'Civil',drainage:'Drainage',water:'Water',sewer:'Sewer',electrical:'Electrical',communications:'Comms',concrete:'Concrete',landscaping:'Landscaping',traffic:'Traffic',fencing:'Fencing',demolition:'Demolition',other:'Other'};
-const SR_CAT_COLORS={earthworks:{bg:'rgba(180,100,30,.22)',text:'#c87840'},civil:{bg:'rgba(59,130,246,.18)',text:'#60a5fa'},drainage:{bg:'rgba(6,182,212,.18)',text:'#22d3ee'},water:{bg:'rgba(20,184,166,.18)',text:'#2dd4bf'},sewer:{bg:'rgba(139,92,246,.18)',text:'#a78bfa'},electrical:{bg:'rgba(234,179,8,.22)',text:'#facc15'},communications:{bg:'rgba(99,102,241,.18)',text:'#818cf8'},concrete:{bg:'rgba(148,163,184,.15)',text:'#94a3b8'},landscaping:{bg:'rgba(34,197,94,.18)',text:'#4ade80'},traffic:{bg:'rgba(251,146,60,.2)',text:'#fb923c'},fencing:{bg:'rgba(244,63,94,.18)',text:'#fb7185'},demolition:{bg:'rgba(239,68,68,.2)',text:'#f87171'},other:{bg:'rgba(100,116,139,.18)',text:'#94a3b8'}};
+let _srSelectedCats=['plantHire'];
+const SR_CAT_LABELS={plantHire:'Plant Hire',quarrySupply:'Quarry Supply',wasteDisposal:'Waste Disposal',labourHire:'Labour Hire',precastElements:'Pre-Cast Elements',trafficControl:'Traffic Control',pipes:'Pipes',steelReinforcement:'Steel Reinforcement',shoringHire:'Shoring Hire',sawCutting:'Saw Cutting',generalTesting:'General Testing',environmental:'Environmental',design:'Design',miscHireItems:'Misc Hire Items',generalMaterials:'General Materials',craneHire:'Crane Hire',other:'Other'};
+const SR_CAT_COLORS={plantHire:{bg:'rgba(245,158,11,.2)',text:'#fbbf24'},quarrySupply:{bg:'rgba(180,100,30,.22)',text:'#c87840'},wasteDisposal:{bg:'rgba(239,68,68,.2)',text:'#f87171'},labourHire:{bg:'rgba(59,130,246,.18)',text:'#60a5fa'},precastElements:{bg:'rgba(148,163,184,.15)',text:'#94a3b8'},trafficControl:{bg:'rgba(251,146,60,.2)',text:'#fb923c'},pipes:{bg:'rgba(6,182,212,.18)',text:'#22d3ee'},steelReinforcement:{bg:'rgba(99,102,241,.18)',text:'#818cf8'},shoringHire:{bg:'rgba(139,92,246,.18)',text:'#a78bfa'},sawCutting:{bg:'rgba(244,63,94,.18)',text:'#fb7185'},generalTesting:{bg:'rgba(20,184,166,.18)',text:'#2dd4bf'},environmental:{bg:'rgba(34,197,94,.18)',text:'#4ade80'},design:{bg:'rgba(234,179,8,.22)',text:'#facc15'},miscHireItems:{bg:'rgba(168,85,247,.18)',text:'#c084fc'},generalMaterials:{bg:'rgba(132,204,22,.18)',text:'#a3e635'},craneHire:{bg:'rgba(14,165,233,.18)',text:'#38bdf8'},other:{bg:'rgba(100,116,139,.18)',text:'#94a3b8'}};
 function _srGetCats(s){return Array.isArray(s.trade_categories)&&s.trade_categories.length?s.trade_categories:s.trade_category?[s.trade_category]:['other'];}
 function _srCatBadges(cats){return cats.map(c=>{const col=SR_CAT_COLORS[c]||SR_CAT_COLORS.other;return'<span style="font-size:.71rem;padding:2px 8px;border-radius:20px;white-space:nowrap;background:'+col.bg+';color:'+col.text+'">'+esc(SR_CAT_LABELS[c]||c)+'</span>';}).join('');}
 function _srRenderCatPills(selected){
-  const ALL=['earthworks','civil','drainage','water','sewer','electrical','communications','concrete','landscaping','traffic','fencing','demolition','other'];
+  const ALL=['plantHire','quarrySupply','wasteDisposal','labourHire','precastElements','trafficControl','pipes','steelReinforcement','shoringHire','sawCutting','generalTesting','environmental','design','miscHireItems','generalMaterials','craneHire'];
   return ALL.map(c=>{const on=selected.includes(c);const col=SR_CAT_COLORS[c]||SR_CAT_COLORS.other;return'<button type="button" onclick="window.toggleSrCat(\''+c+'\')" style="padding:4px 11px;border-radius:20px;font-size:.75rem;cursor:pointer;border:1px solid '+(on?col.text:'var(--border)')+';background:'+(on?col.bg:'transparent')+';color:'+(on?col.text:'var(--muted)')+';transition:all .15s">'+SR_CAT_LABELS[c]+'</button>';}).join('');}
 window.toggleSrCat=function(cat){const i=_srSelectedCats.indexOf(cat);if(i>=0){if(_srSelectedCats.length>1)_srSelectedCats.splice(i,1);}else{_srSelectedCats.push(cat);}const el=document.getElementById('sr-cat-pills');if(el)el.innerHTML=_srRenderCatPills(_srSelectedCats);};
 window._srAddItem=function(){
@@ -6767,11 +6765,12 @@ window._srShowReview=function(parsed,companyHint){
   const items=parsed.items||[];
   const company=companyHint||parsed.company||'';
   const tradeCats=[
-    ['earthworks','Earthworks'],['civil','Civil'],['drainage','Drainage'],
-    ['water','Water'],['sewer','Sewer'],['electrical','Electrical'],
-    ['communications','Communications'],['concrete','Concrete'],
-    ['landscaping','Landscaping'],['traffic','Traffic'],
-    ['fencing','Fencing'],['demolition','Demolition'],['other','Other']
+    ['plantHire','Plant Hire'],['quarrySupply','Quarry Supply'],['wasteDisposal','Waste Disposal'],
+    ['labourHire','Labour Hire'],['precastElements','Pre-Cast Elements'],['trafficControl','Traffic Control'],
+    ['pipes','Pipes'],['steelReinforcement','Steel Reinforcement'],['shoringHire','Shoring Hire'],
+    ['sawCutting','Saw Cutting'],['generalTesting','General Testing'],['environmental','Environmental'],
+    ['design','Design'],['miscHireItems','Misc Hire Items'],['generalMaterials','General Materials'],
+    ['craneHire','Crane Hire']
   ];
   const catOpts=tradeCats.map(function(tc){
     return'<option value="'+tc[0]+'"'+(parsed.trade_category===tc[0]?' selected':'')+'>'+tc[1]+'</option>';
