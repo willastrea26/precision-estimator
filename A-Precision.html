@@ -793,7 +793,7 @@ async function _sbLoad(){
   const{data:{user}}=await _sb.auth.getUser();
   if(!user)return false;
   _c.userId=user.id;_c.userEmail=user.email;
-  const[p,r,pr,co,q,cm,s]=await Promise.all([
+  const[p,r,pr,co,q,cm,s,sr]=await Promise.all([
     _sb.from('projects').select('*').eq('user_id',user.id),
     _sb.from('rates').select('*').eq('user_id',user.id),
     _sb.from('productivity').select('*').eq('user_id',user.id),
@@ -801,17 +801,18 @@ async function _sbLoad(){
     _sb.from('quotes').select('*').eq('user_id',user.id),
     _sb.from('compliance_documents').select('*').eq('user_id',user.id),
     _sb.from('app_settings').select('*').eq('user_id',user.id).maybeSingle(),
+    _sb.from('supplier_rates').select('data').eq('id',_SR_ROW_ID).maybeSingle(),
   ]);
   _c.projects=p.data||[];_c.rates=r.data||[];_c.productivity=pr.data||[];
   _c.contacts=co.data||[];_c.quotes=q.data||[];_c.compliance=cm.data||[];
   if(s.data)_c.settings={...s.data};
-  // Always use Supabase as source of truth for supplier rates so all devices stay in sync
-  if(_c.settings.supplier_rates?.length){
-    localStorage.setItem(_SR_KEY,JSON.stringify(_c.settings.supplier_rates));
+  // Shared supplier_rates table (not user-scoped) is the source of truth so all devices/logins stay in sync
+  if(sr.data?.data?.length){
+    localStorage.setItem(_SR_KEY,JSON.stringify(sr.data.data));
   } else {
-    // Supabase empty — push up from localStorage if it has data (first-time migration)
+    // Table empty — push up from localStorage if it has data (first-time migration)
     const _lsSR=localStorage.getItem(_SR_KEY);
-    if(_lsSR){try{const _arr=JSON.parse(_lsSR);if(_arr.length)DB.saveSettings({supplier_rates:_arr});}catch(e){}}
+    if(_lsSR){try{const _arr=JSON.parse(_lsSR);if(_arr.length)_srSave(_arr);}catch(e){}}
   }
   return true;
 }
@@ -6305,16 +6306,16 @@ window.applyQuoteDueQuick=function(qid,newDate){
    SUPPLIER RATES — localStorage register
 ================================================================ */
 const _SR_KEY='ap_supplier_rates';
+const _SR_ROW_ID='shared';
 window._srSyncCloud=async function(){
   const arr=_srGet();
   if(!arr.length){toast('No rates to sync.','warning');return;}
   const btn=document.querySelector('[onclick="window._srSyncCloud()"]');
   if(btn){btn.disabled=true;btn.textContent='Syncing…';}
   try{
-    const payload={user_id:_c.userId,supplier_rates:arr};
-    const{error}=await _sb.from('app_settings').upsert(payload,{onConflict:'user_id'});
+    const payload={id:_SR_ROW_ID,data:arr,updated_at:new Date().toISOString()};
+    const{error}=await _sb.from('supplier_rates').upsert(payload,{onConflict:'id'});
     if(error)throw error;
-    _c.settings.supplier_rates=arr;
     toast(arr.length+' supplier rate'+(arr.length!==1?'s':'')+' synced to cloud.','success');
   }catch(e){
     console.error('SR sync error:',e);
@@ -6326,13 +6327,11 @@ window._srSyncCloud=async function(){
 function _srGet(){
   const local=localStorage.getItem(_SR_KEY);
   if(local){try{return JSON.parse(local);}catch{}}
-  // Fall back to Supabase-backed settings if localStorage is empty
-  return _c.settings.supplier_rates||[];
+  return[];
 }
 function _srSave(arr){
   localStorage.setItem(_SR_KEY,JSON.stringify(arr));
-  _c.settings.supplier_rates=arr;
-  _sb.from('app_settings').upsert({user_id:_c.userId,supplier_rates:arr},{onConflict:'user_id'})
+  _sb.from('supplier_rates').upsert({id:_SR_ROW_ID,data:arr,updated_at:new Date().toISOString()},{onConflict:'id'})
     .then(({error})=>{if(error)console.error('SR save:',error.message);});
 }
 function _srGetLc(s){return s.lifecycle_status||(s.status==='archived'?'archived':'active');}
