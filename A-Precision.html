@@ -2073,11 +2073,19 @@ function renderTabSummary(p,id){
     const qBtn=(entry)=>entry.status==='quote_created'
       ? `<button class="btn btn-xs btn-outline" onclick="navigate('quotes')" style="color:var(--green);border-color:rgba(16,185,129,.35)" title="Draft quote created">✓ Quote created</button>`
       : `<button class="btn btn-xs btn-blue" data-action="create-shortlist-quote" data-id="${id}" data-entry="${entry.id}">Create draft quote</button>`;
-    // Distinct category header bar so the trade name stands apart from the rates/suppliers listed under it
-    const catHeader=(label,accent,badges)=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 11px;background:rgba(255,255,255,.04);border-left:3px solid ${accent};border-radius:6px;margin-bottom:9px">
-        <span style="font-size:.9rem;font-weight:700;color:var(--text);letter-spacing:.02em;text-transform:uppercase">${esc(label)}</span>
-        ${badges}
+    // Each trade is a self-contained panel: name left, status badges right, colour-coded left edge.
+    const catPanel=(accent,label,badges,body)=>`<div style="border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 14px 12px;margin-bottom:11px;background:rgba(255,255,255,.015)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="font-size:.85rem;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase">${esc(label)}</span>
+          <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">${badges}</div>
+        </div>
+        ${body}
       </div>`;
+    // Light-blue evidence callout — shows what the AI extracted from the documents to justify this trade
+    const evBox=(txt)=>txt?`<div style="display:flex;gap:7px;align-items:flex-start;font-size:.72rem;color:#93c5fd;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.22);border-radius:6px;padding:7px 10px;margin-bottom:9px;line-height:1.5">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0;margin-top:2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>${esc(txt)}</span>
+      </div>`:'';
     const rows=rtcs.map(rtc=>{
       const cat=rtc.category;const label=catLabel(cat);
       // Plant Hire: if the analyser extracted the specific machines this job needs, match each to a rate
@@ -2096,14 +2104,11 @@ function renderTabSummary(p,id){
           </div>`;
         }).join('');
         const gaps=reqPlant.filter(pl=>_rlFindPlantRate(pl.item,pl.size).match==='none').length;
-        return `<div style="margin-bottom:20px">
-          ${catHeader(label,'var(--blue)',`<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span><span class="badge badge-grey" style="font-size:.58rem">${reqPlant.length} required</span>${gaps?`<span class="badge badge-red" style="font-size:.58rem">${gaps} no rate</span>`:''}`)}
-          <div style="padding-left:11px">
-            ${rtc.reason?`<div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;font-style:italic">${esc(rtc.reason)}</div>`:''}
+        return catPanel('var(--blue)',label,
+          `<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span><span class="badge badge-grey" style="font-size:.58rem">${reqPlant.length} required</span>${gaps?`<span class="badge badge-red" style="font-size:.58rem">${gaps} no rate</span>`:''}`,
+          `${evBox(rtc.reason)}
             ${plantRows}
-            <div style="margin-top:7px"><button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button></div>
-          </div>
-        </div>`;
+            <div style="margin-top:9px"><button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button></div>`);
       }
       // Labour & plant trades come from the internal Rate Library, not supplier quotes
       if(_rlIsLabourPlant(cat)){
@@ -2116,17 +2121,14 @@ function renderTabSummary(p,id){
             <div style="font-size:.8rem;font-weight:600;color:var(--text);white-space:nowrap">${fmtAUD(tot)}${r.unit?`<span style="font-size:.68rem;color:var(--muted2)">/${esc(r.unit)}</span>`:''}</div>
           </div>`;
         }).join('');
-        return `<div style="margin-bottom:20px">
-          ${catHeader(label,'var(--blue)',`<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span>${rlRates.length?`<span class="badge badge-green" style="font-size:.58rem">${rlRates.length} rate${rlRates.length!==1?'s':''}</span>`:`<span class="badge badge-amber" style="font-size:.58rem">none yet</span>`}`)}
-          <div style="padding-left:11px">
-            ${rtc.reason?`<div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;font-style:italic">${esc(rtc.reason)}</div>`:''}
+        return catPanel('var(--blue)',label,
+          `<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span>${rlRates.length?`<span class="badge badge-green" style="font-size:.58rem">${rlRates.length} rate${rlRates.length!==1?'s':''}</span>`:`<span class="badge badge-amber" style="font-size:.58rem">none yet</span>`}`,
+          `${evBox(rtc.reason)}
             ${rlRates.length?rateRows:`<div style="font-size:.76rem;color:var(--muted2);padding:4px 0">No matching ${esc(label.toLowerCase())} rates in your Rate Library yet.</div>`}
-            <div style="margin-top:7px">
+            <div style="margin-top:9px">
               <button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button>
               ${rlRates.length>8?`<span style="font-size:.7rem;color:var(--muted2);margin-left:8px">+${rlRates.length-8} more</span>`:''}
-            </div>
-          </div>
-        </div>`;
+            </div>`);
       }
       const matches=_srMatchSuppliers(cat,allSups);
       const supRows=matches.map(m=>{
@@ -2150,14 +2152,11 @@ function renderTabSummary(p,id){
         ${nofEntry&&nofEntry.status!=='quote_created'?qBtn(nofEntry):''}
         <button class="btn btn-xs ${nofEntry?'btn-green':'btn-outline'}" onclick="window._toggleShortlist('${id}','${cat}',null,'${esc(label)} (not on file)')" title="Shortlist this trade without a specific supplier">${nofEntry?'✓ Shortlisted':'+ Shortlist trade'}</button>
       </div>`;
-      return `<div style="margin-bottom:20px">
-        ${catHeader(label,matches.length?'var(--green)':'var(--amber)',matches.length?`<span class="badge badge-green" style="font-size:.58rem">${matches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`)}
-        <div style="padding-left:11px">
-          ${rtc.reason?`<div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;font-style:italic">${esc(rtc.reason)}</div>`:''}
+      return catPanel(matches.length?'var(--green)':'var(--amber)',label,
+        matches.length?`<span class="badge badge-green" style="font-size:.58rem">${matches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`,
+        `${evBox(rtc.reason)}
           ${supRows}
-          ${notOnFile}
-        </div>
-      </div>`;
+          ${notOnFile}`);
     }).join('');
     return `<div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
