@@ -2070,9 +2070,6 @@ function renderTabSummary(p,id){
     const findEntry=(cat,srid)=>shortlist.find(e=>e.category===cat&&(e.supplier_rate_id||null)===(srid||null));
     const allSups=_srGet().filter(s=>_srGetLc(s)==='active');
     const catLabel=c=>(SR_CAT_LABELS&&SR_CAT_LABELS[c])||c;
-    const qBtn=(entry)=>entry.status==='quote_created'
-      ? `<button class="btn btn-xs btn-outline" onclick="navigate('quotes')" style="color:var(--green);border-color:rgba(16,185,129,.35)" title="Draft quote created">✓ Quote created</button>`
-      : `<button class="btn btn-xs btn-blue" data-action="create-shortlist-quote" data-id="${id}" data-entry="${entry.id}">Create draft quote</button>`;
     // Each trade is a self-contained panel: name left, status badges right, colour-coded left edge.
     const catPanel=(accent,label,badges,body)=>`<div style="border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 14px 12px;margin-bottom:11px;background:rgba(255,255,255,.015)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.05)">
@@ -2131,26 +2128,29 @@ function renderTabSummary(p,id){
             </div>`);
       }
       const matches=_srMatchSuppliers(cat,allSups);
+      const reqBtn=(requested,onclick)=>requested
+        ? `<button class="btn btn-xs btn-outline" onclick="navigate('quotes')" style="color:var(--green);border-color:rgba(16,185,129,.35);white-space:nowrap;flex-shrink:0" title="Draft quote created">✓ Quote sent</button>`
+        : `<button class="btn btn-xs btn-blue" onclick="${onclick}" style="white-space:nowrap;flex-shrink:0">Request quote</button>`;
       const supRows=matches.map(m=>{
         const s=m.s;
         const entry=findEntry(cat,s.id);
-        const on=!!entry;
+        const requested=entry&&entry.status==='quote_created';
         const rateCount=(s.items||[]).length;
-        const basisBadge=m.basis==='rate'?`<span class="badge badge-blue" style="font-size:.54rem" title="Matched from this supplier's rate items">rate match</span>`:`<span class="badge badge-grey" style="font-size:.54rem" title="Matched from this supplier's trade tag">tagged</span>`;
-        const toggle=`<button class="btn btn-xs ${on?'btn-green':'btn-outline'}" onclick="window._toggleShortlist('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})" title="${on?'Remove from shortlist':'Add to shortlist'}">${on?'✓ Shortlisted':'+ Shortlist'}</button>`;
-        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-          <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</span> <span style="font-size:.7rem;color:var(--muted2)">${rateCount} rate${rateCount!==1?'s':''}</span> ${basisBadge}</div>
-          ${entry&&entry.status!=='quote_created'?qBtn(entry):''}
-          ${entry&&entry.status==='quote_created'?qBtn(entry):toggle}
+        const basisLabel=m.basis==='rate'?'rate match':'tagged';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</div>
+            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">${rateCount} rate${rateCount!==1?'s':''} · ${basisLabel}</div>
+          </div>
+          ${reqBtn(requested,`window.requestSupplierQuote('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})`)}
         </div>`;
       }).join('');
       // "Not on file" entry (category-level, supplier_rate_id null)
       const nofEntry=findEntry(cat,null);
-      const notOnFile=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;${matches.length?'border-top:1px dashed rgba(255,255,255,.08);margin-top:4px':''}">
-        <div style="flex:1;min-width:0;font-size:.76rem;color:var(--muted2)">${matches.length?'None of these? ':'⚠ No supplier on file for this trade. '}<button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button></div>
-        ${nofEntry&&nofEntry.status==='quote_created'?qBtn(nofEntry):''}
-        ${nofEntry&&nofEntry.status!=='quote_created'?qBtn(nofEntry):''}
-        <button class="btn btn-xs ${nofEntry?'btn-green':'btn-outline'}" onclick="window._toggleShortlist('${id}','${cat}',null,'${esc(label)} (not on file)')" title="Shortlist this trade without a specific supplier">${nofEntry?'✓ Shortlisted':'+ Shortlist trade'}</button>
+      const nofRequested=nofEntry&&nofEntry.status==='quote_created';
+      const notOnFile=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;${matches.length?'border-top:1px dashed rgba(255,255,255,.08);margin-top:2px':''}">
+        <div style="flex:1;min-width:0;font-size:.74rem;color:var(--muted2)">${matches.length?'None of these? ':'⚠ No supplier on file for this trade. '}<button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button></div>
+        ${reqBtn(nofRequested,`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`)}
       </div>`;
       return catPanel(matches.length?'var(--green)':'var(--amber)',label,
         matches.length?`<span class="badge badge-green" style="font-size:.58rem">${matches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`,
@@ -2161,7 +2161,7 @@ function renderTabSummary(p,id){
     return `<div class="card" style="margin-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div class="card-title" style="margin:0">Key Suppliers</div>
-        <span style="font-size:.72rem;color:var(--muted2)">Shortlist → create draft quotes</span>
+        <span style="font-size:.72rem;color:var(--muted2)">One click drafts a quote in All Quotes</span>
       </div>
       ${rtcs.length?rows:`<div style="font-size:.82rem;color:var(--muted2)">No trade categories identified yet. Run the AI Analyser on this project's documents to identify the suppliers this job needs.</div>`}
     </div>`;
@@ -2393,21 +2393,18 @@ window._sfDelKeyDate=function(projId,idx){
   p.summary_fields.key_dates.splice(idx,1);
   DB.saveProject(p);navigate('project/'+projId+'/summary');
 };
-// Toggle a supplier (or "not on file" category) on/off the quote shortlist
-window._toggleShortlist=function(projId,category,supplierRateId,supplierName){
+// One click: create the shortlist record (if needed) and immediately draft the quote
+window.requestSupplierQuote=function(projId,category,supplierRateId,supplierName){
   var p=DB.getProject(projId);if(!p)return;
   if(!p.summary_fields)p.summary_fields={};
   if(!Array.isArray(p.summary_fields.shortlisted_suppliers))p.summary_fields.shortlisted_suppliers=[];
   var arr=p.summary_fields.shortlisted_suppliers;
   var srid=supplierRateId||null;
-  var idx=arr.findIndex(function(e){return e.category===category&&(e.supplier_rate_id||null)===srid;});
-  if(idx>=0){
-    if(arr[idx].status==='quote_created'){toast('A draft quote already exists — remove it from the Quotes tab first.','warning');return;}
-    arr.splice(idx,1);
-  }else{
-    arr.push({id:uid(),category:category,supplier_rate_id:srid,supplier_name:supplierName||'',status:'shortlisted',quote_id:null});
-  }
-  DB.saveProject(p);navigate('project/'+projId+'/summary');
+  var entry=arr.find(function(e){return e.category===category&&(e.supplier_rate_id||null)===srid;});
+  if(entry&&entry.status==='quote_created'){navigate('quotes');return;}
+  if(!entry){entry={id:uid(),category:category,supplier_rate_id:srid,supplier_name:supplierName||'',status:'shortlisted',quote_id:null};arr.push(entry);}
+  DB.saveProject(p);
+  window.createQuoteFromShortlist(projId,entry.id);
 };
 // Confirm a shortlisted supplier → create a draft quote linked to the All Quotes section
 window.createQuoteFromShortlist=function(projId,entryId){
@@ -4454,7 +4451,7 @@ async function _aiCall(content){
   // Clean common JSON issues before parsing
   let jsonStr=m[0]
     .replace(/,(\s*[}\]])/g,'$1')          // trailing commas
-    .replace(/[-]/g,' ') // control characters
+    .replace(/[\u0000-\u001F]/g,' ') // control characters
     .replace(/\t/g,' ');                    // tabs inside strings
   try{return JSON.parse(jsonStr);}catch(e){throw new Error('JSON parse: '+e.message+'. Try retrying this stage.');}
 }
@@ -5204,7 +5201,18 @@ function renderTabDocuments(p,id){
     </tbody>
   </table></div>`}`;
 
-  return`${dropZone}${docsTable}`;
+  const analysable=(p.documents||[]).filter(d=>['pdf','docx','doc'].includes((d.file_type||d.file_name?.split('.').pop()||'').toLowerCase())).length;
+  const analyseLauncher=`<div class="card mb-3" style="background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.08));border-color:rgba(139,92,246,.28)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div style="min-width:0;flex:1">
+        <div style="font-size:.92rem;font-weight:700;color:var(--text);margin-bottom:3px">✨ AI Analyser</div>
+        <div style="font-size:.76rem;color:var(--muted);line-height:1.5">Reads your uploaded documents and drafts the Summary, Geotech, Quantities, Draft Estimate, Key Suppliers &amp; required Plant — you review and accept before anything is saved.</div>
+        ${analysable?`<div style="font-size:.7rem;color:var(--muted2);margin-top:4px">${analysable} analysable document${analysable!==1?'s':''} (PDF / Word)</div>`:`<div style="font-size:.7rem;color:var(--amber);margin-top:4px">Upload a PDF or Word document below to analyse.</div>`}
+      </div>
+      <button class="btn btn-blue" onclick="window.launchAIPipeline('${id}')" ${analysable?'':'disabled'} style="${analysable?'background:linear-gradient(135deg,#8B5CF6,#3B82F6);':''}flex-shrink:0;font-size:.86rem;padding:9px 16px">✨ Analyse with AI</button>
+    </div>
+  </div>`;
+  return`${analyseLauncher}${dropZone}${docsTable}`;
 }
 
 /* ================================================================
@@ -11102,10 +11110,6 @@ if(action==='save-risk-global'){
   if(action==='del-key-date'){
     const id=el.dataset.id;const idx=parseInt(el.dataset.idx);
     window._sfDelKeyDate(id,idx);return;
-  }
-  if(action==='create-shortlist-quote'){
-    const id=el.dataset.id;const entryId=el.dataset.entry;
-    window.createQuoteFromShortlist(id,entryId);return;
   }
   if(action==='add-key-person'){
     const id=el.dataset.id;
