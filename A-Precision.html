@@ -533,6 +533,7 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 /* LOCATION PICKER */
 .loc-picker-panel{display:none;margin-top:10px;margin-bottom:4px}
 #loc-map{height:300px;border-radius:10px;border:1px solid var(--border);overflow:hidden;background:var(--s2)}
+.loc-summary-map{height:160px;border-radius:8px;border:1px solid var(--border);overflow:hidden;background:var(--s2);margin-bottom:10px}
 .loc-coords-bar{font-size:.72rem;color:var(--blue);margin-top:6px;padding:5px 9px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.15);border-radius:6px;display:none;align-items:center;gap:6px}
 .loc-coords-bar svg{flex-shrink:0;opacity:.7}
 .loc-hint{font-size:.7rem;color:var(--muted2);margin-top:5px;text-align:center}
@@ -1656,6 +1657,7 @@ function renderProjectDetail(id,tab){
   renderShell(header+tabContent,'projects');
   if(curTab==='summary'&&p.location_lat&&p.location_lng){
     setTimeout(()=>_calcOfficeDistance(p.location_lat,p.location_lng,`dd-${id}`,p.location||''),0);
+    setTimeout(()=>_initSummaryLocMap(id,p.location_lat,p.location_lng),0);
   }
   if(curTab==='documents'){
     setTimeout(()=>initDocDropZone(id),0);
@@ -1866,6 +1868,7 @@ function renderTabSummary(p,id){
         <button class="btn btn-ghost btn-xs" onclick="window.recalcDistance('${id}')">↻ Recalculate</button>
       </div>
       ${p.location?`<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:5px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0"><circle cx="12" cy="10" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>${esc(p.location)}</div>`:''}
+      <div id="loc-summary-map-${id}" class="loc-summary-map"></div>
       <div id="dd-${id}" class="loc-dist-card" style="display:block;margin-top:0"></div>
     </div>`:''
   ;
@@ -9427,6 +9430,19 @@ async function _locReverseGeocode(lat,lng){
    DISTANCE FROM OFFICE  (OSRM, free, no API key)
 ================================================================ */
 const _OFFICE={lat:-33.7969,lng:151.1213,addr:'39 Delhi Rd, North Ryde NSW 2113'};
+
+// Small non-interactive preview map on the Summary tab's Location & Distance card
+let _summaryLocMap=null;
+function _initSummaryLocMap(id,lat,lng){
+  const el=document.getElementById('loc-summary-map-'+id);
+  if(!el||!window.L||lat==null||lng==null)return;
+  if(_summaryLocMap){try{_summaryLocMap.remove();}catch(e){}_summaryLocMap=null;}
+  _summaryLocMap=L.map(el,{zoomControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false,tap:false});
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri',maxZoom:19}).addTo(_summaryLocMap);
+  L.marker([lat,lng]).addTo(_summaryLocMap);
+  L.circleMarker([_OFFICE.lat,_OFFICE.lng],{radius:6,color:'#fff',weight:2,fillColor:'#3b82f6',fillOpacity:1}).addTo(_summaryLocMap).bindTooltip('Office');
+  _summaryLocMap.fitBounds(L.latLngBounds([[lat,lng],[_OFFICE.lat,_OFFICE.lng]]),{padding:[22,22],maxZoom:11});
+}
 
 function _haversineKm(lat1,lng1,lat2,lng2){
   if([lat1,lng1,lat2,lng2].some(v=>v==null||isNaN(v)))return null;
