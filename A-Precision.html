@@ -5793,10 +5793,19 @@ window.toggleRateCat=function(key){
 window._rlSearch='';
 window.filterRateLibrary=function(){
   window._rlSearch=(document.getElementById('rl-search')?.value||'').toLowerCase();
-  renderRateLibrary();
+  _rlPatchList();
 };
+function _rlPatchList(){
+  if(typeof _rlBuildListPieces!=='function'){renderRateLibrary();return;}
+  const listEl=document.getElementById('rl-list');
+  if(!listEl){renderRateLibrary();return;}
+  const built=_rlBuildListPieces();
+  listEl.innerHTML=built.listHTML;
+  const subEl=document.querySelector('.main .page-header .page-sub');
+  if(subEl)subEl.textContent=built.subText;
+}
 
-function renderRateLibrary(){
+function _rlBuildListPieces(){
   const lc=_rateLifecycle;
   const all=DB.getRates();
   const companies=DB.getCompanies();
@@ -5909,9 +5918,16 @@ function renderRateLibrary(){
   const accsHTML=CATS.map(cat=>catBlock(cat.key,cat.label,rates.filter(r=>r.category===cat.key))).join('');
   const uncatRates=rates.filter(r=>!validKeys.has(r.category));
   const uncatHTML=uncatRates.length?catBlock('_uncat','Uncategorised',uncatRates):'';
+  const listHTML=accsHTML+uncatHTML;
+  const subText=rates.length+' rate'+(rates.length!==1?'s':'')+' ('+lc+')';
+  return{listHTML,subText,tabsHTML,noticeHTML,search};
+}
+function renderRateLibrary(){
+  const built=_rlBuildListPieces();
+  const {listHTML,subText,tabsHTML,noticeHTML,search}=built;
 
   const content='<div class="page-header">'
-    +'<div><div class="page-title">Rate Library</div><div class="page-sub">'+rates.length+' rate'+(rates.length!==1?'s':'')+' ('+lc+')</div></div>'
+    +'<div><div class="page-title">Rate Library</div><div class="page-sub">'+subText+'</div></div>'
     +'<div style="display:flex;gap:8px">'
       +'<button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Companies</button>'
       +'<button id="rl-xl-btn" class="btn btn-green btn-sm" onclick="exportRateLibraryExcel()">&#8681; Extract to Excel</button>'
@@ -5926,15 +5942,22 @@ function renderRateLibrary(){
       +'</div>'
     +'</div>'
     +noticeHTML
-    +accsHTML
-    +uncatHTML;
+    +'<div id="rl-list">'+listHTML+'</div>';
 
   renderShell(content,'rate-library');
+  requestAnimationFrame(function(){
+    const el=document.getElementById('rl-search');
+    if(el&&window._rlSearch){el.focus();const v=el.value;el.setSelectionRange(v.length,v.length);}
+  });
 }
 window.filterRateCat=function(key,val){
   if(!window._rlCatSearch)window._rlCatSearch={};
   window._rlCatSearch[key]=val;
-  renderRateLibrary();
+  _rlPatchList();
+  requestAnimationFrame(function(){
+    const el=document.querySelector('.sr-accordion input.form-input[oninput*="filterRateCat(\''+key+'\'"]');
+    if(el){el.focus();const v=el.value;el.setSelectionRange(v.length,v.length);}
+  });
 };
 
 function renderRateRows(rates,lc='active'){
