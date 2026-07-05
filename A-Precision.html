@@ -7323,11 +7323,15 @@ window._srSearch={};
 window._catSearch='';
 window.filterCatalogue=function(){
   window._catSearch=(document.getElementById('cat-search')?.value||'').toLowerCase();
+  const built=(typeof _srBuildCatalogueList==='function')?_srBuildCatalogueList():null;
+  const listEl=document.getElementById('sr-list');
+  if(built&&listEl){
+    listEl.innerHTML=built.listHTML;
+    const subEl=document.querySelector('.main .page-header .page-sub');
+    if(subEl)subEl.textContent=built.subText;
+    return;
+  }
   renderCatalogue();
-  requestAnimationFrame(function(){
-    const el=document.getElementById('cat-search');
-    if(el){el.focus();const v=el.value;el.setSelectionRange(v.length,v.length);}
-  });
 };
 window.filterSRRates=function(id,val){
   window._srSearch[id]=val||'';
@@ -7370,7 +7374,7 @@ window.addSRToContacts=function(sid){
   toast((s.contact_name||s.company)+' added to Contacts.','success');
   renderCatalogue();
 };
-function renderCatalogue(){
+function _srBuildCatalogueList(){
   const lc=_catLifecycle;
   const all=_srGet();
   const contacts=DB.getContacts();
@@ -7383,8 +7387,6 @@ function renderCatalogue(){
     return (s.items||[]).some(function(it){return((it.description||'')+' '+(it.notes||'')+' '+(it.unit||'')).toLowerCase().includes(catQ);});
   };
   const filtered=catQ?lcFiltered.filter(supplierMatchesTopQuery):lcFiltered;
-  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'}];
-  const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setCatLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
   const listHTML=!filtered.length
     ?'<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:.88rem">'+(catQ?'No suppliers match “'+esc(catQ)+'”.':'No suppliers '+(lc==='active'?'yet. Click <strong>Add Supplier</strong> to get started, or use <strong>AI Extract</strong> to pull rates from a PDF.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.'))+'</div>'
     :filtered.map(s=>{
@@ -7444,6 +7446,13 @@ function renderCatalogue(){
 
   const activeCount=all.filter(s=>_srGetLc(s)==='active').length;
   const subText=catQ?`${filtered.length} match${filtered.length!==1?'es':''} for “${esc(catQ)}”`:`${activeCount} active supplier${activeCount!==1?'s':''}`;
+  return{listHTML,subText};
+}
+function renderCatalogue(){
+  const lc=_catLifecycle;
+  const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'}];
+  const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setCatLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
+  const {listHTML,subText}=_srBuildCatalogueList();
   const content=`
     <div class="page-header">
       <div>
@@ -7466,6 +7475,10 @@ function renderCatalogue(){
     <div id="sr-list" style="margin-top:12px">${listHTML}</div>
   `;
   renderShell(content,'supplier-rates');
+  requestAnimationFrame(function(){
+    const el=document.getElementById('cat-search');
+    if(el&&window._catSearch){el.focus();const v=el.value;el.setSelectionRange(v.length,v.length);}
+  });
 }
 function renderQuotes(){
   const quotes=DB.getQuotes();
