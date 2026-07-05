@@ -7320,6 +7320,15 @@ window.toggleSR=function(id){
   renderCatalogue();
 };
 window._srSearch={};
+window._catSearch='';
+window.filterCatalogue=function(){
+  window._catSearch=(document.getElementById('cat-search')?.value||'').toLowerCase();
+  renderCatalogue();
+  requestAnimationFrame(function(){
+    const el=document.getElementById('cat-search');
+    if(el){el.focus();const v=el.value;el.setSelectionRange(v.length,v.length);}
+  });
+};
 window.filterSRRates=function(id,val){
   window._srSearch[id]=val||'';
   renderCatalogue();
@@ -7365,17 +7374,26 @@ function renderCatalogue(){
   const lc=_catLifecycle;
   const all=_srGet();
   const contacts=DB.getContacts();
-  const filtered=lc==='all'?all:all.filter(s=>_srGetLc(s)===lc);
+  const lcFiltered=lc==='all'?all:all.filter(s=>_srGetLc(s)===lc);
+  const catQ=(window._catSearch||'').toLowerCase().trim();
+  const supplierMatchesTopQuery=function(s){
+    if(!catQ)return true;
+    const hay=[s.company,s.contact_name,s.email,s.contact_email,s.phone,s.notes].filter(Boolean).join(' ').toLowerCase();
+    if(hay.includes(catQ))return true;
+    return (s.items||[]).some(function(it){return((it.description||'')+' '+(it.notes||'')+' '+(it.unit||'')).toLowerCase().includes(catQ);});
+  };
+  const filtered=catQ?lcFiltered.filter(supplierMatchesTopQuery):lcFiltered;
   const tabDefs=[{key:'active',label:'Active'},{key:'archived',label:'Archived'},{key:'deleted',label:'Trash'}];
   const tabsHTML=tabDefs.map(t=>'<button class="proj-tab'+(lc===t.key?' active':'')+'" onclick="setCatLifecycle(\''+t.key+'\')">'+t.label+'</button>').join('');
   const listHTML=!filtered.length
-    ?'<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:.88rem">No suppliers '+( lc==='active'?'yet. Click <strong>Add Supplier</strong> to get started, or use <strong>AI Extract</strong> to pull rates from a PDF.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.')+'</div>'
+    ?'<div style="text-align:center;padding:60px 20px;color:var(--muted);font-size:.88rem">'+(catQ?'No suppliers match “'+esc(catQ)+'”.':'No suppliers '+(lc==='active'?'yet. Click <strong>Add Supplier</strong> to get started, or use <strong>AI Extract</strong> to pull rates from a PDF.':lc==='archived'?'archived.':lc==='deleted'?'in trash.':'found.'))+'</div>'
     :filtered.map(s=>{
-      const open=_srOpenIds.has(s.id);
+      const open=catQ?true:_srOpenIds.has(s.id);
       const slc=_srGetLc(s);
       const items=s.items||[];
       const _srSq=((window._srSearch)||{})[s.id]?((window._srSearch)||{})[s.id].toLowerCase():'';
-      const filteredItems=_srSq?items.filter(function(it){return(it.description||'').toLowerCase().includes(_srSq);}):items;
+      const effectiveQ=_srSq||catQ;
+      const filteredItems=effectiveQ?items.filter(function(it){return((it.description||'')+' '+(it.notes||'')+' '+(it.unit||'')).toLowerCase().includes(effectiveQ);}):items;
       const sCats=_srGetCats(s);
       const contactParts=[s.contact_name,s.email,s.phone].filter(Boolean);const _ce=(s.contact_email||s.email||'').toLowerCase();const inContacts=!!(_ce||s.contact_name)&&contacts.some(ct=>(_ce&&(ct.email||'').toLowerCase()===_ce)||(s.contact_name&&(ct.contact_person||'').toLowerCase()===(s.contact_name||'').toLowerCase()));
       const chevronSVG='<svg class="sr-acc-chevron" style="transform:rotate('+(open?'90':'0')+'deg)" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
@@ -7425,11 +7443,12 @@ function renderCatalogue(){
     }).join('');
 
   const activeCount=all.filter(s=>_srGetLc(s)==='active').length;
+  const subText=catQ?`${filtered.length} match${filtered.length!==1?'es':''} for “${esc(catQ)}”`:`${activeCount} active supplier${activeCount!==1?'s':''}`;
   const content=`
     <div class="page-header">
       <div>
         <div class="page-title">Supplier Rates Library</div>
-        <div class="page-sub">${activeCount} active supplier${activeCount!==1?'s':''}</div>
+        <div class="page-sub">${subText}</div>
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-outline" onclick="window.showCatalogueAISheet()">&#10022; AI Extract</button>
@@ -7438,7 +7457,12 @@ function renderCatalogue(){
         <button class="btn btn-blue" onclick="window.showCatalogueSheet('')">${icon('plus')} Add Supplier</button>
       </div>
     </div>
-    <div class="proj-tabs">${tabsHTML}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <div class="proj-tabs">${tabsHTML}</div>
+      <div class="proj-search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="form-input" id="cat-search" placeholder="Search suppliers or rates..." style="width:240px" value="${esc(window._catSearch||'')}" oninput="filterCatalogue()">
+      </div>
+    </div>
     <div id="sr-list" style="margin-top:12px">${listHTML}</div>
   `;
   renderShell(content,'supplier-rates');
