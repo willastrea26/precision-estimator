@@ -5791,6 +5791,100 @@ window.toggleRateCat=function(key){
   renderRateLibrary();
 };
 window._rlSearch='';
+window._rlSelectMode=false;
+window._rlSelected=new Set();
+window.toggleRateSelectMode=function(){
+  window._rlSelectMode=!window._rlSelectMode;
+  window._rlSelected=new Set();
+  renderRateLibrary();
+};
+window.toggleRateSelected=function(id){
+  if(window._rlSelected.has(id))window._rlSelected.delete(id);else window._rlSelected.add(id);
+  _rlRefreshSelectionUI();
+};
+window.toggleAllRatesInCat=function(key){
+  const rows=document.querySelectorAll('tr[data-rl-cat="'+key+'"]');
+  const ids=Array.from(rows).map(tr=>tr.getAttribute('data-rl-id')).filter(Boolean);
+  const anyUnchecked=ids.some(id=>!window._rlSelected.has(id));
+  ids.forEach(id=>{if(anyUnchecked)window._rlSelected.add(id);else window._rlSelected.delete(id);});
+  _rlPatchList();
+};
+window.clearRateSelection=function(){window._rlSelected=new Set();_rlPatchList();};
+function _rlRefreshSelectionUI(){
+  document.querySelectorAll('tr[data-rl-id]').forEach(function(tr){
+    const id=tr.getAttribute('data-rl-id');
+    const sel=window._rlSelected.has(id);
+    tr.classList.toggle('rl-selected',sel);
+    const cb=tr.querySelector('input.rl-check');
+    if(cb)cb.checked=sel;
+  });
+  const bar=document.getElementById('rl-bulk-bar');
+  if(bar){
+    const n=window._rlSelected.size;
+    if(n===0){bar.style.display='none';}
+    else{
+      bar.style.display='';
+      const countEl=bar.querySelector('.rl-bulk-count');
+      if(countEl)countEl.textContent=n+' selected';
+    }
+  }
+}
+window.bulkDeleteRates=function(){
+  const ids=Array.from(window._rlSelected);
+  if(!ids.length)return;
+  const lc=_rateLifecycle;
+  const perm=lc==='deleted';
+  const msg=perm
+    ?'Permanently delete '+ids.length+' rate'+(ids.length!==1?'s':'')+'? This cannot be undone.'
+    :'Move '+ids.length+' rate'+(ids.length!==1?'s':'')+' to trash?';
+  if(!confirm(msg))return;
+  const rates=DB.getRates();
+  let next;
+  if(perm){
+    const idSet=new Set(ids);
+    next=rates.filter(x=>!idSet.has(x.id));
+  }else{
+    const now=new Date().toISOString();
+    next=rates.map(function(r){
+      if(!window._rlSelected.has(r.id))return r;
+      return Object.assign({},r,{lifecycle_status:'deleted',deleted_at:now});
+    });
+  }
+  DB.saveRates(next);
+  window._rlSelected=new Set();
+  window._rlSelectMode=false;
+  toast((perm?'Permanently deleted ':'Moved to trash: ')+ids.length+' rate'+(ids.length!==1?'s':'')+'.','success');
+  renderRateLibrary();
+};
+window.bulkArchiveRates=function(){
+  const ids=Array.from(window._rlSelected);
+  if(!ids.length)return;
+  if(!confirm('Archive '+ids.length+' rate'+(ids.length!==1?'s':'')+'? They will be hidden from BOQ and dropdowns.'))return;
+  const rates=DB.getRates();const now=new Date().toISOString();
+  const next=rates.map(function(r){
+    if(!window._rlSelected.has(r.id))return r;
+    return Object.assign({},r,{lifecycle_status:'archived',archived_at:now});
+  });
+  DB.saveRates(next);
+  window._rlSelected=new Set();
+  window._rlSelectMode=false;
+  toast('Archived '+ids.length+' rate'+(ids.length!==1?'s':'')+'.','success');
+  renderRateLibrary();
+};
+window.bulkRestoreRates=function(){
+  const ids=Array.from(window._rlSelected);
+  if(!ids.length)return;
+  const rates=DB.getRates();
+  const next=rates.map(function(r){
+    if(!window._rlSelected.has(r.id))return r;
+    return Object.assign({},r,{lifecycle_status:'active',archived_at:null,deleted_at:null});
+  });
+  DB.saveRates(next);
+  window._rlSelected=new Set();
+  window._rlSelectMode=false;
+  toast('Restored '+ids.length+' rate'+(ids.length!==1?'s':'')+'.','success');
+  renderRateLibrary();
+};
 window.filterRateLibrary=function(){
   window._rlSearch=(document.getElementById('rl-search')?.value||'').toLowerCase();
   _rlPatchList();
@@ -5857,7 +5951,12 @@ function _rlBuildListPieces(){
        +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();deleteRate(\''+r.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>'
       :'<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();restoreRate(\''+r.id+'\')">&#8617; Restore</button>'
        +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();permDeleteRate(\''+r.id+'\')" style="color:var(--red)">'+icon('trash')+'</button>';
-    return'<tr onclick="showRateSheet(\''+r.id+'\')" style="cursor:pointer">'
+    const selMode=window._rlSelectMode;
+    const isSel=selMode&&window._rlSelected.has(r.id);
+    const clickHandler=selMode?'toggleRateSelected(\''+r.id+'\')':'showRateSheet(\''+r.id+'\')';
+    const selCell=selMode?'<td style="width:32px;padding-left:14px" onclick="event.stopPropagation();toggleRateSelected(\''+r.id+'\')"><input type="checkbox" class="rl-check" '+(isSel?'checked':'')+' onclick="event.stopPropagation();toggleRateSelected(\''+r.id+'\')"></td>':'';
+    return'<tr data-rl-id="'+r.id+'" data-rl-cat="'+esc(r.category||'_uncat')+'" onclick="'+clickHandler+'" style="cursor:pointer" class="'+(isSel?'rl-selected':'')+'">'
+      +selCell
       +'<td class="bold" style="max-width:260px">'+esc(r.description)+'</td>'
       +'<td style="color:var(--muted2);font-size:.78rem">'+esc(r.company||r.rate_code||'')+'</td>'
       +'<td>'+esc(r.unit)+'</td>'
@@ -5888,11 +5987,16 @@ function _rlBuildListPieces(){
         +'<input class="form-input" placeholder="Search '+label+'..." style="font-size:.8rem" value="'+esc(window._rlCatSearch[key]||'')+'" oninput="filterRateCat(\''+key+'\',this.value)" onclick="event.stopPropagation()">'
       +'</div>'
       +'</div>';
+    const selMode=window._rlSelectMode;
+    const visibleIds=filteredRates.map(r=>r.id);
+    const allChecked=selMode&&visibleIds.length>0&&visibleIds.every(id=>window._rlSelected.has(id));
+    const colspan=6+(lc==='all'?1:0)+(selMode?1:0);
     const body=open
       ?'<div class="sr-acc-body" style="padding:0">'
         +searchBar
         +'<table style="width:100%;border-collapse:collapse;font-size:.83rem">'
           +'<thead><tr style="background:rgba(255,255,255,.02)">'
+            +(selMode?'<th style="width:32px;padding:7px 8px 7px 14px;border-bottom:1px solid var(--border)"><input type="checkbox" '+(allChecked?'checked':'')+' onclick="event.stopPropagation();toggleAllRatesInCat(\''+key+'\')" title="Select all in this category"></th>':'')
             +'<th style="text-align:left;padding:7px 14px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Description</th>'
             +'<th style="text-align:left;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Company</th>'
             +'<th style="text-align:left;padding:7px 8px;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Unit</th>'
@@ -5903,8 +6007,8 @@ function _rlBuildListPieces(){
           +'</tr></thead>'
           +'<tbody>'
             +(filteredRates.length?filteredRates.map(rateRow).join('')
-              :catQ?'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">No rates match your search.</td></tr>'
-              :'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">No rates in this category yet.</td></tr>')
+              :catQ?'<tr><td colspan="'+colspan+'" style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">No rates match your search.</td></tr>'
+              :'<tr><td colspan="'+colspan+'" style="text-align:center;padding:20px;color:var(--muted);font-size:.82rem">No rates in this category yet.</td></tr>')
           +'</tbody>'
         +'</table>'
         +'<div style="padding:10px 14px;border-top:1px solid var(--border)">'
@@ -5925,13 +6029,35 @@ function _rlBuildListPieces(){
 function renderRateLibrary(){
   const built=_rlBuildListPieces();
   const {listHTML,subText,tabsHTML,noticeHTML,search}=built;
+  const selMode=window._rlSelectMode;
+  const selectBtn=selMode
+    ?'<button class="btn btn-outline btn-sm" onclick="toggleRateSelectMode()" style="border-color:var(--red);color:var(--red)">✕ Cancel Selection</button>'
+    :'<button class="btn btn-outline btn-sm" onclick="toggleRateSelectMode()" title="Select multiple rates to delete or archive at once">☑ Select</button>';
+  const lc=_rateLifecycle;
+  const isTrash=lc==='deleted';
+  const isArchived=lc==='archived';
+  const n=window._rlSelected.size;
+  const bulkPrimary=isTrash
+    ?'<button class="btn btn-sm btn-red" onclick="bulkDeleteRates()">🗑 Permanently Delete</button><button class="btn btn-sm btn-outline" onclick="bulkRestoreRates()" style="border-color:var(--green);color:var(--green)">↩ Restore</button>'
+    :isArchived
+      ?'<button class="btn btn-sm btn-outline" onclick="bulkRestoreRates()" style="border-color:var(--green);color:var(--green)">↩ Restore</button><button class="btn btn-sm btn-red" onclick="bulkDeleteRates()">🗑 Move to Trash</button>'
+      :'<button class="btn btn-sm btn-red" onclick="bulkDeleteRates()">🗑 Delete Selected</button><button class="btn btn-sm btn-outline" onclick="bulkArchiveRates()" style="border-color:var(--amber);color:var(--amber)">📦 Archive Selected</button>';
+  const bulkBar='<div id="rl-bulk-bar" style="display:'+(selMode&&n>0?'flex':'none')+';position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:60;align-items:center;gap:12px;padding:10px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.35)">'
+    +'<span class="rl-bulk-count" style="font-size:.85rem;font-weight:600">'+n+' selected</span>'
+    +'<div style="width:1px;height:20px;background:var(--border)"></div>'
+    +bulkPrimary
+    +'<button class="btn btn-sm btn-ghost" onclick="clearRateSelection()">Clear</button>'
+    +'</div>';
+  const selCSS='<style>tr.rl-selected>td{background:rgba(59,130,246,.09)!important}tr.rl-selected>td:first-child{box-shadow:inset 3px 0 0 var(--blue)}input.rl-check{width:16px;height:16px;cursor:pointer;accent-color:var(--blue)}</style>';
 
-  const content='<div class="page-header">'
+  const content=selCSS
+    +'<div class="page-header">'
     +'<div><div class="page-title">Rate Library</div><div class="page-sub">'+subText+'</div></div>'
-    +'<div style="display:flex;gap:8px">'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
       +'<button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Companies</button>'
       +'<button id="rl-xl-btn" class="btn btn-green btn-sm" onclick="exportRateLibraryExcel()">&#8681; Extract to Excel</button>'
       +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()">&#10022; AI Analyse</button>'
+      +selectBtn
       +'<button class="btn btn-blue" onclick="showRateSheet(\'\')">'+icon('plus')+' Add Rate</button>'
     +'</div>'
     +'</div>'
@@ -5942,7 +6068,8 @@ function renderRateLibrary(){
       +'</div>'
     +'</div>'
     +noticeHTML
-    +'<div id="rl-list">'+listHTML+'</div>';
+    +'<div id="rl-list">'+listHTML+'</div>'
+    +bulkBar;
 
   renderShell(content,'rate-library');
   requestAnimationFrame(function(){
