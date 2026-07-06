@@ -6056,7 +6056,9 @@ function renderRateLibrary(){
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
       +'<button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Companies</button>'
       +'<button id="rl-xl-btn" class="btn btn-green btn-sm" onclick="exportRateLibraryExcel()">&#8681; Extract to Excel</button>'
-      +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()">&#10022; AI Analyse</button>'
+      +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()" style="border-color:rgba(217,119,87,.55);color:#D97757" title="AI Analyse (Claude)">'
+        +'<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:-2px;margin-right:5px" aria-hidden="true"><path d="M12 2c.3 0 .55.22.6.52l.9 5.5c.06.36.24.68.5.94s.58.44.94.5l5.5.9c.7.11.7 1.12 0 1.24l-5.5.9c-.36.06-.68.24-.94.5s-.44.58-.5.94l-.9 5.5c-.12.7-1.13.7-1.24 0l-.9-5.5c-.06-.36-.24-.68-.5-.94s-.58-.44-.94-.5l-5.5-.9c-.7-.12-.7-1.13 0-1.24l5.5-.9c.36-.06.68-.24.94-.5s.44-.58.5-.94l.9-5.5c.05-.3.3-.52.6-.52z"/></svg>'
+        +'AI Analyse</button>'
       +selectBtn
       +'<button class="btn btn-blue" onclick="showRateSheet(\'\')">'+icon('plus')+' Add Rate</button>'
     +'</div>'
