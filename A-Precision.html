@@ -1018,6 +1018,15 @@ const ICONS={
   camera:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
 };
 const icon=(k,cls='')=>`<span class="icon-wrap" style="display:inline-flex;align-items:center;${cls?'':'width:16px;height:16px'}">${ICONS[k]||''}</span>`;
+const CLAUDE_ICON_SVG='<svg viewBox="-16 -16 32 32" width="14" height="14" fill="currentColor" style="vertical-align:-2px;margin-right:6px" aria-hidden="true">'
+  +'<g><path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(45)"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(90)"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(135)"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(180)"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(225)"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(270)"/>'
+  +'<path d="M0 -14 Q1.6 -3.5 0 0 Q-1.6 -3.5 0 -14 Z" transform="rotate(315)"/></g></svg>';
 
 /* ================================================================
    STATUS HELPERS
@@ -6056,8 +6065,8 @@ function renderRateLibrary(){
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
       +'<button class="btn btn-outline btn-sm" onclick="showManageCompanies()">&#9881; Companies</button>'
       +'<button id="rl-xl-btn" class="btn btn-green btn-sm" onclick="exportRateLibraryExcel()">&#8681; Extract to Excel</button>'
-      +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()" style="border-color:rgba(217,119,87,.55);color:#D97757" title="AI Analyse (Claude)">'
-        +'<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="vertical-align:-2px;margin-right:5px" aria-hidden="true"><path d="M12 2c.3 0 .55.22.6.52l.9 5.5c.06.36.24.68.5.94s.58.44.94.5l5.5.9c.7.11.7 1.12 0 1.24l-5.5.9c-.36.06-.68.24-.94.5s-.44.58-.5.94l-.9 5.5c-.12.7-1.13.7-1.24 0l-.9-5.5c-.06-.36-.24-.68-.5-.94s-.58-.44-.94-.5l-5.5-.9c-.7-.12-.7-1.13 0-1.24l5.5-.9c.36-.06.68-.24.94-.5s.44-.58.5-.94l.9-5.5c.05-.3.3-.52.6-.52z"/></svg>'
+      +'<button class="btn btn-outline btn-sm" onclick="showRateLibraryAISheet()" style="border-color:rgba(217,119,87,.55);color:#D97757;background:rgba(217,119,87,.06)" title="AI Analyse (Claude)">'
+        +CLAUDE_ICON_SVG
         +'AI Analyse</button>'
       +selectBtn
       +'<button class="btn btn-blue" onclick="showRateSheet(\'\')">'+icon('plus')+' Add Rate</button>'
@@ -7612,7 +7621,7 @@ function renderCatalogue(){
         <div class="page-sub">${subText}</div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-outline" onclick="window.showCatalogueAISheet()">&#10022; AI Extract</button>
+        <button class="btn btn-outline" onclick="window.showCatalogueAISheet()" style="border-color:rgba(217,119,87,.55);color:#D97757;background:rgba(217,119,87,.06)" title="AI Extract (Claude)">${CLAUDE_ICON_SVG}AI Extract</button>
         <button id="sr-xl-btn" class="btn btn-green" onclick="exportSupplierRatesExcel()">&#8681; Extract to Excel</button>
         <button class="btn btn-outline" onclick="window._srSyncCloud()" title="Push all rates to cloud so they appear on all devices">☁ Sync to Cloud</button>
         <button class="btn btn-blue" onclick="window.showCatalogueSheet('')">${icon('plus')} Add Supplier</button>
