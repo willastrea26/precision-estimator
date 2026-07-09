@@ -7605,8 +7605,10 @@ function _srBuildCatalogueList(){
       return'<div class="sr-accordion'+(open?' open':'')+(slc!=='active'?' muted':'')+'">'+headerHTML+bodyHTML+'</div>';
     }).join('');
 
-  const activeCount=all.filter(s=>_srGetLc(s)==='active').length;
-  const subText=catQ?`${filtered.length} match${filtered.length!==1?'es':''} for “${esc(catQ)}”`:`${activeCount} active supplier${activeCount!==1?'s':''}`;
+  const activeSups=all.filter(s=>_srGetLc(s)==='active');
+  const activeCount=activeSups.length;
+  const totalRates=activeSups.reduce((n,s)=>n+((s.items||[]).length),0);
+  const subText=catQ?`${filtered.length} match${filtered.length!==1?'es':''} for “${esc(catQ)}”`:`${activeCount} active supplier${activeCount!==1?'s':''} · ${totalRates} rate${totalRates!==1?'s':''}`;
   return{listHTML,subText};
 }
 function renderCatalogue(){
