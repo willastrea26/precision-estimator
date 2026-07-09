@@ -1999,16 +1999,38 @@ function renderTabSummary(p,id){
 
   ${locSection}
 
-  <!-- Project Summary / Description -->
-  <div class="card mb-3" id="sf-card-description">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div class="card-title" style="margin:0">Project Summary</div>
-      ${editBtn('description')}
+  <!-- Project Summary Brief (HTML) -->
+  ${(sf.brief)?`
+    <div class="card mb-3" style="padding:0;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:rgba(217,119,87,.05);flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          ${CLAUDE_ICON_SVG.replace('width="14"','width="16"').replace('height="14"','height="16"')}
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:.88rem;color:#D97757">Project Summary</div>
+            <div style="font-size:.7rem;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(sf.brief.filename||'brief.html')}${sf.brief.uploaded_by?' &middot; '+esc(sf.brief.uploaded_by):''}${sf.brief.uploaded_at?' &middot; '+esc(new Date(sf.brief.uploaded_at).toLocaleDateString()):''}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-outline" onclick="replaceProjectBrief('${id}')">Replace</button>
+          <button class="btn btn-sm btn-ghost" onclick="removeProjectBrief('${id}')" style="color:var(--red)">Remove</button>
+          <input type="file" id="ps-brief-file-${id}" accept=".html,.htm" style="display:none" onchange="_psBriefFilePick(event,'${id}')">
+        </div>
+      </div>
+      <iframe id="ps-brief-iframe-${id}" sandbox="allow-scripts allow-same-origin" style="display:block;width:100%;height:800px;border:0;background:#fff"></iframe>
+      <img src="data:image/gif;base64,x" onerror="_projectLoadBriefInto('ps-brief-iframe-${id}','${esc(sf.brief.storage_path)}');this.remove()" style="display:none" alt="">
     </div>
-    ${sfCard('description','description','description','description',6,
-      sf.description?`<div style="font-size:.82rem;color:var(--muted);white-space:pre-wrap;line-height:1.7">${esc(sf.description)}</div>`:
-      `<div style="font-size:.82rem;color:var(--muted2)">No project summary added yet.</div>`,'')}
-  </div>
+  `:`
+    <div class="card mb-3" style="border-style:dashed;padding:0">
+      <div ondragover="_psBriefDragOver(event)" ondragleave="_psBriefDragLeave(event)" ondrop="_psBriefDrop(event,'${id}')"
+        onclick="document.getElementById('ps-brief-file-${id}').click()"
+        style="padding:32px 20px;text-align:center;cursor:pointer;transition:background .15s">
+        <div style="display:flex;justify-content:center;margin-bottom:8px;color:#D97757">${CLAUDE_ICON_SVG.replace('width="14"','width="22"').replace('height="14"','height="22"').replace('margin-right:6px','margin-right:0')}</div>
+        <div style="font-weight:600;font-size:.9rem;margin-bottom:4px">Drop the project summary HTML here</div>
+        <div style="font-size:.76rem;color:var(--muted2)">or click to browse &middot; .html only, max 10 MB</div>
+        <input type="file" id="ps-brief-file-${id}" accept=".html,.htm" style="display:none" onchange="_psBriefFilePick(event,'${id}')">
+      </div>
+    </div>
+  `}
 
   <div class="grid-2">
     <div>
@@ -2564,6 +2586,72 @@ window._gtBriefDrop=function(e,projId){
 window._gtBriefFilePick=function(e,projId){
   const f=e.target.files&&e.target.files[0];
   if(f)window.uploadGeotechBrief(projId,f);
+  e.target.value='';
+};
+
+const _psKey=projId=>projId+'/_project_brief.html';
+async function _projectLoadBriefInto(iframeId,storagePath){
+  const el=document.getElementById(iframeId);
+  if(!el||!storagePath)return;
+  try{
+    const{data,error}=await _sb.storage.from(_GT_BUCKET).createSignedUrl(storagePath,3600*8);
+    if(error||!data?.signedUrl)throw error||new Error('No signed URL');
+    const html=await fetch(data.signedUrl).then(r=>r.text());
+    el.srcdoc=html;
+    el.onload=function(){
+      try{
+        const doc=el.contentDocument||el.contentWindow.document;
+        const h=Math.max(doc.documentElement.scrollHeight,doc.body?.scrollHeight||0);
+        el.style.height=(h+24)+'px';
+      }catch(e){el.style.height='1600px';}
+    };
+  }catch(e){
+    el.outerHTML='<div style="padding:20px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:8px;color:var(--red);font-size:.83rem">Could not load project brief. Try re-uploading. ('+esc(e.message||'')+')</div>';
+  }
+}
+window.uploadProjectBrief=async function(projId,file){
+  if(!file)return;
+  if(!/\.html?$/i.test(file.name)){toast('Please drop an .html file.','warning');return;}
+  if(file.size>10*1024*1024){toast('File is over 10 MB — please slim it down first.','warning');return;}
+  const key=_psKey(projId);
+  toast('Uploading brief…','info');
+  try{
+    const{error}=await _sb.storage.from(_GT_BUCKET).upload(key,file,{cacheControl:'3600',upsert:true,contentType:'text/html'});
+    if(error)throw error;
+    const p=DB.getProject(projId);if(!p)throw new Error('Project not found');
+    if(!p.summary_fields)p.summary_fields={};
+    p.summary_fields.brief={storage_path:key,filename:file.name,size_bytes:file.size,uploaded_by:_c.userEmail||'',uploaded_at:new Date().toISOString()};
+    DB.saveProject(p);
+    toast('Brief uploaded.','success');
+    navigate('project/'+projId+'/summary');
+  }catch(e){toast('Upload failed: '+(e.message||e),'error');}
+};
+window.replaceProjectBrief=function(projId){
+  const inp=document.getElementById('ps-brief-file-'+projId);
+  if(inp)inp.click();
+};
+window.removeProjectBrief=async function(projId){
+  if(!confirm('Remove the project brief? The file will be deleted.'))return;
+  const p=DB.getProject(projId);if(!p)return;
+  const brief=p.summary_fields&&p.summary_fields.brief;
+  if(!brief)return;
+  const path=brief.storage_path;
+  try{if(path)await _sb.storage.from(_GT_BUCKET).remove([path]);}catch(e){}
+  if(p.summary_fields)delete p.summary_fields.brief;
+  DB.saveProject(p);
+  toast('Brief removed.','success');
+  navigate('project/'+projId+'/summary');
+};
+window._psBriefDragOver=function(e){e.preventDefault();e.currentTarget.classList.add('gt-drop-hover');};
+window._psBriefDragLeave=function(e){e.currentTarget.classList.remove('gt-drop-hover');};
+window._psBriefDrop=function(e,projId){
+  e.preventDefault();e.currentTarget.classList.remove('gt-drop-hover');
+  const f=e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f)window.uploadProjectBrief(projId,f);
+};
+window._psBriefFilePick=function(e,projId){
+  const f=e.target.files&&e.target.files[0];
+  if(f)window.uploadProjectBrief(projId,f);
   e.target.value='';
 };
 
