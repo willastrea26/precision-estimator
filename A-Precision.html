@@ -2531,7 +2531,8 @@ window.uploadGeotechBrief=async function(projId,file){
     const p=DB.getProject(projId);if(!p)throw new Error('Project not found');
     if(!p.geotech_fields)p.geotech_fields={};
     p.geotech_fields.brief={storage_path:key,filename:file.name,size_bytes:file.size,uploaded_by:_c.userEmail||'',uploaded_at:new Date().toISOString()};
-    DB.saveProject(p);_sbUp('projects',p);
+    if(p.geotech_brief)delete p.geotech_brief;
+    DB.saveProject(p);
     toast('Brief uploaded.','success');
     navigate('project/'+projId+'/geotech');
   }catch(e){toast('Upload failed: '+(e.message||e),'error');}
@@ -2549,7 +2550,7 @@ window.removeGeotechBrief=async function(projId){
   try{if(path)await _sb.storage.from(_GT_BUCKET).remove([path]);}catch(e){}
   if(p.geotech_fields)delete p.geotech_fields.brief;
   if(p.geotech_brief)delete p.geotech_brief;
-  DB.saveProject(p);_sbUp('projects',p);
+  DB.saveProject(p);
   toast('Brief removed.','success');
   navigate('project/'+projId+'/geotech');
 };
