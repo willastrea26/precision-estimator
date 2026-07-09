@@ -1481,6 +1481,56 @@ window.permDeleteProject=function(id){
   toast('Project permanently deleted.','success');renderProjects();
 };
 
+const PROJ_ACTIVE_STATUSES=['in_progress','awarded'];
+const PROJ_ESTIMATING_STATUSES=['estimating','submitted','awaiting_decision'];
+function _projGroupActive(ps){
+  const active=[],estimating=[],other=[];
+  ps.forEach(function(p){
+    if(PROJ_ACTIVE_STATUSES.includes(p.status))active.push(p);
+    else if(PROJ_ESTIMATING_STATUSES.includes(p.status))estimating.push(p);
+    else other.push(p);
+  });
+  return{active,estimating,other};
+}
+function _projSectionHTML(label,rows,tbodyId,lc,accent){
+  if(!rows.length)return'';
+  return`<div style="margin-top:10px">
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 2px 8px">
+      <div style="width:3px;height:15px;background:${accent};border-radius:2px"></div>
+      <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${label}</div>
+      <span style="font-size:.7rem;color:var(--muted2);background:rgba(255,255,255,.05);padding:1px 8px;border-radius:99px">${rows.length}</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
+          <th>Status</th><th>Risk</th><th>Due Date</th><th>Est. Value</th>
+        </tr></thead>
+        <tbody id="${tbodyId}">${renderProjectRows(rows,lc)}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+function _projListHTML(ps,lc){
+  if(lc!=='active'||!ps.length){
+    return`<div class="tbl-wrap">
+      <table id="proj-table">
+        <thead><tr>
+          <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
+          ${lc==='all'?'<th>Lifecycle</th>':''}
+          <th>Status</th><th>Risk</th><th>Due Date</th><th>Est. Value</th>
+          ${lc!=='active'?'<th>Actions</th>':''}
+        </tr></thead>
+        <tbody id="proj-tbody">${renderProjectRows(ps,lc)}</tbody>
+      </table>
+    </div>`;
+  }
+  const g=_projGroupActive(ps);
+  return _projSectionHTML('Active Projects',g.active,'proj-tbody-active',lc,'#06B6D4')
+    +_projSectionHTML('Estimating',g.estimating,'proj-tbody-estimating',lc,'#3B82F6')
+    +_projSectionHTML('Other',g.other,'proj-tbody-other',lc,'#64748B');
+}
+
 function renderProjects(){
   const lc=_projLifecycle;
   const all=DB.getProjects();
@@ -1523,18 +1573,7 @@ function renderProjects(){
     ${filtersHTML}
   </div>
   ${noticeHTML}
-  ${ps.length===0?`<div class="tbl-wrap"><div style="text-align:center;padding:48px 20px"><div class="empty-state" style="padding:0">${emptyMsg[lc]||emptyMsg.all}</div></div></div>`:`
-  <div class="tbl-wrap">
-    <table id="proj-table">
-      <thead><tr>
-        <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
-        ${lc==='all'?'<th>Lifecycle</th>':''}
-        <th>Status</th><th>Risk</th><th>Due Date</th><th>Est. Value</th>
-        ${lc!=='active'?'<th>Actions</th>':''}
-      </tr></thead>
-      <tbody id="proj-tbody">${renderProjectRows(ps,lc)}</tbody>
-    </table>
-  </div>`}`;
+  <div id="proj-list-container">${ps.length===0?`<div class="tbl-wrap"><div style="text-align:center;padding:48px 20px"><div class="empty-state" style="padding:0">${emptyMsg[lc]||emptyMsg.all}</div></div></div>`:_projListHTML(ps,lc)}</div>`;
   renderShell(content,'projects');
 }
 function renderProjectRows(ps,lc='active'){
@@ -1584,6 +1623,11 @@ window.filterProjects=function(){
   const filtered=all.filter(p=>
     (!s||(p.name+p.client+p.location).toLowerCase().includes(s))&&
     (!st||p.status===st)&&(!ty||p.project_type===ty)&&(!ri||p.risk_level===ri));
+  const container=document.getElementById('proj-list-container');
+  if(container){
+    container.innerHTML=filtered.length?_projListHTML(filtered,lc):'<div class="tbl-wrap"><div style="text-align:center;padding:48px 20px;color:var(--muted)">No projects match your filters.</div></div>';
+    return;
+  }
   const tbody=document.getElementById('proj-tbody');
   if(tbody)tbody.innerHTML=renderProjectRows(filtered,lc);
 };
