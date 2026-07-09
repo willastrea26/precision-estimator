@@ -2529,7 +2529,8 @@ window.uploadGeotechBrief=async function(projId,file){
     const{error}=await _sb.storage.from(_GT_BUCKET).upload(key,file,{cacheControl:'3600',upsert:true,contentType:'text/html'});
     if(error)throw error;
     const p=DB.getProject(projId);if(!p)throw new Error('Project not found');
-    p.geotech_brief={storage_path:key,filename:file.name,size_bytes:file.size,uploaded_by:_c.userEmail||'',uploaded_at:new Date().toISOString()};
+    if(!p.geotech_fields)p.geotech_fields={};
+    p.geotech_fields.brief={storage_path:key,filename:file.name,size_bytes:file.size,uploaded_by:_c.userEmail||'',uploaded_at:new Date().toISOString()};
     DB.saveProject(p);_sbUp('projects',p);
     toast('Brief uploaded.','success');
     navigate('project/'+projId+'/geotech');
@@ -2541,10 +2542,13 @@ window.replaceGeotechBrief=function(projId){
 };
 window.removeGeotechBrief=async function(projId){
   if(!confirm('Remove the geotech brief for this project? The file will be deleted.'))return;
-  const p=DB.getProject(projId);if(!p||!p.geotech_brief)return;
-  const path=p.geotech_brief.storage_path;
-  try{await _sb.storage.from(_GT_BUCKET).remove([path]);}catch(e){}
-  p.geotech_brief=null;
+  const p=DB.getProject(projId);if(!p)return;
+  const brief=(p.geotech_fields&&p.geotech_fields.brief)||p.geotech_brief;
+  if(!brief)return;
+  const path=brief.storage_path;
+  try{if(path)await _sb.storage.from(_GT_BUCKET).remove([path]);}catch(e){}
+  if(p.geotech_fields)delete p.geotech_fields.brief;
+  if(p.geotech_brief)delete p.geotech_brief;
   DB.saveProject(p);_sbUp('projects',p);
   toast('Brief removed.','success');
   navigate('project/'+projId+'/geotech');
@@ -2567,7 +2571,7 @@ function renderTabGeotech(p,id){
   const st=gf.structured||null;
   const risks=p.risks||[];
   const geoRisks=risks.filter(r=>r.category==='geotechnical');
-  const brief=p.geotech_brief||null;
+  const brief=(p.geotech_fields&&p.geotech_fields.brief)||p.geotech_brief||null;
 
   const briefCard=brief?`
     <div class="card mb-3" style="padding:0;overflow:hidden">
