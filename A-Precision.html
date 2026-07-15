@@ -2144,10 +2144,33 @@ function renderTabSummary(p,id){
   })()}
   ${(function(){
     const rtcs=Array.isArray(sf.required_trade_categories)?sf.required_trade_categories:[];
+    const procItems=Array.isArray(sf.procurement_items)?sf.procurement_items:[];
     const shortlist=Array.isArray(sf.shortlisted_suppliers)?sf.shortlisted_suppliers:[];
     const findEntry=(cat,srid)=>shortlist.find(e=>e.category===cat&&(e.supplier_rate_id||null)===(srid||null));
     const allSups=_srGet().filter(s=>_srGetLc(s)==='active');
+    const allQuotes=DB.getQuotes();
+    const pqContacts=DB.getContacts().filter(c=>['active','preferred'].includes(c.status||'active')&&['supplier','subcontractor'].includes(c.contact_type));
     const catLabel=c=>(SR_CAT_LABELS&&SR_CAT_LABELS[c])||c;
+    // Unified category map: every trade the AI flagged + every category carrying procurement items
+    const catMap=new Map();
+    rtcs.forEach(r=>{if(r.category&&!catMap.has(r.category))catMap.set(r.category,{reason:r.reason||'',items:[]});});
+    procItems.forEach(it=>{const c=it.category||'generalMaterials';if(!catMap.has(c))catMap.set(c,{reason:'',items:[]});catMap.get(c).items.push(it);});
+    // Live quote status — reads the actual quote record so the chip updates as All Quotes changes
+    const Q_CHIP={not_requested:['badge-grey','Draft created'],requested:['badge-blue','Requested'],awaiting:['badge-amber','Awaiting reply'],clarification:['badge-amber','Clarification'],received:['badge-green','✓ Received'],accepted:['badge-green','✓ Accepted'],declined:['badge-red','Declined'],overdue:['badge-red','Overdue']};
+    const statusChip=(cat,key)=>{
+      const e=findEntry(cat,key);
+      if(!e||e.status!=='quote_created')return null;
+      const q=e.quote_id?allQuotes.find(x=>x.id===e.quote_id):null;
+      const st=q?(q.status||'not_requested'):'not_requested';
+      const[cls,lbl]=Q_CHIP[st]||Q_CHIP.not_requested;
+      return `<button class="badge ${cls}" onclick="navigate('quotes')" style="font-size:.6rem;cursor:pointer;border:none;white-space:nowrap;flex-shrink:0" title="Open in All Quotes">${lbl}</button>`;
+    };
+    const itemRows=items=>items.length?`<div style="margin-bottom:8px">${items.map(i=>`
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        ${i.priority==='day_one'?`<span class="badge badge-red" style="font-size:.53rem;flex-shrink:0;margin-top:2px" title="${esc(i.lead_reason||'Long-lead item')}">DAY 1</span>`:''}
+        <div style="flex:1;min-width:0;font-size:.78rem;color:var(--text)"><b>${esc(i.item||'')}</b>${i.qty?` <span style="color:var(--muted)">— ${esc(i.qty)}</span>`:''}${i.spec?`<div style="font-size:.68rem;color:var(--muted2)">${esc(i.spec)}</div>`:''}${i.priority==='day_one'&&i.lead_reason?`<div style="font-size:.66rem;color:#fca5a5">${esc(i.lead_reason)}</div>`:''}</div>
+        ${i.source?`<span style="font-size:.62rem;color:var(--muted2);flex-shrink:0;font-style:italic" title="${esc(i.source)}">src</span>`:''}
+      </div>`).join('')}</div>`:'';
     // Each trade is a self-contained panel: name left, status badges right, colour-coded left edge.
     const catPanel=(accent,label,badges,body)=>`<div style="border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 14px 12px;margin-bottom:11px;background:rgba(255,255,255,.015)">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.05)">
@@ -2161,10 +2184,10 @@ function renderTabSummary(p,id){
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0;margin-top:2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span>${esc(txt)}</span>
       </div>`:'';
-    // Rate Library trades (Plant Hire, Labour Hire) first, then supplier trades — original order preserved within each group
-    const sortedRtcs=[...rtcs].sort((a,b)=>(_rlIsLabourPlant(b.category)?1:0)-(_rlIsLabourPlant(a.category)?1:0));
-    const rows=sortedRtcs.map(rtc=>{
-      const cat=rtc.category;const label=catLabel(cat);
+    // Day-one trades surface first; Rate Library trades lead the remainder
+    const entries=[...catMap.entries()].map(([cat,info])=>({cat,reason:info.reason,items:info.items,isRL:_rlIsLabourPlant(cat),isDayOne:info.items.some(i=>i.priority==='day_one')}));
+    const renderCat=ent=>{
+      const cat=ent.cat;const label=catLabel(cat);const rtc={category:cat,reason:ent.reason};const catItems=ent.items;
       // Plant Hire: if the analyser extracted the specific machines this job needs, match each to a rate
       const reqPlant=Array.isArray(sf.required_plant)?sf.required_plant:[];
       if(cat==='plantHire'&&reqPlant.length){
@@ -2208,13 +2231,12 @@ function renderTabSummary(p,id){
             </div>`);
       }
       const matches=_srMatchSuppliers(cat,allSups);
-      const reqBtn=(requested,onclick)=>requested
-        ? `<button class="btn btn-xs btn-outline" onclick="navigate('quotes')" style="color:var(--green);border-color:rgba(16,185,129,.35);white-space:nowrap;flex-shrink:0" title="Draft quote created">✓ Quote sent</button>`
-        : `<button class="btn btn-xs btn-blue" onclick="${onclick}" style="white-space:nowrap;flex-shrink:0">Request quote</button>`;
+      // Contacts that cover this trade but aren't in the supplier-rates library
+      const conMatches=pqContacts.filter(c=>c.trade_category===cat&&!matches.some(m=>(m.s.company||'').toLowerCase().trim()===(c.company_name||'').toLowerCase().trim()));
+      const reqBtn=onclick=>`<button class="btn btn-xs btn-blue" onclick="${onclick}" style="white-space:nowrap;flex-shrink:0">Request quote</button>`;
+      const rightSide=(key,onclick)=>statusChip(cat,key)||reqBtn(onclick);
       const supRows=matches.map(m=>{
         const s=m.s;
-        const entry=findEntry(cat,s.id);
-        const requested=entry&&entry.status==='quote_created';
         const rateCount=(s.items||[]).length;
         const basisLabel=m.basis==='rate'?'rate match':'tagged';
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
@@ -2222,28 +2244,57 @@ function renderTabSummary(p,id){
             <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</div>
             <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">${rateCount} rate${rateCount!==1?'s':''} · ${basisLabel}</div>
           </div>
-          ${reqBtn(requested,`window.requestSupplierQuote('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})`)}
+          ${rightSide(s.id,`window.requestSupplierQuote('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})`)}
         </div>`;
       }).join('');
-      // "Not on file" entry (category-level, supplier_rate_id null)
-      const nofEntry=findEntry(cat,null);
-      const nofRequested=nofEntry&&nofEntry.status==='quote_created';
-      const notOnFile=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;${matches.length?'border-top:1px dashed rgba(255,255,255,.08);margin-top:2px':''}">
-        <div style="flex:1;min-width:0;font-size:.74rem;color:var(--muted2)">${matches.length?'None of these? ':'⚠ No supplier on file for this trade. '}<button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button></div>
-        ${reqBtn(nofRequested,`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`)}
+      const conRows=conMatches.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(c.company_name||'Unnamed')}</div>
+            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">from Contacts${c.contact_person?` · ${esc(c.contact_person)}`:''}${c.email?` · ${esc(c.email)}`:''}</div>
+          </div>
+          ${rightSide('c:'+c.id,`window.pqRequestQuoteContact('${id}','${cat}','${c.id}',${JSON.stringify(c.company_name||'').replace(/"/g,'&quot;')})`)}
+        </div>`).join('');
+      const anyOnFile=matches.length+conMatches.length>0;
+      // "Not on file" row: manual add, AI recommendation, or fire a quote request anyway
+      const nofRequested=!!statusChip(cat,null);
+      const notOnFile=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;flex-wrap:wrap;${anyOnFile?'border-top:1px dashed rgba(255,255,255,.08);margin-top:2px':''}">
+        <div style="flex:1;min-width:0;font-size:.74rem;color:var(--muted2)">${anyOnFile?'None of these? ':'⚠ No supplier on file for this trade. '}
+          <button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button>
+          <button class="btn btn-ghost btn-xs" id="pq-sug-${cat}" onclick="window.aiSuggestSuppliers('${id}','${cat}')" style="color:#D97757;border:1px solid rgba(217,119,87,.35);padding:2px 8px;margin-left:4px">✦ Suggest suppliers</button>
+        </div>
+        ${nofRequested?statusChip(cat,null):reqBtn(`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`)}
       </div>`;
-      return catPanel(matches.length?'var(--green)':'var(--amber)',label,
-        matches.length?`<span class="badge badge-green" style="font-size:.58rem">${matches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`,
+      const accent=ent.isDayOne?'var(--red)':anyOnFile?'var(--green)':'var(--amber)';
+      const badges=`${ent.isDayOne?`<span class="badge badge-red" style="font-size:.58rem">DAY ONE</span>`:''}${catItems.length?`<span class="badge badge-grey" style="font-size:.58rem">${catItems.length} item${catItems.length!==1?'s':''}</span>`:''}${anyOnFile?`<span class="badge badge-green" style="font-size:.58rem">${matches.length+conMatches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`}`;
+      return catPanel(accent,label,badges,
         `${evBox(rtc.reason)}
+          ${itemRows(catItems)}
           ${supRows}
+          ${conRows}
           ${notOnFile}`);
-    }).join('');
+    };
+    const d1Cats=entries.filter(e=>e.isDayOne&&!e.isRL);
+    const restCats=entries.filter(e=>!(e.isDayOne&&!e.isRL)).sort((a,b)=>(b.isRL?1:0)-(a.isRL?1:0));
+    // Progress chips: how many supplier trades have a quote drafted / received (live from All Quotes)
+    const supCats=entries.filter(e=>!e.isRL);
+    const catQuoted=cat=>shortlist.some(e2=>e2.category===cat&&e2.status==='quote_created');
+    const catReceived=cat=>shortlist.some(e2=>{if(e2.category!==cat||!e2.quote_id)return false;const q=allQuotes.find(x=>x.id===e2.quote_id);return!!q&&['received','accepted'].includes(q.status);});
+    const nQ=supCats.filter(e=>catQuoted(e.cat)).length;
+    const nR=supCats.filter(e=>catReceived(e.cat)).length;
+    const d1Pending=d1Cats.filter(e=>!catQuoted(e.cat)).length;
+    const d1Banner=d1Cats.length?`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:9px 13px;margin-bottom:11px">
+        <div style="font-size:.79rem;color:#fca5a5;min-width:0"><b style="color:var(--red)">🚨 Day one</b> — ${d1Cats.length} trade${d1Cats.length!==1?'s':''} with long-lead items. Send these requests now so lead times don't eat the programme.</div>
+        ${d1Pending?`<button class="btn btn-xs btn-red" onclick="window.pqRequestAllDayOne('${id}')" style="white-space:nowrap;flex-shrink:0">Request all day-one quotes</button>`:`<span class="badge badge-green" style="font-size:.6rem;flex-shrink:0">✓ All requested</span>`}
+      </div>`:'';
     return `<div class="card" style="margin-top:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div class="card-title" style="margin:0">Key Suppliers</div>
-        <span style="font-size:.72rem;color:var(--muted2)">One click drafts a quote in All Quotes</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">Procurement &amp; Quotes</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          ${supCats.length?`<span class="badge ${nQ>=supCats.length?'badge-green':'badge-grey'}" style="font-size:.6rem">${nQ}/${supCats.length} requested</span><span class="badge ${nR?'badge-green':'badge-grey'}" style="font-size:.6rem">${nR} received</span>`:''}
+          <span style="font-size:.72rem;color:var(--muted2)">One click drafts a quote in All Quotes</span>
+        </div>
       </div>
-      ${rtcs.length?rows:`<div style="font-size:.82rem;color:var(--muted2)">No trade categories identified yet. Run the AI Analyser on this project's documents to identify the suppliers this job needs.</div>`}
+      ${entries.length?`${d1Banner}${d1Cats.map(renderCat).join('')}${d1Cats.length&&restCats.length?`<div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin:14px 2px 8px">Other trades &amp; internal rates</div>`:''}${restCats.map(renderCat).join('')}`:`<div style="font-size:.82rem;color:var(--muted2)">No trade categories identified yet. Run the AI Analyser on this project's documents to identify the suppliers and quotes this job needs.</div>`}
     </div>`;
   })()}
   ${(function(){
@@ -2474,29 +2525,38 @@ window._sfDelKeyDate=function(projId,idx){
   DB.saveProject(p);navigate('project/'+projId+'/summary');
 };
 // One click: create the shortlist record (if needed) and immediately draft the quote
-window.requestSupplierQuote=function(projId,category,supplierRateId,supplierName){
+window.requestSupplierQuote=function(projId,category,supplierRateId,supplierName,quiet){
   var p=DB.getProject(projId);if(!p)return;
   if(!p.summary_fields)p.summary_fields={};
   if(!Array.isArray(p.summary_fields.shortlisted_suppliers))p.summary_fields.shortlisted_suppliers=[];
   var arr=p.summary_fields.shortlisted_suppliers;
   var srid=supplierRateId||null;
   var entry=arr.find(function(e){return e.category===category&&(e.supplier_rate_id||null)===srid;});
-  if(entry&&entry.status==='quote_created'){navigate('quotes');return;}
+  if(entry&&entry.status==='quote_created'){if(!quiet)navigate('quotes');return;}
   if(!entry){entry={id:uid(),category:category,supplier_rate_id:srid,supplier_name:supplierName||'',status:'shortlisted',quote_id:null};arr.push(entry);}
   DB.saveProject(p);
-  window.createQuoteFromShortlist(projId,entry.id);
+  window.createQuoteFromShortlist(projId,entry.id,quiet);
+};
+// Request a quote from a Contacts-list supplier (no supplier-rates record). Entry keyed as 'c:'+contactId.
+window.pqRequestQuoteContact=function(projId,category,contactId,supplierName,quiet){
+  window.requestSupplierQuote(projId,category,'c:'+contactId,supplierName,quiet);
 };
 // Confirm a shortlisted supplier → create a draft quote linked to the All Quotes section
-window.createQuoteFromShortlist=function(projId,entryId){
+window.createQuoteFromShortlist=function(projId,entryId,quiet){
   var p=DB.getProject(projId);if(!p||!p.summary_fields)return;
   var arr=p.summary_fields.shortlisted_suppliers||[];
   var entry=arr.find(function(e){return e.id===entryId;});
   if(!entry)return;
-  if(entry.status==='quote_created'){toast('Draft quote already created.','warning');return;}
+  if(entry.status==='quote_created'){if(!quiet)toast('Draft quote already created.','warning');return;}
   var contacts=DB.getContacts();
   var contactId=null;
   var supplierName=entry.supplier_name||'';
-  if(entry.supplier_rate_id){
+  var srefRaw=entry.supplier_rate_id?String(entry.supplier_rate_id):'';
+  if(srefRaw.slice(0,2)==='c:'){
+    contactId=srefRaw.slice(2);
+    var cRec=contacts.find(function(c){return c.id===contactId;});
+    if(cRec)supplierName=cRec.company_name||supplierName;
+  }else if(entry.supplier_rate_id){
     var sr=_srGet().find(function(s){return s.id===entry.supplier_rate_id;});
     if(sr){
       supplierName=sr.company||supplierName;
@@ -2509,15 +2569,81 @@ window.createQuoteFromShortlist=function(projId,entryId){
     }
   }
   var catLabel=(typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[entry.category])||entry.category||'General';
-  var scope=(p.summary_fields.description||'').trim();
+  // Scope: the actual procurement items for this trade beat a generic project description
+  var pqItems=(p.summary_fields.procurement_items||[]).filter(function(i){return i.category===entry.category;});
+  var isDayOne=pqItems.some(function(i){return i.priority==='day_one';});
+  var scope='';
+  if(pqItems.length){scope='Please price the following items:\n'+pqItems.map(function(i){return'- '+i.item+(i.qty?' — '+i.qty:'')+(i.spec?' ('+i.spec+')':'');}).join('\n');}
+  if(!scope)scope=(p.summary_fields.description||'').trim();
   if(!scope){var rtc=(p.summary_fields.required_trade_categories||[]).find(function(t){return t.category===entry.category;});scope=(rtc&&rtc.reason)||'';}
   var quotes=DB.getQuotes();
-  var q={id:uid(),project_id:projId,contact_id:contactId,trade_package:catLabel,scope_requested:scope,status:'not_requested',request_date:today(),due_date:null,quoted_amount:null,notes:'Created from AI supplier shortlist.'};
+  var q={id:uid(),project_id:projId,contact_id:contactId,trade_package:catLabel,scope_requested:scope,status:'not_requested',request_date:today(),due_date:null,quoted_amount:null,notes:'Created from Procurement & Quotes hub.'+(isDayOne?' DAY-ONE priority — long-lead items, send immediately.':'')};
   quotes.push(q);DB.saveQuotes(quotes);
   entry.status='quote_created';entry.quote_id=q.id;entry.supplier_name=supplierName;
   DB.saveProject(p);
-  toast('Draft quote created for '+esc(supplierName||catLabel)+'. See the Quotes tab.','success');
+  if(!quiet){
+    toast('Draft quote created for '+esc(supplierName||catLabel)+'. See the Quotes tab.','success');
+    navigate('project/'+projId+'/summary');
+  }
+};
+// Bulk-create draft quotes for every day-one trade that doesn't have one yet
+window.pqRequestAllDayOne=function(projId){
+  var p=DB.getProject(projId);if(!p||!p.summary_fields)return;
+  var items=p.summary_fields.procurement_items||[];
+  var cats=[];
+  items.forEach(function(i){if(i.priority==='day_one'&&!_rlIsLabourPlant(i.category)&&cats.indexOf(i.category)<0)cats.push(i.category);});
+  var sl=p.summary_fields.shortlisted_suppliers||[];
+  var pending=cats.filter(function(c){return!sl.some(function(e){return e.category===c&&e.status==='quote_created';});});
+  if(!pending.length){toast('All day-one trades already have quotes drafted.','info');navigate('quotes');return;}
+  var lbl=function(c){return(typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[c])||c;};
+  if(!confirm('Create draft quote requests for '+pending.length+' day-one trade'+(pending.length!==1?'s':'')+'?\n\n'+pending.map(function(c){return'• '+lbl(c);}).join('\n')))return;
+  pending.forEach(function(c){
+    var m=_srMatchSuppliers(c);
+    if(m.length){window.requestSupplierQuote(projId,c,m[0].s.id,m[0].s.company||'',true);return;}
+    var con=DB.getContacts().find(function(x){return x.trade_category===c&&['supplier','subcontractor'].indexOf(x.contact_type)>=0&&['active','preferred'].indexOf(x.status||'active')>=0;});
+    if(con){window.pqRequestQuoteContact(projId,c,con.id,con.company_name||'',true);return;}
+    window.requestSupplierQuote(projId,c,null,lbl(c)+' (not on file)',true);
+  });
+  toast(pending.length+' day-one draft quote'+(pending.length!==1?'s':'')+' created. Review them in All Quotes.','success');
   navigate('project/'+projId+'/summary');
+};
+// AI supplier recommendation when nothing is on file for a trade
+window._pqSug=null;
+window.aiSuggestSuppliers=async function(projId,cat){
+  var p=DB.getProject(projId);if(!p)return;
+  var label=(typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[cat])||cat;
+  var items=((p.summary_fields||{}).procurement_items||[]).filter(function(i){return i.category===cat;});
+  var btn=document.getElementById('pq-sug-'+cat);
+  if(btn){btn.disabled=true;btn.textContent='✦ Thinking…';}
+  try{
+    var prompt='You are helping an Australian civil construction estimator find suppliers to request quotes from.\n'
+      +'Project location: '+(p.location||'NSW, Australia')+'\n'
+      +'Trade needed: '+label
+      +(items.length?'\nItems to price:\n'+items.map(function(i){return'- '+i.item+(i.qty?' — '+i.qty:'')+(i.spec?' ('+i.spec+')':'');}).join('\n'):'')
+      +'\n\nSuggest up to 4 REAL companies that supply this trade and service the project location region. Only include companies you are confident actually exist — fewer accurate suggestions beat invented ones. Include a website domain only if you are certain of it.\n\nReturn ONLY JSON: {"suggestions":[{"company":"string","why":"one line on why they fit","region":"area they service","website":"domain or null"}],"note":"any caveat about verifying these"}';
+    var res=await _aiCall(prompt);
+    var list=Array.isArray(res.suggestions)?res.suggestions:[];
+    window._pqSug={projId:projId,cat:cat,list:list};
+    if(!list.length){toast('No confident supplier suggestions for '+label+' — try adding one manually.','warning');return;}
+    var rows=list.map(function(s,i){return'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.88rem;color:var(--text)">'+esc(s.company||'')+'</div>'
+      +'<div style="font-size:.74rem;color:var(--muted);margin-top:2px">'+esc(s.why||'')+(s.region?' · '+esc(s.region):'')+(s.website?' · '+esc(s.website):'')+'</div></div>'
+      +'<button class="btn btn-sm btn-blue" onclick="window.pqAddSuggestedContact('+i+')" style="flex-shrink:0">+ Add to Contacts</button></div>';}).join('');
+    showSheet({title:'✦ Suggested suppliers — '+label,body:
+      '<div style="padding:8px 12px;background:rgba(217,119,87,.07);border:1px solid rgba(217,119,87,.25);border-radius:7px;font-size:.75rem;color:#D97757;margin-bottom:12px">AI suggestions — verify company details and contact info before sending anything.'+(res.note?' '+esc(res.note):'')+'</div>'+rows,
+      actions:'<button class="btn btn-outline" data-action="close-modal">Close</button>'});
+  }catch(e){toast('Could not get suggestions: '+(e.message||e),'error');}
+  finally{if(btn){btn.disabled=false;btn.textContent='✦ Suggest suppliers';}}
+};
+window.pqAddSuggestedContact=function(i){
+  var sug=window._pqSug;if(!sug||!sug.list[i])return;
+  var s=sug.list[i];
+  var contacts=DB.getContacts();
+  var c={id:uid(),company_name:s.company||'',contact_person:'',contact_type:'supplier',trade_category:sug.cat,email:'',phone:'',location:s.region||'',status:'active',notes:'AI-suggested supplier — verify details before contacting.'+(s.website?' Website: '+s.website:'')};
+  contacts.push(c);DB.saveContacts(contacts);
+  toast(esc(s.company||'Supplier')+' added to Contacts. Verify details, then request the quote from the Procurement panel.','success');
+  closeSheet();
+  navigate('project/'+sug.projId+'/summary');
 };
 
 const _GT_BUCKET='project-documents1';
@@ -4743,12 +4869,13 @@ INSTRUCTIONS:
 - Extract key dates and milestones (e.g. Tender Close, Site Possession, Practical Completion, RFI deadline) — give the date in YYYY-MM-DD if determinable, else null.
 - Identify which trade categories this job will require, so the estimator can line up suppliers/subcontractors. Choose ONLY from this exact list of category keys: ${Object.keys(SR_CAT_LABELS).join('|')}. For each, give a short reason grounded in the scope.
 - Extract the SPECIFIC plant/equipment the job requires, reading the CTMP, construction methodology and specifications. List each machine SEPARATELY with its exact size/tonnage as stated in the documents (e.g. "5T Excavator", "25T Excavator", "Positrack loader", "14T Smooth Drum Roller", "Tipper & dog trailer"). Do NOT invent sizes or merge a roller's tonnage onto an excavator — keep each item's size exactly as written. Put the machine type in "item" and the size/tonnage in "size".
+- PROCUREMENT ITEMS: Scan the drawings, SOW and specifications and list every material, supply item or subcontract service that will need a SUPPLIER QUOTE (pipes, precast elements such as pits/headwalls/culverts, steel reinforcement, quarry materials, waste/spoil disposal, shoring hire, traffic control, saw cutting, crane hire, testing, environmental controls, design services, misc supply items). For each item give: the item name, the full specification exactly as stated in the documents (size, class, standard), the estimated quantity with unit where determinable, and the matching trade category key from the same list above. Set "priority":"day_one" for anything the estimator must send a quote request for IMMEDIATELY to avoid losing time — long-lead items (precast or custom-fabricated elements, large pipe or steel orders, shoring design, crane bookings, contaminated-spoil disposal), items with a stated lead time, or items that dominate the price. Everything else is "standard". For day_one items state WHY in "lead_reason". Do not list internal labour or plant the contractor self-performs — only things that need an external quote.
 
 TENDER DOCUMENTS TO ANALYSE:
 ${corpus}
 
 Return ONLY this JSON (no markdown):
-{"project_summary":"2-4 sentence overview of the project","project_type":"drainage|roadworks|earthworks|utilities|electrical_infra|subdivision|mixed","primary_work_types":["string"],"scope_inclusions":["detailed included scope item — be specific, include quantities/specs/standards where stated in documents"],"scope_exclusions":["item explicitly excluded from scope per contract documents"],"key_assumptions":["specific estimating assumption made due to missing or ambiguous information — state what was assumed and why"],"missing_information":["specific piece of information needed to complete the estimate — be precise about what is missing and where it should come from"],"key_dimensions":[{"label":"string","value":"string","unit":"string","source":"string"}],"key_personnel":[{"role":"e.g. Superintendent, Principal, Project Manager, Site Contact","name":"person name or null","company":"company or null","source":"where found in documents"}],"key_dates":[{"label":"e.g. Tender Close, Site Possession, Practical Completion","date":"YYYY-MM-DD or null","source":"where found in documents"}],"required_trade_categories":[{"category":"one of: ${Object.keys(SR_CAT_LABELS).join('|')}","reason":"why this job needs this trade"}],"required_plant":[{"item":"machine type e.g. Excavator, Smooth Drum Roller, Positrack Loader, Tipper & Dog Trailer","size":"exact size/tonnage as stated e.g. 25T, 5T, 14T, or null if none given","purpose":"what it is used for"}],"confidence_note":"string"}`;
+{"project_summary":"2-4 sentence overview of the project","project_type":"drainage|roadworks|earthworks|utilities|electrical_infra|subdivision|mixed","primary_work_types":["string"],"scope_inclusions":["detailed included scope item — be specific, include quantities/specs/standards where stated in documents"],"scope_exclusions":["item explicitly excluded from scope per contract documents"],"key_assumptions":["specific estimating assumption made due to missing or ambiguous information — state what was assumed and why"],"missing_information":["specific piece of information needed to complete the estimate — be precise about what is missing and where it should come from"],"key_dimensions":[{"label":"string","value":"string","unit":"string","source":"string"}],"key_personnel":[{"role":"e.g. Superintendent, Principal, Project Manager, Site Contact","name":"person name or null","company":"company or null","source":"where found in documents"}],"key_dates":[{"label":"e.g. Tender Close, Site Possession, Practical Completion","date":"YYYY-MM-DD or null","source":"where found in documents"}],"required_trade_categories":[{"category":"one of: ${Object.keys(SR_CAT_LABELS).join('|')}","reason":"why this job needs this trade"}],"required_plant":[{"item":"machine type e.g. Excavator, Smooth Drum Roller, Positrack Loader, Tipper & Dog Trailer","size":"exact size/tonnage as stated e.g. 25T, 5T, 14T, or null if none given","purpose":"what it is used for"}],"procurement_items":[{"item":"short item name e.g. DN375 RCP pipes","spec":"full specification as stated in documents","qty":"estimated quantity with unit e.g. 185 LM, or null","category":"one of: ${Object.keys(SR_CAT_LABELS).join('|')}","priority":"day_one|standard","lead_reason":"for day_one items: why this quote must go out immediately, else null","source":"where found in documents"}],"confidence_note":"string"}`;
 };
 
 const _pStage=(n,corpus,confirmed,extra='')=>{
@@ -4798,6 +4925,15 @@ function _renderS1UI(id){
       <div style="display:flex;flex-wrap:wrap;gap:7px">${s.key_dimensions.map(d=>`<div style="background:var(--s3);border-radius:7px;padding:6px 11px"><div style="font-size:.66rem;color:var(--muted2)">${esc(d.label)}</div><div style="font-size:.86rem;font-weight:700;color:var(--text)">${esc(String(d.value))} ${esc(d.unit||'')}</div><div style="font-size:.62rem;color:var(--muted2)">${esc(d.source||'')}</div></div>`).join('')}</div></div>`:''}
     ${s.drawings_described?.length?`<div class="mb-3"><div style="font-size:.62rem;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Drawings Identified</div>
       ${s.drawings_described.map(d=>`<div style="font-size:.78rem;color:var(--muted);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)"><b style="color:var(--text)">${esc(d.ref)}</b> — ${esc(d.description)}</div>`).join('')}</div>`:''}
+    ${s.procurement_items?.length?(()=>{const d1=s.procurement_items.filter(i=>i.priority==='day_one');const std=s.procurement_items.filter(i=>i.priority!=='day_one');
+      const row=i=>`<div style="display:flex;align-items:flex-start;gap:8px;font-size:.78rem;color:var(--muted);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        ${i.priority==='day_one'?'<span class="badge badge-red" style="font-size:.55rem;flex-shrink:0;margin-top:1px">DAY 1</span>':''}
+        <div style="flex:1;min-width:0"><b style="color:var(--text)">${esc(i.item||'')}</b>${i.qty?` — ${esc(i.qty)}`:''}${i.spec?`<span style="color:var(--muted2)"> · ${esc(i.spec)}</span>`:''}
+        ${i.lead_reason?`<div style="font-size:.68rem;color:#fca5a5">${esc(i.lead_reason)}</div>`:''}</div>
+        <span class="badge badge-grey" style="font-size:.56rem;flex-shrink:0">${esc((typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[i.category])||i.category||'')}</span>
+      </div>`;
+      return`<div class="mb-3"><div style="font-size:.62rem;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Quotes Needed ${d1.length?`<span class="badge badge-red" style="font-size:.55rem;margin-left:5px">${d1.length} to send day one</span>`:''}</div>
+      ${d1.map(row).join('')}${std.map(row).join('')}</div>`;})():''}
     ${s.questions?.length?`<div style="padding:9px 13px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);border-radius:7px;margin-bottom:8px">
       <div style="font-size:.7rem;font-weight:600;color:var(--blue);margin-bottom:5px">AI Questions:</div>
       ${s.questions.map(q=>`<div style="font-size:.79rem;color:var(--muted);margin-bottom:3px">• ${esc(q)}</div>`).join('')}</div>`:''}
@@ -4908,6 +5044,7 @@ function _renderReviewUI(p,id){
       ${(r1.key_dates||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);margin-bottom:4px">Key Dates</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.key_dates||[]).map(d=>`<li><b style="color:var(--text)">${esc(d.label||'')}</b>${d.date?' — '+esc(d.date):''}</li>`).join('')}</ul></div>`:''}
       ${(r1.required_trade_categories||[]).length?`<div style="margin-bottom:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--green);margin-bottom:4px">Trades / Suppliers Needed</div><div style="display:flex;gap:5px;flex-wrap:wrap">${(r1.required_trade_categories||[]).map(t=>`<span class="badge badge-grey" title="${esc(t.reason||'')}">${esc((typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[t.category])||t.category||'')}</span>`).join('')}</div></div>`:''}
       ${(r1.required_plant||[]).length?`<div><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);margin-bottom:4px">Plant Required</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.required_plant||[]).map(pl=>`<li><b style="color:var(--text)">${esc([pl.size,pl.item].filter(Boolean).join(' '))}</b>${pl.purpose?` — ${esc(pl.purpose)}`:''}</li>`).join('')}</ul></div>`:''}
+      ${(r1.procurement_items||[]).length?`<div style="margin-top:8px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#D97757;margin-bottom:4px">Quotes Needed${(r1.procurement_items||[]).filter(i=>i.priority==='day_one').length?` — ${(r1.procurement_items||[]).filter(i=>i.priority==='day_one').length} day-one`:''}</div><ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--muted);line-height:1.7">${(r1.procurement_items||[]).map(i=>`<li>${i.priority==='day_one'?'<span class="badge badge-red" style="font-size:.53rem;margin-right:4px">DAY 1</span>':''}<b style="color:var(--text)">${esc(i.item||'')}</b>${i.qty?` — ${esc(i.qty)}`:''}</li>`).join('')}</ul></div>`:''}
     </div>
     ${iAct('1_sum')}
   </div></div>`:''}
@@ -5350,6 +5487,10 @@ window.applyAIPipeline=async function(id){
     // Specific required plant → summary_fields (overwrite; drives job-specific plant matching)
     if((r1apply.required_plant||[]).length){
       p.summary_fields.required_plant=r1apply.required_plant.map(t=>({item:t.item||'',size:t.size||'',purpose:t.purpose||''}));
+    }
+    // Procurement items → summary_fields (overwrite; drives the Procurement & Quotes hub)
+    if((r1apply.procurement_items||[]).length){
+      p.summary_fields.procurement_items=r1apply.procurement_items.map(t=>({id:uid(),item:t.item||'',spec:t.spec||'',qty:t.qty||'',category:(typeof SR_CAT_LABELS!=='undefined'&&SR_CAT_LABELS[t.category])?t.category:'generalMaterials',priority:t.priority==='day_one'?'day_one':'standard',lead_reason:t.lead_reason||'',source:t.source||''}));
     }
     applied++;
   }
