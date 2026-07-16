@@ -1950,14 +1950,18 @@ function renderTabSuppliers(p,id){
       const conMatches=pqContacts.filter(c=>c.trade_category===cat&&!matches.some(m=>(m.s.company||'').toLowerCase().trim()===(c.company_name||'').toLowerCase().trim()));
       const reqBtn=onclick=>`<button class="btn btn-xs btn-blue" onclick="${onclick}" style="white-space:nowrap;flex-shrink:0">Request quote</button>`;
       const rightSide=(key,onclick)=>statusChip(cat,key)||reqBtn(onclick);
+      // Show how to reach the supplier (email/phone) or flag that we can't
+      const reachLine=function(email,phone,person){
+        const bits=[];if(person)bits.push(esc(person));if(email)bits.push(esc(email));if(phone)bits.push(esc(phone));
+        if(email||phone)return`<span style="color:var(--muted2)">${bits.join(' · ')}</span>`;
+        return`<span style="color:var(--red)">⚠ no contact on file</span>${person?` <span style="color:var(--muted2)">· ${esc(person)}</span>`:''}`;
+      };
       const supRows=matches.map(m=>{
         const s=m.s;
-        const rateCount=(s.items||[]).length;
-        const basisLabel=m.basis==='rate'?'rate match':'tagged';
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
           <div style="flex:1;min-width:0">
             <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</div>
-            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">${rateCount} rate${rateCount!==1?'s':''} · ${basisLabel}</div>
+            <div style="font-size:.68rem;margin-top:1px">${reachLine(s.contact_email||s.email,s.contact_phone||s.phone,s.contact_name)}</div>
           </div>
           ${rightSide(s.id,`window.requestSupplierQuote('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})`)}
         </div>`;
@@ -1965,19 +1969,20 @@ function renderTabSuppliers(p,id){
       const conRows=conMatches.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
           <div style="flex:1;min-width:0">
             <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(c.company_name||'Unnamed')}</div>
-            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">from Contacts${c.contact_person?` · ${esc(c.contact_person)}`:''}${c.email?` · ${esc(c.email)}`:''}</div>
+            <div style="font-size:.68rem;margin-top:1px">${reachLine(c.email,c.phone,c.contact_person)}</div>
           </div>
           ${rightSide('c:'+c.id,`window.pqRequestQuoteContact('${id}','${cat}','${c.id}',${JSON.stringify(c.company_name||'').replace(/"/g,'&quot;')})`)}
         </div>`).join('');
       const anyOnFile=matches.length+conMatches.length>0;
-      // "Not on file" row: manual add, AI recommendation, or fire a quote request anyway
+      // "Not on file" row: only offer a placeholder "Request quote" when nothing is on file.
+      // When suppliers ARE on file, this row is just secondary Add/Suggest links (no duplicate primary button).
       const nofRequested=!!statusChip(cat,null);
       const notOnFile=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;flex-wrap:wrap;${anyOnFile?'border-top:1px dashed rgba(255,255,255,.08);margin-top:2px':''}">
         <div style="flex:1;min-width:0;font-size:.74rem;color:var(--muted2)">${anyOnFile?'None of these? ':'⚠ No supplier on file for this trade. '}
           <button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button>
           <button class="btn btn-ghost btn-xs" id="pq-sug-${cat}" onclick="window.aiSuggestSuppliers('${id}','${cat}')" style="color:#D97757;border:1px solid rgba(217,119,87,.35);padding:2px 8px;margin-left:4px">✦ Suggest suppliers</button>
         </div>
-        ${nofRequested?statusChip(cat,null):reqBtn(`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`)}
+        ${nofRequested?statusChip(cat,null):(anyOnFile?'':reqBtn(`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`))}
       </div>`;
       const accent=ent.isDayOne?'var(--red)':anyOnFile?'var(--green)':'var(--amber)';
       const badges=`${ent.isDayOne?`<span class="badge badge-red" style="font-size:.58rem">DAY ONE</span>`:''}${catItems.length?`<span class="badge badge-grey" style="font-size:.58rem">${catItems.length} item${catItems.length!==1?'s':''}</span>`:''}${anyOnFile?`<span class="badge badge-green" style="font-size:.58rem">${matches.length+conMatches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`}`;
