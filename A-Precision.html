@@ -2643,10 +2643,14 @@ window.createQuoteFromShortlist=function(projId,entryId,quiet){
   // Scope: the actual procurement items for this trade beat a generic project description
   var pqItems=(p.summary_fields.procurement_items||[]).filter(function(i){return i.category===entry.category;});
   var isDayOne=pqItems.some(function(i){return i.priority==='day_one';});
+  // Drawing note for this trade (what the AI read off the drawings/SOW)
+  var _rtc=(p.summary_fields.required_trade_categories||[]).find(function(t){return t.category===entry.category;});
+  var rtcNote=(_rtc&&_rtc.reason)||'';
   var scope='';
-  if(pqItems.length){scope='Please price the following items:\n'+pqItems.map(function(i){return'- '+i.item+(i.qty?' — '+i.qty:'')+(i.spec?' ('+i.spec+')':'');}).join('\n');}
+  if(pqItems.length){scope='Please price the following items:\n'+pqItems.map(function(i){return'- '+i.item+(i.qty?' — '+i.qty:'')+(i.spec?' ('+i.spec+')':'')+(i.source?' [drawing: '+i.source+']':'');}).join('\n');}
   if(!scope)scope=(p.summary_fields.description||'').trim();
-  if(!scope){var rtc=(p.summary_fields.required_trade_categories||[]).find(function(t){return t.category===entry.category;});scope=(rtc&&rtc.reason)||'';}
+  // Always carry the drawing note through so the email knows exactly what to ask for
+  if(rtcNote)scope=(scope?scope+'\n\n':'')+'Scope note (from drawings/SOW): '+rtcNote;
   // Smart subject: "<Client> — <what's needed>". What's needed = the item names, else the trade label.
   var needed=pqItems.length?pqItems.map(function(i){return i.item;}).filter(Boolean).join(', '):catLabel;
   if(needed.length>70)needed=needed.slice(0,67).replace(/,?\s*$/,'')+'…';
@@ -10926,8 +10930,6 @@ Otherwise omit both of these lines completely.>
 If you could provide us with a quotation for this job, that would be fantastic.
 
 Thanks,
-${userName}
-${company}
 ---
 
 DETAILS TO USE (do not invent anything not listed here):
@@ -10937,25 +10939,32 @@ Scope / items needed: ${q.scope_requested||'Refer to attached documents.'}
 ${q.due_date?'Quote needed by: '+fmtDate(q.due_date):''}
 
 RULES:
-- Keep the whole body under about 8 lines. No corporate filler, no "I hope this email finds you well".
+- Use the "Scope / items needed" details above to say EXACTLY what to price — list the specific items, quantities and specs the supplier must quote. That is the whole point of the email.
+- Keep the whole body under about 8 lines. No corporate filler, no "I hope this email finds you well", no "I trust this email finds you well", no "Please don't hesitate to reach out".
 - Never invent product codes, brands, quantities, specs or standards that are not in the details above.
-- Greet with just "Hi,". Sign off with ${userName} then ${company} on the next line.
+- Greet with just "Hi,". End with just "Thanks," on its own line — do NOT add a name, company, or signature after it (there's an email footer for that).
+- Write like a busy estimator firing off a quick note to a supplier they deal with regularly — plain, direct, a little casual. Contractions are good. Avoid anything that reads as AI-generated or like a formal templated letter: no em-dashes as dramatic pauses, no "delighted to", no "we are pleased to", no over-explaining.
 
-Return ONLY valid JSON (no markdown): {"subject":"short subject e.g. RFQ — ${q.trade_package}","body":"..."}
+Return ONLY valid JSON (no markdown): {"subject":"short plain subject like the trade + project, e.g. ${q.trade_package} — ${project?.name||'project'}","body":"..."}
 The body must use \\n for line breaks.`;
   } else {
-    prompt=`Write a professional Australian construction follow-up email for a quote that is overdue.
+    prompt=`Write a SHORT, friendly follow-up email chasing a quote that is overdue, Australian civil construction style.
 
-FROM: ${userName}, ${company}
 TO: ${contact?.company_name||'Supplier'}
-PROJECT: ${project?.name||'Unnamed Project'}
+PROJECT: ${project?.name||'Unnamed Project'}${project?.client?' for '+project.client:''}
 TRADE PACKAGE: ${q.trade_package}
+SCOPE / ITEMS: ${q.scope_requested||'as previously sent'}
 ORIGINAL REQUEST DATE: ${fmtDate(q.request_date)}
 DAYS OVERDUE: ${daysOver!=null?daysOver+' days':'unknown'}
-TONE: Polite but firm — ${toneDesc} — Australian professional construction industry style.
+
+RULES:
+- Keep it to 3-4 short lines. Friendly nudge, not a formal letter.
+- Reference what was asked for so they know which quote you mean.
+- Greet with just "Hi,". End with just "Thanks," on its own line — no name, company or signature after it (there's an email footer).
+- Write like a busy estimator sending a quick chaser to a supplier they know. Plain and direct, contractions fine. Avoid anything that reads as AI-generated or templated: no "I hope this email finds you well", no "I trust", no "kindly", no "at your earliest convenience", no "please don't hesitate".
 
 Return ONLY valid JSON (no markdown): {"subject":"...","body":"..."}
-The body must use \\n for line breaks. Sign off with ${userName}, ${company}.`;
+The body must use \\n for line breaks.`;
   }
   const resp=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
