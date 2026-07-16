@@ -1638,8 +1638,8 @@ window.filterProjects=function(){
 function renderProjectDetail(id,tab){
   const p=DB.getProject(id);
   if(!p){renderShell(`<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Project not found</div></div>`,'projects');return;}
-  const tabs=['summary','suppliers','geotech','volumes','materials','quantities','productivity','boq','risk','variations','diary','departures','program','documents'];
-  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Volumes','materials':'Materials','quantities':'Quantities','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
+  const tabs=['summary','suppliers','geotech','volumes','productivity','boq','risk','variations','diary','departures','program','documents'];
+  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Volumes','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
   const curTab=tabs.includes(tab)?tab:'summary';
   const boqTotal=(p.boq_items||[]).reduce((s,b)=>s+(b.quantity||0)*(b.rate||0),0);
   const openRisks=(p.risks||[]).filter(r=>r.status==='open').length;
