@@ -10821,18 +10821,40 @@ async function generateEmailWithClaude(qid,type,tone){
   const daysOver=q.due_date?Math.abs(daysUntil(q.due_date)):null;
   let prompt;
   if(type==='rfq'){
-    prompt=`Write a professional Australian construction industry RFQ (Request for Quote) email.
+    prompt=`Write a SHORT, friendly Request-for-Quote email to a supplier, Australian civil construction style. Follow this exact template, tone and length — do not pad it out:
 
-FROM: ${userName}, ${company}
-TO: ${contact?.company_name||'Supplier'}${contact?.contact_person?' (Attn: '+contact.contact_person+')':''}
-PROJECT: ${project?.name||'Unnamed Project'}${project?.location?', '+project.location:''}
-TRADE PACKAGE: ${q.trade_package}
-SCOPE: ${q.scope_requested||'Refer to attached documents.'}
-QUOTE DUE BY: ${q.due_date?fmtDate(q.due_date):'As soon as possible'}
-TONE: ${toneDesc}
+---
+Hi,
 
-Return ONLY valid JSON (no markdown): {"subject":"...","body":"..."}
-The body must use \\n for line breaks. Sign off with ${userName}, ${company}.`;
+We are currently tendering for a job at ${project?.name||'[project]'}${project?.location?', '+project.location:''} for ${project?.client||'[client]'}.
+
+Our scope involves <ONE plain-English sentence describing what this supplier needs to price, with key quantities in brackets where known>.
+
+<ONLY IF a specific product, spec or product code appears in the scope details below, add exactly these two lines:
+Assuming this would be the best for the job?
+<the product name / spec / code>
+Otherwise omit both of these lines completely.>
+
+If you could provide us with a quotation for this job, that would be fantastic.
+
+Thanks,
+${userName}
+${company}
+---
+
+DETAILS TO USE (do not invent anything not listed here):
+Supplier: ${contact?.company_name||'Supplier'}${contact?.contact_person?' (Attn: '+contact.contact_person+')':''}
+Trade / package: ${q.trade_package}
+Scope / items needed: ${q.scope_requested||'Refer to attached documents.'}
+${q.due_date?'Quote needed by: '+fmtDate(q.due_date):''}
+
+RULES:
+- Keep the whole body under about 8 lines. No corporate filler, no "I hope this email finds you well".
+- Never invent product codes, brands, quantities, specs or standards that are not in the details above.
+- Greet with just "Hi,". Sign off with ${userName} then ${company} on the next line.
+
+Return ONLY valid JSON (no markdown): {"subject":"short subject e.g. RFQ — ${q.trade_package}","body":"..."}
+The body must use \\n for line breaks.`;
   } else {
     prompt=`Write a professional Australian construction follow-up email for a quote that is overdue.
 
