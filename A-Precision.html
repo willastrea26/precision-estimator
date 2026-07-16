@@ -1268,7 +1268,10 @@ function renderDashboard(){
   const todayStr=today();
   const activeProjects=projects.filter(p=>['estimating','in_progress'].includes(p.status));
   const pipeline=projects.filter(p=>['estimating','submitted'].includes(p.status)).reduce((s,p)=>s+(p.estimated_value||0),0);
-  const awarded=projects.filter(p=>p.status==='awarded').reduce((s,p)=>s+(p.awarded_value||0),0);
+  // "Won" = awarded contracts plus jobs now in progress or completed (they were won too)
+  const WON_STATUSES=['awarded','in_progress','completed'];
+  const wonProjects=projects.filter(p=>WON_STATUSES.includes(p.status));
+  const awarded=wonProjects.reduce((s,p)=>s+(p.awarded_value||p.estimated_value||0),0);
   const overdueQ=quotes.filter(q=>q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr));
   const awaitingQ=quotes.filter(q=>q.status==='awaiting');
   const receivedQ=quotes.filter(q=>q.status==='received');
@@ -1347,7 +1350,7 @@ function renderDashboard(){
       <div class="kpi-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg></div>
       <div class="kpi-value aud" style="font-size:1.3rem">${fmtAUD(awarded)}</div>
       <div class="kpi-label">Awarded Value</div>
-      <div class="kpi-sub">${projects.filter(p=>p.status==='awarded').length} awarded contracts</div>
+      <div class="kpi-sub">${wonProjects.length} won (incl. in progress & completed)</div>
     </div>
     <div class="kpi-card red">
       <div class="kpi-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
@@ -8655,13 +8658,16 @@ function renderFinancial(){
   /* ---- KPI calculations ---- */
   const piped=projects.filter(p=>['estimating','submitted'].includes(p.status));
   const pipelineVal=piped.reduce((s,p)=>s+(p.estimated_value||0),0);
-  const awarded=projects.filter(p=>p.status==='awarded');
-  const awardedVal=awarded.reduce((s,p)=>s+(p.awarded_value||0),0);
+  const awarded=projects.filter(p=>p.status==='awarded'); // status-only, used by the status-breakdown chart/legend
+  // "Won" = awarded contracts plus jobs now in progress or completed (they were won too)
+  const WON_STATUSES=['awarded','in_progress','completed'];
+  const won=projects.filter(p=>WON_STATUSES.includes(p.status));
+  const awardedVal=won.reduce((s,p)=>s+(p.awarded_value||p.estimated_value||0),0);
   const submitted=projects.filter(p=>p.status==='submitted');
   const submittedVal=submitted.reduce((s,p)=>s+(p.estimated_value||0),0);
   const lost=projects.filter(p=>p.status==='lost');
-  const winTotal=awarded.length+lost.length;
-  const winRate=winTotal>0?Math.round(awarded.length/winTotal*100):0;
+  const winTotal=won.length+lost.length;
+  const winRate=winTotal>0?Math.round(won.length/winTotal*100):0;
   const wrCol=winRate>=50?'green':winRate>=30?'amber':'red';
 
   const allEV=projects.reduce((s,p)=>s+(p.estimated_value||0),0);
@@ -8671,7 +8677,7 @@ function renderFinancial(){
   const overdueQIds=new Set(quotes.filter(q=>q.due_date&&q.due_date<todayStr&&!['received','accepted','declined'].includes(q.status)).map(q=>q.project_id));
   const overdueVal=projects.filter(p=>overdueQIds.has(p.id)).reduce((s,p)=>s+(p.estimated_value||0),0);
 
-  const awardedMonthVal=awarded.filter(p=>(p.updated_at||p.created_at||'').substring(0,7)===nowMonth).reduce((s,p)=>s+(p.awarded_value||0),0);
+  const awardedMonthVal=won.filter(p=>(p.updated_at||p.created_at||'').substring(0,7)===nowMonth).reduce((s,p)=>s+(p.awarded_value||p.estimated_value||0),0);
 
   /* ---- Monthly summary (last 12 months) ---- */
   const monthRows=[];
@@ -8732,7 +8738,7 @@ function renderFinancial(){
       <div class="kpi-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg></div>
       <div class="kpi-value aud" style="font-size:1.3rem">${fmtAUD(awardedVal)}</div>
       <div class="kpi-label">Total Awarded Value</div>
-      <div class="kpi-sub">${awarded.length} awarded contracts</div>
+      <div class="kpi-sub">${won.length} won (incl. in progress & completed)</div>
     </div>
     <div class="kpi-card" style="border-color:rgba(139,92,246,.2)">
       <div class="kpi-icon purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div>
@@ -8745,7 +8751,7 @@ function renderFinancial(){
       <div class="kpi-icon ${wrCol}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
       <div class="kpi-value" style="color:var(--${wrCol})">${winRate}%</div>
       <div class="kpi-label">Win Rate</div>
-      <div class="kpi-sub">${awarded.length} won, ${lost.length} lost</div>
+      <div class="kpi-sub">${won.length} won, ${lost.length} lost</div>
     </div>
   </div>
 
