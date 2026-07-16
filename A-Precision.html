@@ -10248,14 +10248,19 @@ function showQuoteModal(existing,defaultProjId){
   const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
   const contacts=DB.getContacts();
   const statuses=['not_requested','awaiting','received','clarification','accepted','declined'];
+  const selProjId=q.project_id||defaultProjId||(projects[0]&&projects[0].id)||'';
+  const selProj=projects.find(p=>p.id===selProjId);
+  // Pre-fill Trade Package from the project's package number (set when the project was created)
+  const initPkg=q.trade_package||(selProj&&selProj.package_number)||'';
+  window._qqAutoPkg=initPkg;
   showModal({
     title:existing?'Edit Quote Request':'New Quote Request',
     body:`
       <div class="form-row mb-3">
-        <div class="form-group" style="margin:0"><label class="form-label">Project *</label><select class="form-input" id="qq-proj">${projects.map(p=>`<option value="${p.id}"${(q.project_id||defaultProjId)===p.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Project *</label><select class="form-input" id="qq-proj" onchange="window._qqSyncPkg()">${projects.map(p=>`<option value="${p.id}"${selProjId===p.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
         <div class="form-group" style="margin:0"><label class="form-label">Supplier / Contact *</label><select class="form-input" id="qq-contact">${contacts.map(c=>`<option value="${c.id}"${q.contact_id===c.id?' selected':''}>${esc(c.company_name)}</option>`).join('')}</select></div>
       </div>
-      <div class="form-group"><label class="form-label">Trade Package *</label><input class="form-input" id="qq-pkg" value="${esc(q.trade_package||'')}" placeholder="e.g. Traffic Control — Full Road Occupation"></div>
+      <div class="form-group"><label class="form-label">Trade Package *</label><input class="form-input" id="qq-pkg" value="${esc(initPkg)}" placeholder="e.g. Traffic Control — Full Road Occupation"></div>
       <div class="form-row mb-3">
         <div class="form-group" style="margin:0"><label class="form-label">Request Date</label><input class="form-input" type="date" id="qq-req" value="${q.request_date||today()}"></div>
         <div class="form-group" style="margin:0"><label class="form-label">Due Date</label><input class="form-input" type="date" id="qq-due" value="${q.due_date||''}"></div>
@@ -10269,6 +10274,19 @@ function showQuoteModal(existing,defaultProjId){
     actions:`<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" data-action="save-quote" data-qid="${q.id||''}">Save Quote</button>`
   });
 }
+// Keep Trade Package in sync with the selected project's package number,
+// unless the user has typed their own value into the field.
+window._qqSyncPkg=function(){
+  const projEl=document.getElementById('qq-proj');
+  const pkgEl=document.getElementById('qq-pkg');
+  if(!projEl||!pkgEl)return;
+  const proj=DB.getProject(projEl.value);
+  const newAuto=(proj&&proj.package_number)||'';
+  const cur=pkgEl.value.trim();
+  // Only overwrite when the field is empty or still holds the previous auto-filled value
+  if(cur===''||cur===(window._qqAutoPkg||'')){pkgEl.value=newAuto;}
+  window._qqAutoPkg=newAuto;
+};
 
 /* ================================================================
    AI DOCUMENT ANALYSER
