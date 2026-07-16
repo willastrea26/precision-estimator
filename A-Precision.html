@@ -2557,7 +2557,7 @@ window.requestSupplierQuote=function(projId,category,supplierRateId,supplierName
   var arr=p.summary_fields.shortlisted_suppliers;
   var srid=supplierRateId||null;
   var entry=arr.find(function(e){return e.category===category&&(e.supplier_rate_id||null)===srid;});
-  if(entry&&entry.status==='quote_created'){if(!quiet)navigate('quotes');return;}
+  if(entry&&entry.status==='quote_created'){if(!quiet){if(entry.quote_id)window._pendingOpenQuote=entry.quote_id;navigate('quotes');}return;}
   if(!entry){entry={id:uid(),category:category,supplier_rate_id:srid,supplier_name:supplierName||'',status:'shortlisted',quote_id:null};arr.push(entry);}
   DB.saveProject(p);
   window.createQuoteFromShortlist(projId,entry.id,quiet);
@@ -2601,14 +2601,19 @@ window.createQuoteFromShortlist=function(projId,entryId,quiet){
   if(pqItems.length){scope='Please price the following items:\n'+pqItems.map(function(i){return'- '+i.item+(i.qty?' — '+i.qty:'')+(i.spec?' ('+i.spec+')':'');}).join('\n');}
   if(!scope)scope=(p.summary_fields.description||'').trim();
   if(!scope){var rtc=(p.summary_fields.required_trade_categories||[]).find(function(t){return t.category===entry.category;});scope=(rtc&&rtc.reason)||'';}
+  // Smart subject: "<Client> — <what's needed>". What's needed = the item names, else the trade label.
+  var needed=pqItems.length?pqItems.map(function(i){return i.item;}).filter(Boolean).join(', '):catLabel;
+  if(needed.length>70)needed=needed.slice(0,67).replace(/,?\s*$/,'')+'…';
+  var subject=(p.client?p.client+' — ':'')+needed;
   var quotes=DB.getQuotes();
-  var q={id:uid(),project_id:projId,contact_id:contactId,trade_package:catLabel,scope_requested:scope,status:'not_requested',request_date:today(),due_date:null,quoted_amount:null,notes:'Created from Procurement & Quotes hub.'+(isDayOne?' DAY-ONE priority — long-lead items, send immediately.':'')};
+  var q={id:uid(),project_id:projId,contact_id:contactId,trade_package:subject,scope_requested:scope,status:'not_requested',request_date:today(),due_date:null,quoted_amount:null,notes:'Created from Procurement & Quotes hub'+(catLabel!==subject?' ('+catLabel+')':'')+'.'+(isDayOne?' DAY-ONE priority — long-lead items, send immediately.':'')};
   quotes.push(q);DB.saveQuotes(quotes);
   entry.status='quote_created';entry.quote_id=q.id;entry.supplier_name=supplierName;
   DB.saveProject(p);
   if(!quiet){
-    toast('Draft quote created for '+esc(supplierName||catLabel)+'. See the Quotes tab.','success');
-    navigate('project/'+projId+'/summary');
+    // Take the estimator straight to All Quotes with this quote opened for review
+    window._pendingOpenQuote=q.id;
+    navigate('quotes');
   }
 };
 // Bulk-create draft quotes for every day-one trade that doesn't have one yet
@@ -8070,6 +8075,11 @@ function renderQuotes(){
     </table>
   </div>`;
   renderShell(content,'quotes');
+  // If a quote was just drafted from the suppliers hub, open it for review
+  if(window._pendingOpenQuote){
+    const qid=window._pendingOpenQuote;window._pendingOpenQuote=null;
+    requestAnimationFrame(function(){const q=DB.getQuotes().find(x=>x.id===qid);if(q)showQuoteModal(q);});
+  }
 }
 function renderQuoteRows(qf){
   if(!qf.length)return`<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No quote requests match filter.</td></tr>`;
