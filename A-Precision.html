@@ -8129,10 +8129,10 @@ function renderQuotes(){
   </div>
   <div id="q-list">${_quotesGroupedHTML(quotesFull)}</div>`;
   renderShell(content,'quotes');
-  // If a quote was just drafted from the suppliers hub, open it for review
+  // If a quote was just drafted from the suppliers hub, open its email draft ready to send
   if(window._pendingOpenQuote){
     const qid=window._pendingOpenQuote;window._pendingOpenQuote=null;
-    requestAnimationFrame(function(){const q=DB.getQuotes().find(x=>x.id===qid);if(q)showQuoteModal(q);});
+    requestAnimationFrame(function(){const q=DB.getQuotes().find(x=>x.id===qid);if(q)showEmailDraftModal(qid,'rfq');});
   }
 }
 // Group quotes into a section per project — easier to scan than one long flat table
