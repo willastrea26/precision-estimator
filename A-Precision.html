@@ -2646,17 +2646,26 @@ window.aiSuggestSuppliers=async function(projId,cat){
   var btn=document.getElementById('pq-sug-'+cat);
   if(btn){btn.disabled=true;btn.textContent='✦ Thinking…';}
   try{
-    var prompt='You are helping an Australian civil construction estimator find suppliers to request quotes from.\n'
-      +'Project location: '+(p.location||'NSW, Australia')+'\n'
-      +'Trade needed: '+label
-      +(items.length?'\nItems to price:\n'+items.map(function(i){return'- '+i.item+(i.qty?' — '+i.qty:'')+(i.spec?' ('+i.spec+')':'');}).join('\n'):'')
-      +'\n\nSuggest up to 4 REAL companies that supply this trade and service the project location region. Only include companies you are confident actually exist — fewer accurate suggestions beat invented ones. Include a website domain only if you are certain of it.\n\nReturn ONLY JSON: {"suggestions":[{"company":"string","why":"one line on why they fit","region":"area they service","website":"domain or null"}],"note":"any caveat about verifying these"}';
+    var ctx=(p.summary_fields&&(p.summary_fields.description||''))||'';
+    var itemLines=items.map(function(i){return'- '+i.item+(i.qty?' ('+i.qty+')':'')+(i.spec?' — spec: '+i.spec:'')+(i.source?' [ref: '+i.source+']':'');}).join('\n');
+    var prompt='You are helping an Australian civil construction estimator find the RIGHT SPECIALIST suppliers to request quotes from, based on the actual items pulled from the project drawings and scope of works.\n'
+      +'Project: '+(p.name||'')+(p.location?' — '+p.location:'')+(p.client?' (client: '+p.client+')':'')+'\n'
+      +(ctx?'Project context: '+ctx.slice(0,300)+'\n':'')
+      +'\nThese items were grouped under the broad category "'+label+'", but DO NOT suggest generic "'+label+'" companies. Read the SPECIFIC items below and suggest companies that genuinely specialise in supplying or hiring exactly these products/materials/equipment.\n\n'
+      +(items.length?'SPECIFIC ITEMS NEEDED:\n'+itemLines:'No specific items were extracted. Suggest specialist suppliers for: '+label)
+      +'\n\nSpecificity required — examples:\n'
+      +'• "geotextile / geofabric" → geosynthetics manufacturers/suppliers that actually make or stock that fabric (e.g. Bidim-type non-woven), NOT a general building-materials merchant.\n'
+      +'• "dewatering pumps" → pump sales/hire specialists, NOT a general equipment-hire company.\n'
+      +'• "precast headwalls / pits / culverts" → precast concrete manufacturers, NOT a general concreter.\n\n'
+      +'Suggest up to 5 REAL companies that (a) genuinely specialise in these specific items and (b) service the project region. Only include companies you are confident actually exist — fewer accurate suggestions beat invented ones. For each, state exactly which of the items above they supply. Include a website domain only if you are certain of it.\n\n'
+      +'Return ONLY JSON: {"suggestions":[{"company":"string","supplies":"which specific item(s) from the list they cover","why":"one line on why they fit","region":"area they service","website":"domain or null"}],"note":"any caveat about verifying these"}';
     var res=await _aiCall(prompt);
     var list=Array.isArray(res.suggestions)?res.suggestions:[];
     window._pqSug={projId:projId,cat:cat,list:list};
     if(!list.length){toast('No confident supplier suggestions for '+label+' — try adding one manually.','warning');return;}
     var rows=list.map(function(s,i){return'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">'
       +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.88rem;color:var(--text)">'+esc(s.company||'')+'</div>'
+      +(s.supplies?'<div style="font-size:.72rem;color:#D97757;margin-top:2px">Supplies: '+esc(s.supplies)+'</div>':'')
       +'<div style="font-size:.74rem;color:var(--muted);margin-top:2px">'+esc(s.why||'')+(s.region?' · '+esc(s.region):'')+(s.website?' · '+esc(s.website):'')+'</div></div>'
       +'<button class="btn btn-sm btn-blue" onclick="window.pqAddSuggestedContact('+i+')" style="flex-shrink:0">+ Add to Contacts</button></div>';}).join('');
     showSheet({title:'✦ Suggested suppliers — '+label,body:
@@ -2669,7 +2678,7 @@ window.pqAddSuggestedContact=function(i){
   var sug=window._pqSug;if(!sug||!sug.list[i])return;
   var s=sug.list[i];
   var contacts=DB.getContacts();
-  var c={id:uid(),company_name:s.company||'',contact_person:'',contact_type:'supplier',trade_category:sug.cat,email:'',phone:'',location:s.region||'',status:'active',notes:'AI-suggested supplier — verify details before contacting.'+(s.website?' Website: '+s.website:'')};
+  var c={id:uid(),company_name:s.company||'',contact_person:'',contact_type:'supplier',trade_category:sug.cat,email:'',phone:'',location:s.region||'',status:'active',notes:'AI-suggested supplier — verify details before contacting.'+(s.supplies?' Supplies: '+s.supplies+'.':'')+(s.website?' Website: '+s.website:'')};
   contacts.push(c);DB.saveContacts(contacts);
   toast(esc(s.company||'Supplier')+' added to Contacts. Verify details, then request the quote from the Procurement panel.','success');
   closeSheet();
