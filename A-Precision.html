@@ -8068,12 +8068,7 @@ function renderQuotes(){
     <select class="form-input" id="q-proj" onchange="filterQuotes()"><option value="">All Projects</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
     <select class="form-input" id="q-status" onchange="filterQuotes()"><option value="">All Statuses</option>${['not_requested','requested','awaiting','received','clarification','accepted','declined'].map(s=>`<option>${s}</option>`).join('')}</select>
   </div>
-  <div class="tbl-wrap">
-    <table>
-      <thead><tr><th>Supplier</th><th>Project</th><th>Trade Package</th><th>Request Date</th><th>Due Date</th><th>Status</th><th>Quoted Amount</th><th>Actions</th></tr></thead>
-      <tbody id="q-tbody">${renderQuoteRows(quotesFull)}</tbody>
-    </table>
-  </div>`;
+  <div id="q-list">${_quotesGroupedHTML(quotesFull)}</div>`;
   renderShell(content,'quotes');
   // If a quote was just drafted from the suppliers hub, open it for review
   if(window._pendingOpenQuote){
@@ -8081,11 +8076,45 @@ function renderQuotes(){
     requestAnimationFrame(function(){const q=DB.getQuotes().find(x=>x.id===qid);if(q)showQuoteModal(q);});
   }
 }
-function renderQuoteRows(qf){
-  if(!qf.length)return`<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No quote requests match filter.</td></tr>`;
+// Group quotes into a section per project — easier to scan than one long flat table
+function _quotesGroupedHTML(qf){
+  if(!qf.length)return`<div class="tbl-wrap"><div style="text-align:center;padding:30px;color:var(--muted)">No quote requests match filter.</div></div>`;
+  const groups=new Map();
+  qf.forEach(q=>{const k=q.project_id||'_none';if(!groups.has(k))groups.set(k,{project:q.project,rows:[]});groups.get(k).rows.push(q);});
+  const arr=[...groups.values()].sort((a,b)=>{
+    if(!a.project&&b.project)return 1;   // no-project group always last
+    if(a.project&&!b.project)return -1;
+    return ((a.project&&a.project.name)||'').toLowerCase().localeCompare(((b.project&&b.project.name)||'').toLowerCase());
+  });
+  return arr.map(g=>{
+    const p=g.project;
+    const overdue=g.rows.filter(r=>r.isOverdue).length;
+    const recv=g.rows.filter(r=>['received','accepted'].includes(r.status)).length;
+    const name=p?esc(p.name):'No project assigned';
+    const pkg=p&&p.package_number?`<span style="font-size:.7rem;color:var(--muted2);margin-left:6px">${esc(p.package_number)}</span>`:'';
+    return`<div style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:10px;margin:0 2px 8px;flex-wrap:wrap">
+        <div style="width:3px;height:15px;background:var(--blue);border-radius:2px"></div>
+        <div style="font-size:.9rem;font-weight:700;color:var(--text)">${name}${pkg}</div>
+        <span style="font-size:.7rem;color:var(--muted2);background:rgba(255,255,255,.05);padding:1px 8px;border-radius:99px">${g.rows.length} quote${g.rows.length!==1?'s':''}</span>
+        ${recv?`<span class="badge badge-green" style="font-size:.6rem">${recv} received</span>`:''}
+        ${overdue?`<span class="badge badge-red" style="font-size:.6rem">${overdue} overdue</span>`:''}
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Supplier</th><th>Trade Package</th><th>Request Date</th><th>Due Date</th><th>Status</th><th>Quoted Amount</th><th>Actions</th></tr></thead>
+          <tbody>${renderQuoteRows(g.rows,false)}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderQuoteRows(qf,showProject=true){
+  const cols=showProject?8:7;
+  if(!qf.length)return`<tr><td colspan="${cols}" style="text-align:center;padding:30px;color:var(--muted)">No quote requests match filter.</td></tr>`;
   return qf.map(q=>`<tr class="${q.isOverdue?'overdue-row':''}">
     <td class="bold">${esc(q.contact?.company_name||'Unknown')}</td>
-    <td style="font-size:.78rem">${esc(q.project?.name||'—')}</td>
+    ${showProject?`<td style="font-size:.78rem">${esc(q.project?.name||'—')}</td>`:''}
     <td>${esc(q.trade_package)}</td>
     <td>${fmtDate(q.request_date)}</td>
     <td><span onclick="openQuoteDuePicker(event,'${q.id}')" style="cursor:pointer" title="Click to change due date" class="${q.isOverdue?'days-red':relDaysClass(q.due_date)}">${q.due_date?fmtDate(q.due_date):'<span style="color:var(--muted2);font-size:.78rem">Set date</span>'}${q.due_date?`<br><span style="font-size:.7rem">${relDays(q.due_date)}</span>`:''}</span></td>
@@ -8110,7 +8139,8 @@ window.filterQuotes=function(filter){
   if(projFilter)qf=qf.filter(q=>q.project_id===projFilter);
   if(statFilter==='overdue')qf=qf.filter(q=>q.isOverdue);
   else if(statFilter)qf=qf.filter(q=>q.status===statFilter);
-  document.getElementById('q-tbody').innerHTML=renderQuoteRows(qf);
+  const el=document.getElementById('q-list');
+  if(el)el.innerHTML=_quotesGroupedHTML(qf);
 };
 
 /* ================================================================
