@@ -1268,9 +1268,11 @@ function renderDashboard(){
   const todayStr=today();
   const activeProjects=projects.filter(p=>['estimating','in_progress'].includes(p.status));
   const pipeline=projects.filter(p=>['estimating','submitted'].includes(p.status)).reduce((s,p)=>s+(p.estimated_value||0),0);
-  // Estimating-stage projects only — kept separate from awarded value
-  const estimatingProjects=projects.filter(p=>p.status==='estimating');
-  const estimatingVal=estimatingProjects.reduce((s,p)=>s+(p.estimated_value||0),0);
+  // Projected value: estimating + submitted tenders weighted by win probability (default 15% if unset).
+  // Kept separate from awarded value.
+  const projWinPct=p=>(p.win_probability!=null&&p.win_probability!==''?p.win_probability:15)/100;
+  const estimatingProjects=projects.filter(p=>['estimating','submitted'].includes(p.status));
+  const estimatingVal=estimatingProjects.reduce((s,p)=>s+(p.estimated_value||0)*projWinPct(p),0);
   // "Won" = awarded contracts plus jobs now in progress or completed (they were won too)
   const WON_STATUSES=['awarded','in_progress','completed'];
   const wonProjects=projects.filter(p=>WON_STATUSES.includes(p.status));
@@ -1358,8 +1360,8 @@ function renderDashboard(){
     <div class="kpi-card blue">
       <div class="kpi-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
       <div class="kpi-value aud" style="font-size:1.3rem">${fmtAUD(estimatingVal)}</div>
-      <div class="kpi-label">Estimating Value</div>
-      <div class="kpi-sub">${estimatingProjects.length} project${estimatingProjects.length!==1?'s':''} being estimated</div>
+      <div class="kpi-label">Projected Value</div>
+      <div class="kpi-sub">${estimatingProjects.length} tender${estimatingProjects.length!==1?'s':''} weighted by win % (15% default)</div>
     </div>
   </div>
 
