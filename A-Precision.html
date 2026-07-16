@@ -2026,8 +2026,10 @@ function renderTabSuppliers(p,id){
           ${conRows}
           ${notOnFile}`,cat,dot);
     };
+    // Order: day-one supplier trades, then other supplier trades, then plant/labour (internal rates) always last
     const d1Cats=entries.filter(e=>e.isDayOne&&!e.isRL);
-    const restCats=entries.filter(e=>!(e.isDayOne&&!e.isRL)).sort((a,b)=>(b.isRL?1:0)-(a.isRL?1:0));
+    const midCats=entries.filter(e=>!e.isDayOne&&!e.isRL);
+    const rlCats=entries.filter(e=>e.isRL);
     // Progress chips: how many supplier trades have a quote drafted / received (live from All Quotes)
     const supCats=entries.filter(e=>!e.isRL);
     const catQuoted=cat=>shortlist.some(e2=>e2.category===cat&&e2.status==='quote_created');
@@ -2068,8 +2070,9 @@ function renderTabSuppliers(p,id){
         <div style="font-size:.83rem;color:var(--muted2);max-width:440px;margin:0 auto 16px;line-height:1.6">Run the AI Analyser on this project's drawings and scope of works. Claude will identify every trade and material that needs a supplier quote, flag the long-lead day-one items, and match them to your suppliers.</div>
         <button class="btn btn-blue" onclick="navigate('project/${id}/documents')">${CLAUDE_ICON_SVG}Run AI Analyser</button>
       </div>`;
+    const subhead=t=>`<div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin:16px 2px 9px">${t}</div>`;
     return `${header}
-      ${entries.length?`${statRow}${d1Banner}${d1Cats.map(renderCat).join('')}${d1Cats.length&&restCats.length?`<div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin:16px 2px 9px">Other trades &amp; internal rates</div>`:''}${restCats.map(renderCat).join('')}`:emptyState}`;
+      ${entries.length?`${statRow}${d1Banner}${d1Cats.map(renderCat).join('')}${d1Cats.length&&midCats.length?subhead('Other trades'):''}${midCats.map(renderCat).join('')}${rlCats.length?subhead('Plant &amp; labour (internal rates)'):''}${rlCats.map(renderCat).join('')}`:emptyState}`;
   })();
 }
 function renderTab(p,tab,id){
