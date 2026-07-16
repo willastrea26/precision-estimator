@@ -4943,6 +4943,45 @@ async function _buildCorpus(p,docIds){
   return{corpus,warnings};
 }
 
+// Render drawing-category PDF pages to images so the AI can actually SEE schedules, callouts and dimensions
+// that the text layer garbles or omits. Returns Anthropic image content blocks.
+async function _buildDrawingImages(p,docIds,warnings){
+  const MAX_IMAGES=16,MAX_PER_DOC=8,LONG_EDGE=1500;
+  const drawingDocs=(p.documents||[]).filter(d=>d.file_type==='pdf'&&(!docIds||docIds.has(d.id))&&d.category==='drawings');
+  if(!drawingDocs.length)return[];
+  if(!window.pdfjsLib){if(warnings)warnings.push('PDF renderer not ready — drawings read as text only.');return[];}
+  const blocks=[];
+  for(const doc of drawingDocs){
+    if(blocks.length>=MAX_IMAGES)break;
+    try{
+      const url=await _docResolveUrl(_docBlobs.get(doc.id));
+      if(!url)continue;
+      const buf=await fetch(url).then(r=>r.arrayBuffer());
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      const pages=Math.min(pdf.numPages,MAX_PER_DOC);
+      for(let i=1;i<=pages&&blocks.length<MAX_IMAGES;i++){
+        const pg=await pdf.getPage(i);
+        const base=pg.getViewport({scale:1});
+        const scale=Math.max(0.5,Math.min(2.5,LONG_EDGE/Math.max(base.width,base.height)));
+        const vp=pg.getViewport({scale});
+        const canvas=document.createElement('canvas');canvas.width=Math.round(vp.width);canvas.height=Math.round(vp.height);
+        const cx=canvas.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,canvas.width,canvas.height);
+        await pg.render({canvasContext:cx,viewport:vp}).promise;
+        const b64=canvas.toDataURL('image/jpeg',0.8).split(',')[1];
+        if(b64)blocks.push({type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}});
+      }
+      if(pdf.numPages>MAX_PER_DOC&&warnings)warnings.push(`"${doc.file_name}": first ${MAX_PER_DOC} of ${pdf.numPages} pages sent as images.`);
+    }catch(e){if(warnings)warnings.push(`Could not render "${doc.file_name}" for vision: ${e.message}`);}
+  }
+  return blocks;
+}
+// Wrap a Stage-1 text prompt with any drawing images so Claude reads the sheets directly
+function _p1Content(promptText){
+  const imgs=(_pip&&_pip.drawingImages)||[];
+  if(!imgs.length)return promptText;
+  return[...imgs,{type:'text',text:`ATTACHED: ${imgs.length} drawing sheet image(s) are included above. Read dimensions, pit/pipe schedules, callouts and annotations DIRECTLY from these images — they contain specifics (e.g. "900x900 junction pit", pipe sizes, quantities) that are missing or garbled in the extracted text below.\n\n${promptText}`}];
+}
+
 const _p1=(corpus,corr='')=>{
   const jc=_pip?.jobConfig;
   const jobCtx=jc?`\n\nJOB TYPE: ${jc.jobLabel}${jc.focusAreas?.length?`\nPRIORITY FOCUS: ${jc.focusAreas.join(', ')}`:''}${jc.context?`\nESTIMATOR NOTES: ${jc.context}`:''}`:''
@@ -5394,6 +5433,11 @@ window._runAIForTabs=async function(projId){
   try{
     const{corpus,warnings}=await _buildCorpus(p,docIds.size?docIds:null);
     _pip.corpus=corpus;_pip.warnings=warnings;
+    // Stage 1 derives trades + procurement items — feed it the drawing sheets as images so it reads the detail
+    if(sel.includes(1)){
+      try{const imgs=await _buildDrawingImages(p,docIds.size?docIds:null,_pip.warnings);_pip.drawingImages=imgs;if(imgs.length)_pip.warnings.push(`${imgs.length} drawing page(s) read as images.`);}
+      catch(e){_pip.drawingImages=[];}
+    }
     _pip.stage='running';
     sel.forEach(n=>_pip.ss[n]='pending');
     _refreshPip(projId);
@@ -5403,7 +5447,7 @@ window._runAIForTabs=async function(projId){
       try{
         const focus=tabFocus[n]||'';
         const extra=(n===6?s6ctx:'')+(focus?'\n\nUSER FOCUS INSTRUCTION: '+focus:'');
-        const res=n===1?await _aiCall(_p1(corpus,focus)):await _aiCall(_pStage(n,corpus,null,extra));
+        const res=n===1?await _aiCall(_p1Content(_p1(corpus,focus))):await _aiCall(_pStage(n,corpus,null,extra));
         _pip.results[n]=res;_pip.ss[n]='complete';
       }catch(e){_pip.results[n+'_err']=e.message;_pip.ss[n]='error';}
       _refreshPip(projId);
@@ -5420,7 +5464,7 @@ window.aiUpdateSummary=async function(id){
   if(!_pip)return;
   const corr=document.getElementById('ai-corrections')?.value||'';
   _pip.corrections=corr;_pip.stage='correcting';_refreshPip(id);
-  try{const result=await _aiCall(_p1(_pip.corpus,corr));_pip.summary=result;_pip.stage='stage1';_refreshPip(id);}
+  try{const result=await _aiCall(_p1Content(_p1(_pip.corpus,corr)));_pip.summary=result;_pip.stage='stage1';_refreshPip(id);}
   catch(e){toast('Update failed: '+e.message,'error');_pip.stage='stage1';_refreshPip(id);}
 };
 
@@ -5454,7 +5498,7 @@ window.rerunAIStage=async function(id,n){
   const focus=_pip.tabFocus?.[n]||'';
   const extra=(n===6?s6ctx:'')+(focus?'\n\nUSER FOCUS INSTRUCTION: '+focus:'');
   try{
-    const res=n===1?await _aiCall(_p1(_pip.corpus,focus)):await _aiCall(_pStage(n,_pip.corpus,_pip.confirmed||null,extra));
+    const res=n===1?await _aiCall(_p1Content(_p1(_pip.corpus,focus))):await _aiCall(_pStage(n,_pip.corpus,_pip.confirmed||null,extra));
     _pip.results[n]=res;_pip.ss[n]='complete';
     Object.keys(_pip.itemStates).filter(k=>k.startsWith(n+'_')||(n===1&&k==='1_sum')).forEach(k=>delete _pip.itemStates[k]);
     if(n===6)_pip.quotesCreated=[];
