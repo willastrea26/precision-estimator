@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1638,8 +1638,8 @@ window.filterProjects=function(){
 function renderProjectDetail(id,tab){
   const p=DB.getProject(id);
   if(!p){renderShell(`<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Project not found</div></div>`,'projects');return;}
-  const tabs=['summary','geotech','volumes','materials','quantities','productivity','boq','risk','variations','diary','departures','program','documents'];
-  const tabLabels={'summary':'Summary','geotech':'Geotech','volumes':'Volumes','materials':'Materials','quantities':'Quantities','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
+  const tabs=['summary','suppliers','geotech','volumes','materials','quantities','productivity','boq','risk','variations','diary','departures','program','documents'];
+  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Volumes','materials':'Materials','quantities':'Quantities','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
   const curTab=tabs.includes(tab)?tab:'summary';
   const boqTotal=(p.boq_items||[]).reduce((s,b)=>s+(b.quantity||0)*(b.rate||0),0);
   const openRisks=(p.risks||[]).filter(r=>r.status==='open').length;
@@ -1847,9 +1847,189 @@ function renderTabWorkings(p,id){
   return '<div style="padding:80px 0;text-align:center;color:var(--muted2)"><div style="font-size:2rem;margin-bottom:8px">📊</div><div style="font-size:.9rem">Workings Book is open in the panel above.</div></div>';
 }
 
+function renderTabSuppliers(p,id){
+  const sf=p.summary_fields||{};
+  return (function(){
+    const rtcs=Array.isArray(sf.required_trade_categories)?sf.required_trade_categories:[];
+    const procItems=Array.isArray(sf.procurement_items)?sf.procurement_items:[];
+    const shortlist=Array.isArray(sf.shortlisted_suppliers)?sf.shortlisted_suppliers:[];
+    const findEntry=(cat,srid)=>shortlist.find(e=>e.category===cat&&(e.supplier_rate_id||null)===(srid||null));
+    const allSups=_srGet().filter(s=>_srGetLc(s)==='active');
+    const allQuotes=DB.getQuotes();
+    const pqContacts=DB.getContacts().filter(c=>['active','preferred'].includes(c.status||'active')&&['supplier','subcontractor'].includes(c.contact_type));
+    const catLabel=c=>(SR_CAT_LABELS&&SR_CAT_LABELS[c])||c;
+    // Unified category map: every trade the AI flagged + every category carrying procurement items
+    const catMap=new Map();
+    rtcs.forEach(r=>{if(r.category&&!catMap.has(r.category))catMap.set(r.category,{reason:r.reason||'',items:[]});});
+    procItems.forEach(it=>{const c=it.category||'generalMaterials';if(!catMap.has(c))catMap.set(c,{reason:'',items:[]});catMap.get(c).items.push(it);});
+    // Live quote status — reads the actual quote record so the chip updates as All Quotes changes
+    const Q_CHIP={not_requested:['badge-grey','Draft created'],requested:['badge-blue','Requested'],awaiting:['badge-amber','Awaiting reply'],clarification:['badge-amber','Clarification'],received:['badge-green','✓ Received'],accepted:['badge-green','✓ Accepted'],declined:['badge-red','Declined'],overdue:['badge-red','Overdue']};
+    const statusChip=(cat,key)=>{
+      const e=findEntry(cat,key);
+      if(!e||e.status!=='quote_created')return null;
+      const q=e.quote_id?allQuotes.find(x=>x.id===e.quote_id):null;
+      const st=q?(q.status||'not_requested'):'not_requested';
+      const[cls,lbl]=Q_CHIP[st]||Q_CHIP.not_requested;
+      return `<button class="badge ${cls}" onclick="navigate('quotes')" style="font-size:.6rem;cursor:pointer;border:none;white-space:nowrap;flex-shrink:0" title="Open in All Quotes">${lbl}</button>`;
+    };
+    const itemRows=items=>items.length?`<div style="margin-bottom:8px">${items.map(i=>`
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        ${i.priority==='day_one'?`<span class="badge badge-red" style="font-size:.53rem;flex-shrink:0;margin-top:2px" title="${esc(i.lead_reason||'Long-lead item')}">DAY 1</span>`:''}
+        <div style="flex:1;min-width:0;font-size:.78rem;color:var(--text)"><b>${esc(i.item||'')}</b>${i.qty?` <span style="color:var(--muted)">— ${esc(i.qty)}</span>`:''}${i.spec?`<div style="font-size:.68rem;color:var(--muted2)">${esc(i.spec)}</div>`:''}${i.priority==='day_one'&&i.lead_reason?`<div style="font-size:.66rem;color:#fca5a5">${esc(i.lead_reason)}</div>`:''}</div>
+        ${i.source?`<span style="font-size:.62rem;color:var(--muted2);flex-shrink:0;cursor:help" title="Source: ${esc(i.source)}">📄 ${esc(i.source)}</span>`:''}
+      </div>`).join('')}</div>`:'';
+    // Each trade is a self-contained panel: name left, status badges right, colour-coded left edge.
+    const catPanel=(accent,label,badges,body)=>`<div style="border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 14px 12px;margin-bottom:11px;background:rgba(255,255,255,.015)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="font-size:.85rem;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase">${esc(label)}</span>
+          <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">${badges}</div>
+        </div>
+        ${body}
+      </div>`;
+    // Light-blue evidence callout — shows what the AI extracted from the documents to justify this trade
+    const evBox=(txt)=>txt?`<div style="display:flex;gap:7px;align-items:flex-start;font-size:.72rem;color:#93c5fd;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.22);border-radius:6px;padding:7px 10px;margin-bottom:9px;line-height:1.5">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0;margin-top:2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>${esc(txt)}</span>
+      </div>`:'';
+    // Day-one trades surface first; Rate Library trades lead the remainder
+    const entries=[...catMap.entries()].map(([cat,info])=>({cat,reason:info.reason,items:info.items,isRL:_rlIsLabourPlant(cat),isDayOne:info.items.some(i=>i.priority==='day_one')}));
+    const renderCat=ent=>{
+      const cat=ent.cat;const label=catLabel(cat);const rtc={category:cat,reason:ent.reason};const catItems=ent.items;
+      // Plant Hire: if the analyser extracted the specific machines this job needs, match each to a rate
+      const reqPlant=Array.isArray(sf.required_plant)?sf.required_plant:[];
+      if(cat==='plantHire'&&reqPlant.length){
+        const plantRows=reqPlant.map(pl=>{
+          const name=[pl.size,pl.item].filter(Boolean).join(' ').trim()||pl.item||'Plant';
+          const res=_rlFindPlantRate(pl.item,pl.size);
+          const tot=res.rate?_rlRateTotal(res.rate):0;
+          const rightHtml=res.rate
+            ? `<div style="text-align:right;white-space:nowrap"><div style="font-size:.8rem;font-weight:600;color:var(--text)">${fmtAUD(tot)}${res.rate.unit?`<span style="font-size:.68rem;color:var(--muted2)">/${esc(res.rate.unit)}</span>`:''}</div><div style="font-size:.66rem;color:${res.match==='exact'?'var(--green)':'var(--amber)'}">${res.match==='exact'?'✓ '+esc(res.rate.description||''):'≈ '+esc(res.rate.description||'')+' (size differs)'}</div></div>`
+            : `<div style="text-align:right;white-space:nowrap"><span class="badge badge-red" style="font-size:.56rem">no rate on file</span></div>`;
+          return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);${res.rate?'cursor:pointer':''}" ${res.rate?`onclick="window._rlSearch=${JSON.stringify((res.rate.description||'').toLowerCase()).replace(/"/g,'&quot;')};navigate('rate-library')" title="Open in Rate Library"`:''}>
+            <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(name)}</span>${pl.purpose?`<div style="font-size:.68rem;color:var(--muted2)">${esc(pl.purpose)}</div>`:''}</div>
+            ${rightHtml}
+          </div>`;
+        }).join('');
+        const gaps=reqPlant.filter(pl=>_rlFindPlantRate(pl.item,pl.size).match==='none').length;
+        return catPanel('var(--blue)',label,
+          `<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span><span class="badge badge-grey" style="font-size:.58rem">${reqPlant.length} required</span>${gaps?`<span class="badge badge-red" style="font-size:.58rem">${gaps} no rate</span>`:''}`,
+          `${evBox(rtc.reason)}
+            ${plantRows}
+            <div style="margin-top:9px"><button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button></div>`);
+      }
+      // Labour & plant trades come from the internal Rate Library, not supplier quotes
+      if(_rlIsLabourPlant(cat)){
+        const rlRates=_rlMatchRates(cat);
+        const shown=rlRates.slice(0,8);
+        const rateRows=shown.map(r=>{
+          const tot=_rlRateTotal(r);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onclick="window._rlSearch=${JSON.stringify((r.description||'').toLowerCase()).replace(/"/g,'&quot;')};navigate('rate-library')" title="Open in Rate Library">
+            <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(r.description||r.rate_code||'Rate')}</span>${r.rate_code?` <span style="font-size:.66rem;color:var(--muted2)">${esc(r.rate_code)}</span>`:''}</div>
+            <div style="font-size:.8rem;font-weight:600;color:var(--text);white-space:nowrap">${fmtAUD(tot)}${r.unit?`<span style="font-size:.68rem;color:var(--muted2)">/${esc(r.unit)}</span>`:''}</div>
+          </div>`;
+        }).join('');
+        return catPanel('var(--blue)',label,
+          `<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span>${rlRates.length?`<span class="badge badge-green" style="font-size:.58rem">${rlRates.length} rate${rlRates.length!==1?'s':''}</span>`:`<span class="badge badge-amber" style="font-size:.58rem">none yet</span>`}`,
+          `${evBox(rtc.reason)}
+            ${rlRates.length?rateRows:`<div style="font-size:.76rem;color:var(--muted2);padding:4px 0">No matching ${esc(label.toLowerCase())} rates in your Rate Library yet.</div>`}
+            <div style="margin-top:9px">
+              <button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button>
+              ${rlRates.length>8?`<span style="font-size:.7rem;color:var(--muted2);margin-left:8px">+${rlRates.length-8} more</span>`:''}
+            </div>`);
+      }
+      const matches=_srMatchSuppliers(cat,allSups);
+      // Contacts that cover this trade but aren't in the supplier-rates library
+      const conMatches=pqContacts.filter(c=>c.trade_category===cat&&!matches.some(m=>(m.s.company||'').toLowerCase().trim()===(c.company_name||'').toLowerCase().trim()));
+      const reqBtn=onclick=>`<button class="btn btn-xs btn-blue" onclick="${onclick}" style="white-space:nowrap;flex-shrink:0">Request quote</button>`;
+      const rightSide=(key,onclick)=>statusChip(cat,key)||reqBtn(onclick);
+      const supRows=matches.map(m=>{
+        const s=m.s;
+        const rateCount=(s.items||[]).length;
+        const basisLabel=m.basis==='rate'?'rate match':'tagged';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</div>
+            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">${rateCount} rate${rateCount!==1?'s':''} · ${basisLabel}</div>
+          </div>
+          ${rightSide(s.id,`window.requestSupplierQuote('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})`)}
+        </div>`;
+      }).join('');
+      const conRows=conMatches.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(c.company_name||'Unnamed')}</div>
+            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">from Contacts${c.contact_person?` · ${esc(c.contact_person)}`:''}${c.email?` · ${esc(c.email)}`:''}</div>
+          </div>
+          ${rightSide('c:'+c.id,`window.pqRequestQuoteContact('${id}','${cat}','${c.id}',${JSON.stringify(c.company_name||'').replace(/"/g,'&quot;')})`)}
+        </div>`).join('');
+      const anyOnFile=matches.length+conMatches.length>0;
+      // "Not on file" row: manual add, AI recommendation, or fire a quote request anyway
+      const nofRequested=!!statusChip(cat,null);
+      const notOnFile=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;flex-wrap:wrap;${anyOnFile?'border-top:1px dashed rgba(255,255,255,.08);margin-top:2px':''}">
+        <div style="flex:1;min-width:0;font-size:.74rem;color:var(--muted2)">${anyOnFile?'None of these? ':'⚠ No supplier on file for this trade. '}
+          <button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button>
+          <button class="btn btn-ghost btn-xs" id="pq-sug-${cat}" onclick="window.aiSuggestSuppliers('${id}','${cat}')" style="color:#D97757;border:1px solid rgba(217,119,87,.35);padding:2px 8px;margin-left:4px">✦ Suggest suppliers</button>
+        </div>
+        ${nofRequested?statusChip(cat,null):reqBtn(`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`)}
+      </div>`;
+      const accent=ent.isDayOne?'var(--red)':anyOnFile?'var(--green)':'var(--amber)';
+      const badges=`${ent.isDayOne?`<span class="badge badge-red" style="font-size:.58rem">DAY ONE</span>`:''}${catItems.length?`<span class="badge badge-grey" style="font-size:.58rem">${catItems.length} item${catItems.length!==1?'s':''}</span>`:''}${anyOnFile?`<span class="badge badge-green" style="font-size:.58rem">${matches.length+conMatches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`}`;
+      return catPanel(accent,label,badges,
+        `${evBox(rtc.reason)}
+          ${itemRows(catItems)}
+          ${supRows}
+          ${conRows}
+          ${notOnFile}`);
+    };
+    const d1Cats=entries.filter(e=>e.isDayOne&&!e.isRL);
+    const restCats=entries.filter(e=>!(e.isDayOne&&!e.isRL)).sort((a,b)=>(b.isRL?1:0)-(a.isRL?1:0));
+    // Progress chips: how many supplier trades have a quote drafted / received (live from All Quotes)
+    const supCats=entries.filter(e=>!e.isRL);
+    const catQuoted=cat=>shortlist.some(e2=>e2.category===cat&&e2.status==='quote_created');
+    const catReceived=cat=>shortlist.some(e2=>{if(e2.category!==cat||!e2.quote_id)return false;const q=allQuotes.find(x=>x.id===e2.quote_id);return!!q&&['received','accepted'].includes(q.status);});
+    const nQ=supCats.filter(e=>catQuoted(e.cat)).length;
+    const nR=supCats.filter(e=>catReceived(e.cat)).length;
+    const d1Pending=d1Cats.filter(e=>!catQuoted(e.cat)).length;
+    const d1Banner=d1Cats.length?`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:9px 13px;margin-bottom:11px">
+        <div style="font-size:.79rem;color:#fca5a5;min-width:0"><b style="color:var(--red)">🚨 Day one</b> — ${d1Cats.length} trade${d1Cats.length!==1?'s':''} with long-lead items. Send these requests now so lead times don't eat the programme.</div>
+        ${d1Pending?`<button class="btn btn-xs btn-red" onclick="window.pqRequestAllDayOne('${id}')" style="white-space:nowrap;flex-shrink:0">Request all day-one quotes</button>`:`<span class="badge badge-green" style="font-size:.6rem;flex-shrink:0">✓ All requested</span>`}
+      </div>`:'';
+    // ---- Presentable tab layout: header + stat tiles + banner + panels ----
+    const dayOneItemCount=procItems.filter(i=>i.priority==='day_one').length;
+    const tile=(val,label,accent,sub)=>`<div style="flex:1;min-width:120px;background:var(--s2,rgba(255,255,255,.02));border:1px solid var(--border);border-left:3px solid ${accent};border-radius:9px;padding:12px 14px">
+        <div style="font-size:1.5rem;font-weight:800;line-height:1;color:var(--text);letter-spacing:-.02em">${val}</div>
+        <div style="font-size:.68rem;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-top:5px">${label}</div>
+        ${sub?`<div style="font-size:.68rem;color:var(--muted);margin-top:2px">${sub}</div>`:''}
+      </div>`;
+    const statRow=entries.length?`<div style="display:flex;gap:11px;flex-wrap:wrap;margin-bottom:16px">
+        ${tile(supCats.length,'Trades to quote','var(--blue)',supCats.length?`${nQ} requested · ${nR} received`:'')}
+        ${tile(procItems.length,'Line items','var(--muted)',procItems.length?`across ${entries.length} trade${entries.length!==1?'s':''}`:'')}
+        ${tile(dayOneItemCount||'0','Day-one items',dayOneItemCount?'var(--red)':'var(--green)',d1Cats.length?`${d1Pending} trade${d1Pending!==1?'s':''} still to send`:'none flagged')}
+        ${tile(nR+'/'+(supCats.length||0),'Quotes received',nR&&nR>=supCats.length?'var(--green)':'var(--amber)','')}
+      </div>`:'';
+    const header=`<div class="page-header" style="margin-bottom:14px">
+        <div>
+          <div class="page-title">Key Suppliers &amp; Quotes</div>
+          <div class="page-sub">${entries.length?`${supCats.length} trade${supCats.length!==1?'s':''} need a supplier quote — one click drafts it in All Quotes`:'Run the AI Analyser to identify the suppliers this job needs'}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn btn-outline btn-sm" onclick="navigate('project/${id}/documents')" title="Run the AI Analyser to (re)extract trades and procurement items">${CLAUDE_ICON_SVG}Re-analyse</button>
+          <button class="btn btn-outline btn-sm" onclick="navigate('quotes')">Open All Quotes →</button>
+        </div>
+      </div>`;
+    const emptyState=`<div class="card" style="border-style:dashed;text-align:center;padding:44px 24px">
+        <div style="display:flex;justify-content:center;margin-bottom:10px;color:#D97757">${CLAUDE_ICON_SVG.replace('width="14"','width="26"').replace('height="14"','height="26"').replace('margin-right:6px','margin-right:0')}</div>
+        <div style="font-weight:700;font-size:1rem;color:var(--text);margin-bottom:5px">No trades identified yet</div>
+        <div style="font-size:.83rem;color:var(--muted2);max-width:440px;margin:0 auto 16px;line-height:1.6">Run the AI Analyser on this project's drawings and scope of works. Claude will identify every trade and material that needs a supplier quote, flag the long-lead day-one items, and match them to your suppliers.</div>
+        <button class="btn btn-blue" onclick="navigate('project/${id}/documents')">${CLAUDE_ICON_SVG}Run AI Analyser</button>
+      </div>`;
+    return `${header}
+      ${entries.length?`${statRow}${d1Banner}${d1Cats.map(renderCat).join('')}${d1Cats.length&&restCats.length?`<div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin:16px 2px 9px">Other trades &amp; internal rates</div>`:''}${restCats.map(renderCat).join('')}`:emptyState}`;
+  })();
+}
 function renderTab(p,tab,id){
   switch(tab){
     case 'summary': return renderTabSummary(p,id);
+    case 'suppliers': return renderTabSuppliers(p,id);
     case 'geotech': return renderTabGeotech(p,id);
     case 'volumes': return renderTabVolumes(p,id);
     case 'materials': return renderTabMaterials(p,id);
@@ -2141,161 +2321,6 @@ function renderTabSummary(p,id){
         ?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">'+cards+'</div>'
         :'<div style="font-size:.82rem;color:var(--muted2)">No key personnel added yet.</div>')
     +'</div>';
-  })()}
-  ${(function(){
-    const rtcs=Array.isArray(sf.required_trade_categories)?sf.required_trade_categories:[];
-    const procItems=Array.isArray(sf.procurement_items)?sf.procurement_items:[];
-    const shortlist=Array.isArray(sf.shortlisted_suppliers)?sf.shortlisted_suppliers:[];
-    const findEntry=(cat,srid)=>shortlist.find(e=>e.category===cat&&(e.supplier_rate_id||null)===(srid||null));
-    const allSups=_srGet().filter(s=>_srGetLc(s)==='active');
-    const allQuotes=DB.getQuotes();
-    const pqContacts=DB.getContacts().filter(c=>['active','preferred'].includes(c.status||'active')&&['supplier','subcontractor'].includes(c.contact_type));
-    const catLabel=c=>(SR_CAT_LABELS&&SR_CAT_LABELS[c])||c;
-    // Unified category map: every trade the AI flagged + every category carrying procurement items
-    const catMap=new Map();
-    rtcs.forEach(r=>{if(r.category&&!catMap.has(r.category))catMap.set(r.category,{reason:r.reason||'',items:[]});});
-    procItems.forEach(it=>{const c=it.category||'generalMaterials';if(!catMap.has(c))catMap.set(c,{reason:'',items:[]});catMap.get(c).items.push(it);});
-    // Live quote status — reads the actual quote record so the chip updates as All Quotes changes
-    const Q_CHIP={not_requested:['badge-grey','Draft created'],requested:['badge-blue','Requested'],awaiting:['badge-amber','Awaiting reply'],clarification:['badge-amber','Clarification'],received:['badge-green','✓ Received'],accepted:['badge-green','✓ Accepted'],declined:['badge-red','Declined'],overdue:['badge-red','Overdue']};
-    const statusChip=(cat,key)=>{
-      const e=findEntry(cat,key);
-      if(!e||e.status!=='quote_created')return null;
-      const q=e.quote_id?allQuotes.find(x=>x.id===e.quote_id):null;
-      const st=q?(q.status||'not_requested'):'not_requested';
-      const[cls,lbl]=Q_CHIP[st]||Q_CHIP.not_requested;
-      return `<button class="badge ${cls}" onclick="navigate('quotes')" style="font-size:.6rem;cursor:pointer;border:none;white-space:nowrap;flex-shrink:0" title="Open in All Quotes">${lbl}</button>`;
-    };
-    const itemRows=items=>items.length?`<div style="margin-bottom:8px">${items.map(i=>`
-      <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-        ${i.priority==='day_one'?`<span class="badge badge-red" style="font-size:.53rem;flex-shrink:0;margin-top:2px" title="${esc(i.lead_reason||'Long-lead item')}">DAY 1</span>`:''}
-        <div style="flex:1;min-width:0;font-size:.78rem;color:var(--text)"><b>${esc(i.item||'')}</b>${i.qty?` <span style="color:var(--muted)">— ${esc(i.qty)}</span>`:''}${i.spec?`<div style="font-size:.68rem;color:var(--muted2)">${esc(i.spec)}</div>`:''}${i.priority==='day_one'&&i.lead_reason?`<div style="font-size:.66rem;color:#fca5a5">${esc(i.lead_reason)}</div>`:''}</div>
-        ${i.source?`<span style="font-size:.62rem;color:var(--muted2);flex-shrink:0;font-style:italic" title="${esc(i.source)}">src</span>`:''}
-      </div>`).join('')}</div>`:'';
-    // Each trade is a self-contained panel: name left, status badges right, colour-coded left edge.
-    const catPanel=(accent,label,badges,body)=>`<div style="border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 14px 12px;margin-bottom:11px;background:rgba(255,255,255,.015)">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.05)">
-          <span style="font-size:.85rem;font-weight:700;color:var(--text);letter-spacing:.04em;text-transform:uppercase">${esc(label)}</span>
-          <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">${badges}</div>
-        </div>
-        ${body}
-      </div>`;
-    // Light-blue evidence callout — shows what the AI extracted from the documents to justify this trade
-    const evBox=(txt)=>txt?`<div style="display:flex;gap:7px;align-items:flex-start;font-size:.72rem;color:#93c5fd;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.22);border-radius:6px;padding:7px 10px;margin-bottom:9px;line-height:1.5">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0;margin-top:2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span>${esc(txt)}</span>
-      </div>`:'';
-    // Day-one trades surface first; Rate Library trades lead the remainder
-    const entries=[...catMap.entries()].map(([cat,info])=>({cat,reason:info.reason,items:info.items,isRL:_rlIsLabourPlant(cat),isDayOne:info.items.some(i=>i.priority==='day_one')}));
-    const renderCat=ent=>{
-      const cat=ent.cat;const label=catLabel(cat);const rtc={category:cat,reason:ent.reason};const catItems=ent.items;
-      // Plant Hire: if the analyser extracted the specific machines this job needs, match each to a rate
-      const reqPlant=Array.isArray(sf.required_plant)?sf.required_plant:[];
-      if(cat==='plantHire'&&reqPlant.length){
-        const plantRows=reqPlant.map(pl=>{
-          const name=[pl.size,pl.item].filter(Boolean).join(' ').trim()||pl.item||'Plant';
-          const res=_rlFindPlantRate(pl.item,pl.size);
-          const tot=res.rate?_rlRateTotal(res.rate):0;
-          const rightHtml=res.rate
-            ? `<div style="text-align:right;white-space:nowrap"><div style="font-size:.8rem;font-weight:600;color:var(--text)">${fmtAUD(tot)}${res.rate.unit?`<span style="font-size:.68rem;color:var(--muted2)">/${esc(res.rate.unit)}</span>`:''}</div><div style="font-size:.66rem;color:${res.match==='exact'?'var(--green)':'var(--amber)'}">${res.match==='exact'?'✓ '+esc(res.rate.description||''):'≈ '+esc(res.rate.description||'')+' (size differs)'}</div></div>`
-            : `<div style="text-align:right;white-space:nowrap"><span class="badge badge-red" style="font-size:.56rem">no rate on file</span></div>`;
-          return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);${res.rate?'cursor:pointer':''}" ${res.rate?`onclick="window._rlSearch=${JSON.stringify((res.rate.description||'').toLowerCase()).replace(/"/g,'&quot;')};navigate('rate-library')" title="Open in Rate Library"`:''}>
-            <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(name)}</span>${pl.purpose?`<div style="font-size:.68rem;color:var(--muted2)">${esc(pl.purpose)}</div>`:''}</div>
-            ${rightHtml}
-          </div>`;
-        }).join('');
-        const gaps=reqPlant.filter(pl=>_rlFindPlantRate(pl.item,pl.size).match==='none').length;
-        return catPanel('var(--blue)',label,
-          `<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span><span class="badge badge-grey" style="font-size:.58rem">${reqPlant.length} required</span>${gaps?`<span class="badge badge-red" style="font-size:.58rem">${gaps} no rate</span>`:''}`,
-          `${evBox(rtc.reason)}
-            ${plantRows}
-            <div style="margin-top:9px"><button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button></div>`);
-      }
-      // Labour & plant trades come from the internal Rate Library, not supplier quotes
-      if(_rlIsLabourPlant(cat)){
-        const rlRates=_rlMatchRates(cat);
-        const shown=rlRates.slice(0,8);
-        const rateRows=shown.map(r=>{
-          const tot=_rlRateTotal(r);
-          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" onclick="window._rlSearch=${JSON.stringify((r.description||'').toLowerCase()).replace(/"/g,'&quot;')};navigate('rate-library')" title="Open in Rate Library">
-            <div style="flex:1;min-width:0"><span style="font-size:.82rem;font-weight:600;color:var(--text)">${esc(r.description||r.rate_code||'Rate')}</span>${r.rate_code?` <span style="font-size:.66rem;color:var(--muted2)">${esc(r.rate_code)}</span>`:''}</div>
-            <div style="font-size:.8rem;font-weight:600;color:var(--text);white-space:nowrap">${fmtAUD(tot)}${r.unit?`<span style="font-size:.68rem;color:var(--muted2)">/${esc(r.unit)}</span>`:''}</div>
-          </div>`;
-        }).join('');
-        return catPanel('var(--blue)',label,
-          `<span class="badge badge-blue" style="font-size:.58rem">Rate Library</span>${rlRates.length?`<span class="badge badge-green" style="font-size:.58rem">${rlRates.length} rate${rlRates.length!==1?'s':''}</span>`:`<span class="badge badge-amber" style="font-size:.58rem">none yet</span>`}`,
-          `${evBox(rtc.reason)}
-            ${rlRates.length?rateRows:`<div style="font-size:.76rem;color:var(--muted2);padding:4px 0">No matching ${esc(label.toLowerCase())} rates in your Rate Library yet.</div>`}
-            <div style="margin-top:9px">
-              <button class="btn btn-ghost btn-xs" onclick="window._rlSearch='';navigate('rate-library')" style="color:var(--blue)">Open Rate Library →</button>
-              ${rlRates.length>8?`<span style="font-size:.7rem;color:var(--muted2);margin-left:8px">+${rlRates.length-8} more</span>`:''}
-            </div>`);
-      }
-      const matches=_srMatchSuppliers(cat,allSups);
-      // Contacts that cover this trade but aren't in the supplier-rates library
-      const conMatches=pqContacts.filter(c=>c.trade_category===cat&&!matches.some(m=>(m.s.company||'').toLowerCase().trim()===(c.company_name||'').toLowerCase().trim()));
-      const reqBtn=onclick=>`<button class="btn btn-xs btn-blue" onclick="${onclick}" style="white-space:nowrap;flex-shrink:0">Request quote</button>`;
-      const rightSide=(key,onclick)=>statusChip(cat,key)||reqBtn(onclick);
-      const supRows=matches.map(m=>{
-        const s=m.s;
-        const rateCount=(s.items||[]).length;
-        const basisLabel=m.basis==='rate'?'rate match':'tagged';
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(s.company||'Unnamed')}</div>
-            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">${rateCount} rate${rateCount!==1?'s':''} · ${basisLabel}</div>
-          </div>
-          ${rightSide(s.id,`window.requestSupplierQuote('${id}','${cat}','${s.id}',${JSON.stringify(s.company||'').replace(/"/g,'&quot;')})`)}
-        </div>`;
-      }).join('');
-      const conRows=conMatches.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:.83rem;font-weight:600;color:var(--text)">${esc(c.company_name||'Unnamed')}</div>
-            <div style="font-size:.68rem;color:var(--muted2);margin-top:1px">from Contacts${c.contact_person?` · ${esc(c.contact_person)}`:''}${c.email?` · ${esc(c.email)}`:''}</div>
-          </div>
-          ${rightSide('c:'+c.id,`window.pqRequestQuoteContact('${id}','${cat}','${c.id}',${JSON.stringify(c.company_name||'').replace(/"/g,'&quot;')})`)}
-        </div>`).join('');
-      const anyOnFile=matches.length+conMatches.length>0;
-      // "Not on file" row: manual add, AI recommendation, or fire a quote request anyway
-      const nofRequested=!!statusChip(cat,null);
-      const notOnFile=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;flex-wrap:wrap;${anyOnFile?'border-top:1px dashed rgba(255,255,255,.08);margin-top:2px':''}">
-        <div style="flex:1;min-width:0;font-size:.74rem;color:var(--muted2)">${anyOnFile?'None of these? ':'⚠ No supplier on file for this trade. '}
-          <button class="btn btn-ghost btn-xs" onclick="window.showCatalogueSheet('')" style="color:var(--blue);padding:2px 6px">+ Add supplier</button>
-          <button class="btn btn-ghost btn-xs" id="pq-sug-${cat}" onclick="window.aiSuggestSuppliers('${id}','${cat}')" style="color:#D97757;border:1px solid rgba(217,119,87,.35);padding:2px 8px;margin-left:4px">✦ Suggest suppliers</button>
-        </div>
-        ${nofRequested?statusChip(cat,null):reqBtn(`window.requestSupplierQuote('${id}','${cat}',null,'${esc(label)} (not on file)')`)}
-      </div>`;
-      const accent=ent.isDayOne?'var(--red)':anyOnFile?'var(--green)':'var(--amber)';
-      const badges=`${ent.isDayOne?`<span class="badge badge-red" style="font-size:.58rem">DAY ONE</span>`:''}${catItems.length?`<span class="badge badge-grey" style="font-size:.58rem">${catItems.length} item${catItems.length!==1?'s':''}</span>`:''}${anyOnFile?`<span class="badge badge-green" style="font-size:.58rem">${matches.length+conMatches.length} on file</span>`:`<span class="badge badge-amber" style="font-size:.58rem">not on file</span>`}`;
-      return catPanel(accent,label,badges,
-        `${evBox(rtc.reason)}
-          ${itemRows(catItems)}
-          ${supRows}
-          ${conRows}
-          ${notOnFile}`);
-    };
-    const d1Cats=entries.filter(e=>e.isDayOne&&!e.isRL);
-    const restCats=entries.filter(e=>!(e.isDayOne&&!e.isRL)).sort((a,b)=>(b.isRL?1:0)-(a.isRL?1:0));
-    // Progress chips: how many supplier trades have a quote drafted / received (live from All Quotes)
-    const supCats=entries.filter(e=>!e.isRL);
-    const catQuoted=cat=>shortlist.some(e2=>e2.category===cat&&e2.status==='quote_created');
-    const catReceived=cat=>shortlist.some(e2=>{if(e2.category!==cat||!e2.quote_id)return false;const q=allQuotes.find(x=>x.id===e2.quote_id);return!!q&&['received','accepted'].includes(q.status);});
-    const nQ=supCats.filter(e=>catQuoted(e.cat)).length;
-    const nR=supCats.filter(e=>catReceived(e.cat)).length;
-    const d1Pending=d1Cats.filter(e=>!catQuoted(e.cat)).length;
-    const d1Banner=d1Cats.length?`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:9px 13px;margin-bottom:11px">
-        <div style="font-size:.79rem;color:#fca5a5;min-width:0"><b style="color:var(--red)">🚨 Day one</b> — ${d1Cats.length} trade${d1Cats.length!==1?'s':''} with long-lead items. Send these requests now so lead times don't eat the programme.</div>
-        ${d1Pending?`<button class="btn btn-xs btn-red" onclick="window.pqRequestAllDayOne('${id}')" style="white-space:nowrap;flex-shrink:0">Request all day-one quotes</button>`:`<span class="badge badge-green" style="font-size:.6rem;flex-shrink:0">✓ All requested</span>`}
-      </div>`:'';
-    return `<div class="card" style="margin-top:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap">
-        <div class="card-title" style="margin:0">Procurement &amp; Quotes</div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          ${supCats.length?`<span class="badge ${nQ>=supCats.length?'badge-green':'badge-grey'}" style="font-size:.6rem">${nQ}/${supCats.length} requested</span><span class="badge ${nR?'badge-green':'badge-grey'}" style="font-size:.6rem">${nR} received</span>`:''}
-          <span style="font-size:.72rem;color:var(--muted2)">One click drafts a quote in All Quotes</span>
-        </div>
-      </div>
-      ${entries.length?`${d1Banner}${d1Cats.map(renderCat).join('')}${d1Cats.length&&restCats.length?`<div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin:14px 2px 8px">Other trades &amp; internal rates</div>`:''}${restCats.map(renderCat).join('')}`:`<div style="font-size:.82rem;color:var(--muted2)">No trade categories identified yet. Run the AI Analyser on this project's documents to identify the suppliers and quotes this job needs.</div>`}
-    </div>`;
   })()}
   ${(function(){
     const imgs=p.key_images||[];
