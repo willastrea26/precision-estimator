@@ -1268,6 +1268,9 @@ function renderDashboard(){
   const todayStr=today();
   const activeProjects=projects.filter(p=>['estimating','in_progress'].includes(p.status));
   const pipeline=projects.filter(p=>['estimating','submitted'].includes(p.status)).reduce((s,p)=>s+(p.estimated_value||0),0);
+  // Estimating-stage projects only — kept separate from awarded value
+  const estimatingProjects=projects.filter(p=>p.status==='estimating');
+  const estimatingVal=estimatingProjects.reduce((s,p)=>s+(p.estimated_value||0),0);
   // "Won" = awarded contracts plus jobs now in progress or completed (they were won too)
   const WON_STATUSES=['awarded','in_progress','completed'];
   const wonProjects=projects.filter(p=>WON_STATUSES.includes(p.status));
@@ -1352,17 +1355,17 @@ function renderDashboard(){
       <div class="kpi-label">Awarded Value</div>
       <div class="kpi-sub">${wonProjects.length} won (incl. in progress & completed)</div>
     </div>
-    <div class="kpi-card red">
-      <div class="kpi-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      <div class="kpi-value">${overdueQ.length}</div>
-      <div class="kpi-label">Overdue Quotes</div>
-      <div class="kpi-sub">Requires follow-up</div>
+    <div class="kpi-card blue">
+      <div class="kpi-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <div class="kpi-value aud" style="font-size:1.3rem">${fmtAUD(estimatingVal)}</div>
+      <div class="kpi-label">Estimating Value</div>
+      <div class="kpi-sub">${estimatingProjects.length} project${estimatingProjects.length!==1?'s':''} being estimated</div>
     </div>
   </div>
 
   <div class="kpi-sm-grid mb-4">
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--amber-d);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div><div class="kpi-sm-val">${awaitingQ.length}</div><div class="kpi-sm-lbl">Awaiting Response</div></div></div>
-    <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--green-d);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div><div><div class="kpi-sm-val">${receivedQ.length}</div><div class="kpi-sm-lbl">Quotes Received</div></div></div>
+    <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--red-d);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div><div class="kpi-sm-val">${overdueQ.length}</div><div class="kpi-sm-lbl">Overdue Quotes</div></div></div>
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="kpi-sm-val">${activeContacts.length}</div><div class="kpi-sm-lbl">Active Contacts</div></div></div>
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--red-d);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div><div class="kpi-sm-val">${highRiskProjects.size}</div><div class="kpi-sm-lbl">High/Extreme Risk Jobs</div></div></div>
   </div>
