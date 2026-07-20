@@ -2245,6 +2245,7 @@ function renderTabSummary(p,id){
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-outline" onclick="openBriefFullscreen('ps-brief-iframe-${id}','Project Summary')">⛶ Full screen</button>
           <button class="btn btn-sm btn-outline" onclick="replaceProjectBrief('${id}')">Replace</button>
           <button class="btn btn-sm btn-ghost" onclick="removeProjectBrief('${id}')" style="color:var(--red)">Remove</button>
           <input type="file" id="ps-brief-file-${id}" accept=".html,.htm" style="display:none" onchange="_psBriefFilePick(event,'${id}')">
@@ -2782,6 +2783,28 @@ window.uploadGeotechBrief=async function(projId,file){
     navigate('project/'+projId+'/geotech');
   }catch(e){toast('Upload failed: '+(e.message||e),'error');}
 };
+// Open a brief iframe in a full-viewport overlay for comfortable reading
+window.openBriefFullscreen=function(iframeId,title){
+  const src=document.getElementById(iframeId);
+  if(!src){toast('Brief not loaded yet — try again in a moment.','warning');return;}
+  const old=document.getElementById('brief-fs-overlay');if(old)old.remove();
+  const ov=document.createElement('div');
+  ov.id='brief-fs-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column';
+  const bar=document.createElement('div');
+  bar.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0';
+  bar.innerHTML='<div style="font-weight:600;font-size:.9rem;color:var(--text)">'+esc(title||'Brief')+'</div><button class="btn btn-sm btn-outline" id="brief-fs-close">✕ Close</button>';
+  const frame=document.createElement('iframe');
+  frame.sandbox='allow-scripts allow-same-origin';
+  frame.style.cssText='flex:1;width:100%;border:0;background:#fff';
+  if(src.srcdoc)frame.srcdoc=src.srcdoc;else if(src.src)frame.src=src.src;
+  ov.appendChild(bar);ov.appendChild(frame);document.body.appendChild(ov);
+  document.body.style.overflow='hidden';
+  const close=function(){ov.remove();document.body.style.overflow='';document.removeEventListener('keydown',esc2);};
+  const esc2=function(e){if(e.key==='Escape')close();};
+  document.getElementById('brief-fs-close').onclick=close;
+  document.addEventListener('keydown',esc2);
+};
 window.replaceGeotechBrief=function(projId){
   const inp=document.getElementById('gt-brief-file-'+projId);
   if(inp)inp.click();
@@ -2896,6 +2919,7 @@ function renderTabGeotech(p,id){
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-outline" onclick="openBriefFullscreen('gt-brief-iframe-${id}','Geotech Brief')">⛶ Full screen</button>
           <button class="btn btn-sm btn-outline" onclick="replaceGeotechBrief('${id}')">Replace</button>
           <button class="btn btn-sm btn-ghost" onclick="removeGeotechBrief('${id}')" style="color:var(--red)">Remove</button>
           <input type="file" id="gt-brief-file-${id}" accept=".html,.htm" style="display:none" onchange="_gtBriefFilePick(event,'${id}')">
