@@ -1283,6 +1283,11 @@ function renderDashboard(){
   const activeContacts=contacts.filter(c=>['active','preferred'].includes(c.status));
   const allRisks=projects.flatMap(p=>p.risks||[]);
   const highRiskProjects=new Set(allRisks.filter(r=>['high','extreme'].includes(riskRating(r.likelihood,r.consequence))&&r.status==='open').map(r=>r.project_id));
+  // Total rates across all three libraries: Rate Library + Supplier Rates (line items) + Productivity Library
+  const rateLibCount=DB.getRates().filter(r=>_getRateLc(r)==='active').length;
+  const supplierRateCount=_srGet().filter(s=>_srGetLc(s)==='active').reduce((n,s)=>n+((s.items||[]).length),0);
+  const prodCount=DB.getProductivity().filter(x=>_getProdLc(x)==='active').length;
+  const totalRates=rateLibCount+supplierRateCount+prodCount;
   const bidsDue=projects.filter(p=>p.submission_due_date&&daysUntil(p.submission_due_date)>=0&&daysUntil(p.submission_due_date)<=14).sort((a,b)=>a.submission_due_date.localeCompare(b.submission_due_date));
   const compAlerts=sortCompDocs(DB.getCompliance().filter(d=>d.status!=='archived'&&!d.has_no_expiry&&d.expiry_date&&daysUntil(d.expiry_date)<=30));
   const recentProjects=[...projects].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
@@ -1369,7 +1374,7 @@ function renderDashboard(){
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--amber-d);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div><div class="kpi-sm-val">${awaitingQ.length}</div><div class="kpi-sm-lbl">Awaiting Response</div></div></div>
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--red-d);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div><div class="kpi-sm-val">${overdueQ.length}</div><div class="kpi-sm-lbl">Overdue Quotes</div></div></div>
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="kpi-sm-val">${activeContacts.length}</div><div class="kpi-sm-lbl">Active Contacts</div></div></div>
-    <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--red-d);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div><div class="kpi-sm-val">${highRiskProjects.size}</div><div class="kpi-sm-lbl">High/Extreme Risk Jobs</div></div></div>
+    <div class="kpi-sm" title="Rate Library ${rateLibCount} · Supplier Rates ${supplierRateCount} · Productivity ${prodCount}"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><div><div class="kpi-sm-val">${totalRates.toLocaleString()}</div><div class="kpi-sm-lbl">Total Rates</div></div></div>
   </div>
 
   <div class="charts-row mb-4">
