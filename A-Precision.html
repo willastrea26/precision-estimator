@@ -4817,6 +4817,136 @@ window.previewDoc=async function(docId){
   if(url){window.open(url,'_blank');}
   else toast('Preview not available — re-upload required.','warning');
 };
+
+// ---- In-app PDF drawing viewer: zoom, pan, page nav, and persistent highlight markups ----
+let _pv=null;
+window.openPdfViewer=async function(docId,projId){
+  const url=await _docResolveUrl(_docBlobs.get(docId));
+  if(!url){toast('Re-upload this file to view it.','warning');return;}
+  if(!window.pdfjsLib){toast('PDF viewer not ready — refresh the page.','warning');return;}
+  const p=DB.getProject(projId);
+  const doc=p&&(p.documents||[]).find(d=>d.id===docId);
+  const annos=(doc&&Array.isArray(doc.annotations))?JSON.parse(JSON.stringify(doc.annotations)):[];
+  toast('Loading drawing…','info');
+  let pdf;
+  try{const buf=await fetch(url).then(r=>r.arrayBuffer());pdf=await pdfjsLib.getDocument({data:buf}).promise;}
+  catch(e){toast('Could not open PDF: '+(e.message||e),'error');return;}
+  _pv={docId,projId,pdf,page:1,scale:null,tool:'pan',color:'#F59E0B',annos,fileName:(doc&&doc.file_name)||'Drawing',dirty:false};
+  _pvBuildOverlay();
+  await _pvRender();
+};
+function _pvBuildOverlay(){
+  const old=document.getElementById('pv-overlay');if(old)old.remove();
+  const ov=document.createElement('div');ov.id='pv-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column';
+  ov.innerHTML=`
+    <div style="display:flex;align-items:center;gap:7px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;flex-wrap:wrap">
+      <div style="font-weight:600;font-size:.84rem;color:var(--text);margin-right:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(_pv.fileName)}</div>
+      <button class="btn btn-xs btn-ghost" onclick="_pvPage(-1)" title="Previous page">‹</button>
+      <span id="pv-pageind" style="font-size:.75rem;color:var(--muted);min-width:66px;text-align:center"></span>
+      <button class="btn btn-xs btn-ghost" onclick="_pvPage(1)" title="Next page">›</button>
+      <span style="width:1px;height:18px;background:var(--border);margin:0 3px"></span>
+      <button class="btn btn-xs btn-ghost" onclick="_pvZoom(-1)" title="Zoom out">−</button>
+      <span id="pv-zoomind" style="font-size:.75rem;color:var(--muted);min-width:42px;text-align:center"></span>
+      <button class="btn btn-xs btn-ghost" onclick="_pvZoom(1)" title="Zoom in">+</button>
+      <button class="btn btn-xs btn-ghost" onclick="_pvFit()" title="Fit width">Fit</button>
+      <span style="width:1px;height:18px;background:var(--border);margin:0 3px"></span>
+      <button class="btn btn-xs" id="pv-tool-pan" onclick="_pvSetTool('pan')" title="Pan / scroll">✋ Move</button>
+      <button class="btn btn-xs" id="pv-tool-hl" onclick="_pvSetTool('highlight')" title="Drag to highlight">🖊 Highlight</button>
+      <input type="color" value="${_pv.color}" onchange="_pv.color=this.value" style="width:26px;height:24px;border:none;background:none;cursor:pointer;padding:0" title="Highlight colour">
+      <span style="flex:1"></span>
+      <button class="btn btn-xs btn-blue" onclick="_pvSave()">Save markups</button>
+      <button class="btn btn-xs btn-outline" onclick="_pvClose()">✕ Close</button>
+    </div>
+    <div id="pv-scroll" style="flex:1;overflow:auto;background:#33383f;display:flex;justify-content:center;align-items:flex-start;padding:16px">
+      <div id="pv-stage" style="position:relative;flex-shrink:0;box-shadow:0 4px 24px rgba(0,0,0,.4)">
+        <canvas id="pv-canvas" style="display:block"></canvas>
+        <div id="pv-annolayer" style="position:absolute;inset:0"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);document.body.style.overflow='hidden';
+  document.getElementById('pv-annolayer').addEventListener('mousedown',_pvDrawStart);
+  _pvSetupPan();
+  _pvSetTool('pan');
+  document.addEventListener('keydown',_pvKey);
+}
+async function _pvRender(){
+  const pg=await _pv.pdf.getPage(_pv.page);
+  const base=pg.getViewport({scale:1});
+  if(_pv.scale==null){const sc=document.getElementById('pv-scroll');const avail=(sc?sc.clientWidth:1000)-40;_pv.scale=Math.max(0.2,Math.min(3,avail/base.width));}
+  const vp=pg.getViewport({scale:_pv.scale});
+  const canvas=document.getElementById('pv-canvas');if(!canvas)return;
+  const cx=canvas.getContext('2d');
+  canvas.width=Math.round(vp.width);canvas.height=Math.round(vp.height);
+  const stage=document.getElementById('pv-stage');stage.style.width=canvas.width+'px';stage.style.height=canvas.height+'px';
+  cx.fillStyle='#fff';cx.fillRect(0,0,canvas.width,canvas.height);
+  await pg.render({canvasContext:cx,viewport:vp}).promise;
+  _pvRenderAnnos();
+  const pi=document.getElementById('pv-pageind');if(pi)pi.textContent=`Page ${_pv.page} / ${_pv.pdf.numPages}`;
+  const zi=document.getElementById('pv-zoomind');if(zi)zi.textContent=Math.round(_pv.scale*100)+'%';
+}
+function _pvRenderAnnos(){
+  const layer=document.getElementById('pv-annolayer');if(!layer)return;
+  const w=layer.offsetWidth,h=layer.offsetHeight;
+  layer.innerHTML=_pv.annos.filter(a=>a.page===_pv.page).map(a=>
+    `<div onclick="_pvRemoveAnno('${a.id}')" title="Click to remove highlight" style="position:absolute;left:${a.x*w}px;top:${a.y*h}px;width:${a.w*w}px;height:${a.h*h}px;background:${a.color}33;border:2px solid ${a.color};border-radius:2px;cursor:pointer;pointer-events:auto"></div>`
+  ).join('');
+  layer.style.pointerEvents=_pv.tool==='highlight'?'auto':'none';
+  layer.style.cursor=_pv.tool==='highlight'?'crosshair':'default';
+}
+function _pvDrawStart(e){
+  if(_pv.tool!=='highlight')return;
+  const layer=document.getElementById('pv-annolayer');const r=layer.getBoundingClientRect();
+  const sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const ghost=document.createElement('div');
+  ghost.style.cssText=`position:absolute;background:${_pv.color}33;border:2px solid ${_pv.color};border-radius:2px;left:${sx}px;top:${sy}px`;
+  layer.appendChild(ghost);
+  const move=ev=>{const cx=ev.clientX-r.left,cy=ev.clientY-r.top;ghost.style.left=Math.min(sx,cx)+'px';ghost.style.top=Math.min(sy,cy)+'px';ghost.style.width=Math.abs(cx-sx)+'px';ghost.style.height=Math.abs(cy-sy)+'px';};
+  const up=ev=>{
+    document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
+    const cx=ev.clientX-r.left,cy=ev.clientY-r.top;const l=Math.min(sx,cx),t=Math.min(sy,cy),bw=Math.abs(cx-sx),bh=Math.abs(cy-sy);
+    ghost.remove();
+    if(bw<6||bh<6){_pvRenderAnnos();return;}
+    _pv.annos.push({id:uid(),page:_pv.page,x:l/r.width,y:t/r.height,w:bw/r.width,h:bh/r.height,color:_pv.color,note:''});
+    _pv.dirty=true;_pvRenderAnnos();
+  };
+  document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+  e.preventDefault();
+}
+function _pvSetupPan(){
+  const sc=document.getElementById('pv-scroll');if(!sc)return;
+  sc.addEventListener('mousedown',e=>{
+    if(_pv.tool!=='pan'||e.target.closest('#pv-annolayer > div'))return;
+    const sx=e.clientX,sy=e.clientY,l0=sc.scrollLeft,t0=sc.scrollTop;sc.style.cursor='grabbing';
+    const move=ev=>{sc.scrollLeft=l0-(ev.clientX-sx);sc.scrollTop=t0-(ev.clientY-sy);};
+    const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);sc.style.cursor='grab';};
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);e.preventDefault();
+  });
+}
+window._pvPage=function(d){const n=_pv.page+d;if(n>=1&&n<=_pv.pdf.numPages){_pv.page=n;_pvRender();}};
+window._pvZoom=function(d){_pv.scale=Math.max(0.2,Math.min(5,(_pv.scale||1)*(d>0?1.2:1/1.2)));_pvRender();};
+window._pvFit=function(){_pv.scale=null;_pvRender();};
+window._pvSetTool=function(t){
+  _pv.tool=t;
+  const pan=document.getElementById('pv-tool-pan'),hl=document.getElementById('pv-tool-hl');
+  if(pan)pan.className='btn btn-xs '+(t==='pan'?'btn-blue':'btn-ghost');
+  if(hl)hl.className='btn btn-xs '+(t==='highlight'?'btn-blue':'btn-ghost');
+  const sc=document.getElementById('pv-scroll');if(sc)sc.style.cursor=t==='pan'?'grab':'default';
+  _pvRenderAnnos();
+};
+window._pvRemoveAnno=function(aid){_pv.annos=_pv.annos.filter(a=>a.id!==aid);_pv.dirty=true;_pvRenderAnnos();};
+window._pvSave=function(){
+  const p=DB.getProject(_pv.projId);if(!p)return;
+  const doc=(p.documents||[]).find(d=>d.id===_pv.docId);if(!doc){toast('Document not found.','error');return;}
+  doc.annotations=_pv.annos;DB.saveProject(p);_pv.dirty=false;
+  toast('Markups saved.','success');
+};
+window._pvClose=function(){
+  if(_pv&&_pv.dirty&&!confirm('Close without saving your markups?'))return;
+  const ov=document.getElementById('pv-overlay');if(ov)ov.remove();
+  document.body.style.overflow='';document.removeEventListener('keydown',_pvKey);_pv=null;
+};
+function _pvKey(e){if(!_pv)return;if(e.key==='Escape')_pvClose();else if(e.key==='ArrowLeft')_pvPage(-1);else if(e.key==='ArrowRight')_pvPage(1);}
 window.analyseDoc=async function(docId,projId){
   const b=_docBlobs.get(docId);
   const url=await _docResolveUrl(b);
@@ -5747,7 +5877,8 @@ function renderTabDocuments(p,id){
         <td class="tbl-actions">
           ${isLink
             ?`<button class="btn btn-ghost btn-xs" onclick="window.open('${esc(d.link_url)}','_blank')" title="Open link">${icon('link')}</button>`
-            :`<button class="btn btn-ghost btn-xs" onclick="downloadDoc('${d.id}','${esc(d.file_name)}')" title="Download${hasBlob?'':' (re-upload to enable)'}">${icon('download')}</button>
+            :`${ext==='pdf'?`<button class="btn btn-ghost btn-xs" onclick="openPdfViewer('${d.id}','${id}')" title="View / mark up drawing${hasBlob?'':' (re-upload to enable)'}">🔍</button>`:''}
+          <button class="btn btn-ghost btn-xs" onclick="downloadDoc('${d.id}','${esc(d.file_name)}')" title="Download${hasBlob?'':' (re-upload to enable)'}">${icon('download')}</button>
           <button class="btn btn-ghost btn-xs" onclick="previewDoc('${d.id}')" title="Preview${hasBlob?'':' (re-upload to enable)'}">${icon('link')}</button>
           ${hasPdf?`<button class="btn btn-ghost btn-xs" onclick="analyseDoc('${d.id}','${id}')" title="Analyse with AI">✨</button>`:''}`}
           <button class="btn btn-ghost btn-xs" data-action="del-document" data-id="${id}" data-did="${d.id}" title="Delete">${icon('trash')}</button>
