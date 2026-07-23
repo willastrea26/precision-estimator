@@ -7230,6 +7230,77 @@ window.showProdRecordSheet=function(id){
   setTimeout(()=>{_prrRenderCrew();window._prrUpdateUnit();window._calcProdRate();},0);
 };
 
+// ---- AI Extract: drop a screenshot of a crew/rate sheet → populate a productivity record ----
+let _prodAIImg=null;
+window.showProdAIExtract=function(){
+  _prodAIImg=null;
+  showModal({title:'✦ AI Extract — Crew &amp; Rates from a screenshot',body:''
+    +'<div style="padding:8px 12px;background:rgba(217,119,87,.07);border:1px solid rgba(217,119,87,.25);border-radius:7px;font-size:.76rem;color:#D97757;margin-bottom:12px">Drop or paste a screenshot of a crew/rate schedule (like your Excel SOR sheet). Claude reads the line items and builds a productivity record you can review before saving.</div>'
+    +'<div id="prod-ai-drop" ondragover="_prodAIDragOver(event)" ondragleave="_prodAIDragLeave(event)" ondrop="_prodAIDrop(event)" onclick="document.getElementById(\'prod-ai-file\').click()" style="border:2px dashed var(--border);border-radius:10px;padding:34px 20px;text-align:center;cursor:pointer;transition:background .15s">'
+      +'<div style="font-size:1.7rem;margin-bottom:6px;opacity:.6">🖼</div>'
+      +'<div style="font-weight:600;font-size:.9rem;margin-bottom:3px">Drop screenshot here, click to browse, or paste (Ctrl+V)</div>'
+      +'<div style="font-size:.74rem;color:var(--muted2)">PNG or JPG of the crew / rate table</div>'
+      +'<input type="file" id="prod-ai-file" accept="image/png,image/jpeg" style="display:none" onchange="_prodAIFilePick(event)">'
+    +'</div>'
+    +'<div id="prod-ai-preview" style="margin-top:12px;display:none"></div>',
+    actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-blue" id="prod-ai-go" onclick="_prodAIRun()" disabled style="opacity:.5">✦ Extract</button>'});
+  setTimeout(()=>{const el=document.getElementById('modal-root');if(el)el.addEventListener('paste',_prodAIPaste);},0);
+};
+window._prodAIDragOver=function(e){e.preventDefault();e.currentTarget.style.background='rgba(217,119,87,.08)';};
+window._prodAIDragLeave=function(e){e.currentTarget.style.background='';};
+window._prodAIDrop=function(e){e.preventDefault();e.currentTarget.style.background='';const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(f)_prodAILoad(f);};
+window._prodAIFilePick=function(e){const f=e.target.files&&e.target.files[0];if(f)_prodAILoad(f);};
+window._prodAIPaste=function(e){const items=(e.clipboardData||{}).items||[];for(const it of items){if(it.type&&it.type.indexOf('image')===0){const f=it.getAsFile();if(f){_prodAILoad(f);e.preventDefault();return;}}}};
+function _prodAILoad(file){
+  if(!/image\/(png|jpe?g)/i.test(file.type||'')){toast('Please use a PNG or JPG image.','warning');return;}
+  const fr=new FileReader();
+  fr.onload=()=>{
+    const dataUrl=fr.result;const b64=String(dataUrl).split(',')[1];
+    _prodAIImg={mime:file.type||'image/png',b64,dataUrl};
+    const pv=document.getElementById('prod-ai-preview');
+    if(pv){pv.style.display='block';pv.innerHTML='<img src="'+dataUrl+'" style="max-width:100%;max-height:260px;border:1px solid var(--border);border-radius:8px">';}
+    const go=document.getElementById('prod-ai-go');if(go){go.disabled=false;go.style.opacity='1';}
+  };
+  fr.readAsDataURL(file);
+}
+window._prodAIRun=async function(){
+  if(!_prodAIImg){toast('Add a screenshot first.','warning');return;}
+  const key=DB.getSettings().ai_key||'';
+  if(!key){toast('No API key — add it in Settings → AI Integration.','error');return;}
+  const go=document.getElementById('prod-ai-go');if(go){go.disabled=true;go.textContent='✦ Reading…';}
+  const prompt='This is a screenshot of a crew / plant / labour rate schedule from a civil construction estimating spreadsheet. '
+    +'Columns are usually: Description, Unit (e.g. Hr, Shift), a rate column (SOR/Actual SOR), sometimes a Reduced/second rate, Qty, and a Total.\n\n'
+    +'Extract EVERY real resource line item (operators, machines, trucks, surveyors, etc.). IGNORE header rows and any subtotal/total rows (rows with no description or that just show a summed total).\n'
+    +'For each item give: name (the Description), unit, rate (the main/actual per-unit rate as a plain number), reduced_rate (the reduced rate number if a second rate column exists, else null), quantity (Qty as a number, default 1), total (the line total number if shown, else null).\n'
+    +'Also give a short activity_name summarising the crew (e.g. "Civil crew — pipe installation"), and any notes.\n\n'
+    +'Return ONLY JSON: {"activity_name":"string","unit":"string or null","crew_items":[{"name":"string","unit":"string","rate":0,"reduced_rate":null,"quantity":1,"total":null}],"notes":"string or null"}';
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:2048,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:_prodAIImg.mime,data:_prodAIImg.b64}},{type:'text',text:prompt}]}]})});
+    if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||('API error '+resp.status));}
+    const data=await resp.json();const raw=data.content?.[0]?.text||'';
+    const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error('No data read from the image.');
+    const res=JSON.parse(m[0].replace(/,(\s*[}\]])/g,'$1'));
+    const crew=(res.crew_items||[]).filter(c=>c&&c.name).map(c=>({
+      name:String(c.name),unit:c.unit?String(c.unit):'',
+      rate:c.rate!=null&&c.rate!==''?parseFloat(c.rate)||0:0,
+      reduced_rate:c.reduced_rate!=null&&c.reduced_rate!==''?parseFloat(c.reduced_rate)||null:null,
+      quantity:c.quantity!=null&&c.quantity!==''?parseFloat(c.quantity)||1:1,
+      company:''
+    }));
+    if(!crew.length){toast('Could not read any crew line items — try a clearer screenshot.','warning');if(go){go.disabled=false;go.textContent='✦ Extract';}return;}
+    const rec={id:uid(),record_type:'record',lifecycle_status:'active',
+      activity_name:res.activity_name||'Imported crew',project_name:'',project_id:'',
+      work_type:'',unit:res.unit||'',crew_items:crew,
+      notes:(res.notes?res.notes+'\n':'')+'Imported from screenshot via AI Extract.',
+      date_completed:'',estimated_rate:null,achieved_rate:null,source:'ai_screenshot'};
+    const items=DB.getProductivity();items.push(rec);DB.saveProductivity(items);
+    closeModal();
+    toast('Extracted '+crew.length+' crew item'+(crew.length!==1?'s':'')+'. Review and save.','success');
+    showProdRecordSheet(rec.id);
+  }catch(e){toast('Extract failed: '+(e.message||e),'error');if(go){go.disabled=false;go.textContent='✦ Extract';}}
+};
+
 function renderProductivity(){
   const lc=_prodLifecycle;
   const view=_prodView||'records';
@@ -7261,6 +7332,7 @@ function renderProductivity(){
       +'<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'
         +'<button id="prod-xl-btn" class="btn btn-sm btn-green" onclick="exportProductivityExcel()">&#8681; Extract to Excel</button>'
         +'<button class="btn btn-sm" onclick="toggleProductivityLock()" style="'+(locked?'border:1px solid var(--amber);color:var(--amber);background:rgba(245,158,11,.08)':'border:1px solid var(--border);background:transparent;color:var(--muted2)')+'" title="'+(locked?'Unlock to edit activities':'Lock to prevent changes')+'">'+(locked?'🔓 Unlock':'🔒 Lock')+'</button>'
+        +(!locked&&view==='records'?'<button class="btn btn-sm btn-outline" onclick="showProdAIExtract()" style="border-color:rgba(217,119,87,.55);color:#D97757;background:rgba(217,119,87,.06);flex-shrink:0" title="Extract crew &amp; rates from a screenshot">'+CLAUDE_ICON_SVG+'AI Extract</button>':'')
         +(!locked&&view==='records'?'<button class="btn btn-blue" onclick="showProdRecordSheet(\'\')" style="flex-shrink:0">'+icon('plus')+' Log Record</button>':'')
         +(!locked&&view==='assumptions'?'<button class="btn btn-blue" data-action="add-productivity" style="flex-shrink:0">'+icon('plus')+' Add Activity</button>':'')
       +'</div>'
