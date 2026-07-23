@@ -7268,11 +7268,21 @@ window._prodAIRun=async function(){
   const key=DB.getSettings().ai_key||'';
   if(!key){toast('No API key — add it in Settings → AI Integration.','error');return;}
   const go=document.getElementById('prod-ai-go');if(go){go.disabled=true;go.textContent='✦ Reading…';}
-  const prompt='This is a screenshot of a crew / plant / labour rate schedule from a civil construction estimating spreadsheet. '
-    +'Columns are usually: Description, Unit (e.g. Hr, Shift), a rate column (SOR/Actual SOR), sometimes a Reduced/second rate, Qty, and a Total.\n\n'
-    +'Extract EVERY real resource line item (operators, machines, trucks, surveyors, etc.). IGNORE header rows and any subtotal/total rows (rows with no description or that just show a summed total).\n'
-    +'For each item give: name (the Description), unit, rate (the main/actual per-unit rate as a plain number), reduced_rate (the reduced rate number if a second rate column exists, else null), quantity (Qty as a number, default 1), total (the line total number if shown, else null).\n'
-    +'Also give a short activity_name summarising the crew (e.g. "Civil crew — pipe installation"), and any notes.\n\n'
+  const prompt='You are transcribing a screenshot of a crew / plant / labour rate schedule from a civil construction estimating spreadsheet. Accuracy matters — transcribe, do not calculate.\n\n'
+    +'STEP 1 — Identify the columns from the header row. Typical headers: Description, Unit (Hr/Shift/Day), then one or two rate columns (e.g. "Actual SOR" and "Reduced SOR"), Qty, and Total. Note which column is which.\n'
+    +'STEP 2 — Read the table row by row, top to bottom. For EACH resource row (operators, excavators, tippers, loaders, rollers, surveyors, drafting, etc.):\n'
+    +'  • name = the exact Description text (keep bracketed notes like "(SiteX)").\n'
+    +'  • unit = the Unit cell (e.g. "Hr", "Shift").\n'
+    +'  • rate = the number in the FIRST/primary rate column (e.g. "Actual SOR"). Transcribe the digits exactly as printed — do NOT round, do NOT recompute from the total.\n'
+    +'  • reduced_rate = the number in the SECOND rate column (e.g. "Reduced SOR") if one exists, else null.\n'
+    +'  • quantity = the Qty cell as a number (default 1 if blank).\n'
+    +'  • total = the Total cell number if shown, else null.\n'
+    +'RULES:\n'
+    +'  • SKIP the header row and any subtotal/grand-total rows (rows with a blank Description or that only show a summed figure like "$3,830.00").\n'
+    +'  • Strip "$" and thousands commas from numbers (e.g. "$1,020.00" -> 1020).\n'
+    +'  • Do not merge two rows, do not invent rows, do not reorder. If a value is genuinely unreadable, use null rather than guessing.\n'
+    +'  • Double-check: for each row where all of rate, quantity and total are present, rate x quantity should roughly equal total — if it does not, re-read that row.\n'
+    +'Also give activity_name = a short summary of the crew (e.g. "Civil crew"), and notes = null unless there is a genuinely useful note.\n\n'
     +'Return ONLY JSON: {"activity_name":"string","unit":"string or null","crew_items":[{"name":"string","unit":"string","rate":0,"reduced_rate":null,"quantity":1,"total":null}],"notes":"string or null"}';
   try{
     const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
@@ -7289,11 +7299,13 @@ window._prodAIRun=async function(){
       company:''
     }));
     if(!crew.length){toast('Could not read any crew line items — try a clearer screenshot.','warning');if(go){go.disabled=false;go.textContent='✦ Extract';}return;}
-    const rec={id:uid(),record_type:'record',lifecycle_status:'active',
+    // Match the exact field shape the manual save uses so the Supabase upsert doesn't reject the row
+    const rec={id:uid(),record_type:'record',lifecycle_status:'active',status:'active',
       activity_name:res.activity_name||'Imported crew',project_name:'',project_id:'',
-      work_type:'',unit:res.unit||'',crew_items:crew,
+      work_type:'',unit:res.unit||'m/day',pipe_size:'',soil_type:'',depth_avg:null,trench_length:null,
+      crew_items:crew,
       notes:(res.notes?res.notes+'\n':'')+'Imported from screenshot via AI Extract.',
-      date_completed:'',estimated_rate:null,achieved_rate:null,source:'ai_screenshot'};
+      date_completed:'',estimated_rate:null,achieved_rate:null};
     const items=DB.getProductivity();items.push(rec);DB.saveProductivity(items);
     closeModal();
     toast('Extracted '+crew.length+' crew item'+(crew.length!==1?'s':'')+'. Review and save.','success');
@@ -12441,7 +12453,7 @@ if(action==='save-prod-record'){
       estimated_rate:parseFloat(document.getElementById('prr-est')?.value)||null,
       achieved_rate:parseFloat(document.getElementById('prr-ach')?.value)||null,
       unit:document.getElementById('prr-unit')?.value.trim()||'m/day',
-      crew_items:_prrCrew.map(c=>({rate_id:c.rate_id||c.rate_item_id,rate_item_id:c.rate_id||c.rate_item_id,name:c.name,unit:c.unit,quantity:c.quantity,company:c.company||c.company_name||'',company_name:c.company||c.company_name||'',rate:c.rate})),
+      crew_items:_prrCrew.map(c=>({rate_id:c.rate_id||c.rate_item_id,rate_item_id:c.rate_id||c.rate_item_id,name:c.name,unit:c.unit,quantity:c.quantity,company:c.company||c.company_name||'',company_name:c.company||c.company_name||'',rate:c.rate,reduced_rate:c.reduced_rate!=null?c.reduced_rate:null})),
       notes:document.getElementById('prr-notes')?.value.trim(),
       date_completed:document.getElementById('prr-date')?.value||'',
       lifecycle_status:'active',
