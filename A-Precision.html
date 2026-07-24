@@ -1505,6 +1505,7 @@ function _projGroupActive(ps){
   });
   return{active,estimating,other};
 }
+const PROJ_COLGROUP='<colgroup><col style="width:23%"><col style="width:15%"><col style="width:19%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:9%"><col style="width:8%"></colgroup>';
 function _projSectionHTML(label,rows,tbodyId,lc,accent){
   if(!rows.length)return'';
   return`<div style="margin-top:10px">
@@ -1514,7 +1515,8 @@ function _projSectionHTML(label,rows,tbodyId,lc,accent){
       <span style="font-size:.7rem;color:var(--muted2);background:rgba(255,255,255,.05);padding:1px 8px;border-radius:99px">${rows.length}</span>
     </div>
     <div class="tbl-wrap">
-      <table>
+      <table style="table-layout:fixed;width:100%">
+        ${PROJ_COLGROUP}
         <thead><tr>
           <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
           <th>Status</th><th>Risk</th><th>Due Date</th><th>Est. Value</th>
