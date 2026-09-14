@@ -1503,6 +1503,9 @@ function _projGroupActive(ps){
     else if(PROJ_ESTIMATING_STATUSES.includes(p.status))estimating.push(p);
     else other.push(p);
   });
+  const newest=(a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0);
+  estimating.sort(newest);
+  other.sort(newest);
   return{active,estimating,other};
 }
 const PROJ_COLGROUP='<colgroup><col style="width:23%"><col style="width:15%"><col style="width:19%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:9%"><col style="width:8%"></colgroup>';
