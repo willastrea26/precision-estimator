@@ -4691,11 +4691,10 @@ window.exportFinancialOverview=async function(){
     const SHIFT='Financial!$E$5';
 
     /* ================= SHEET 1 — PROJECTS (inputs) ================= */
-    const PW=[34,10,26,30,13,17,10,11,11,9,14,14,10,15,4,4];
-    const PNC=14;
+    const PW=[34,10,26,30,13,17,10,11,11,9,14,14,10,15];
+    const PNC=PW.length;
     wsP.columns=PW.map(w=>({width:w}));
-    wsP.getColumn(15).hidden=true;wsP.getColumn(16).hidden=true;
-    sheetHeader(wsP,PW.slice(0,PNC),'Projects Overview','A-Civil   |   As at '+asAt+'   |   '+plural(projects.length,'active project'));
+    sheetHeader(wsP,PW,'Projects Overview','A-Civil   |   As at '+asAt+'   |   '+plural(projects.length,'active project'));
     wsP.getCell(5,1).value={richText:[
       {text:'Blue',font:font({size:9,bold:true,color:{argb:C.input}})},
       {text:' figures are inputs you can change. Black figures are formulas. Status and Risk have drop-down lists. Everything on the Financial and Charts sheets updates from this sheet.',font:font({size:9,color:{argb:C.muted}})},
@@ -4711,7 +4710,6 @@ window.exportFinancialOverview=async function(){
     const pctRule={type:'decimal',operator:'between',allowBlank:true,formulae:[0,1],showErrorMessage:true,errorTitle:'Percentage',error:'Enter a percentage between 0% and 100%.'};
     const orTest=(r,keys)=>'OR('+keys.map(k=>'F'+r+'='+q(L(k))).join(',')+')';
     const grp=_projGroupActive(projects);
-    const rowOf=new Map();
     let r=FIRST;
     const subRows=[];
     [['Active Projects',grp.active],['Estimating',grp.estimating],['Other',grp.other]].forEach(([label,rows])=>{
@@ -4725,7 +4723,6 @@ window.exportFinancialOverview=async function(){
       wsP.getRow(r).height=26;r++;
       const start=r;
       rows.forEach((p,i)=>{
-        rowOf.set(p,r);
         put(wsP,r,1,p.name||'',{bold:true});
         put(wsP,r,2,p.package_number||'',{color:C.muted});
         put(wsP,r,3,clientOf(p));
@@ -4740,8 +4737,6 @@ window.exportFinancialOverview=async function(){
         put(wsP,r,12,+p.awarded_value||0,{input:true,al:'right',fmt:NUM});
         put(wsP,r,13,margin(p)/100,{input:true,al:'right',fmt:PCT1}).dataValidation=pctRule;
         put(wsP,r,14,F('IF('+orTest(r,WON_ST)+',IF(L'+r+'>0,L'+r+',K'+r+'),IF('+orTest(r,PIPE_ST)+',K'+r+'*MAX(0,MIN(1,J'+r+'+'+SHIFT+')),0))',projV(p)),{bold:true,al:'right',fmt:NUM});
-        put(wsP,r,15,F('K'+r+'+ROW()/1000000000',ev(p)+r/1e9));
-        put(wsP,r,16,F('N'+r+'+ROW()/1000000000',projV(p)+r/1e9));
         dataStyle(wsP,r,PNC,i%2===1);
         r++;
       });
@@ -4783,7 +4778,7 @@ window.exportFinancialOverview=async function(){
 
     /* ---------- formula helpers over the Projects range ---------- */
     const R=col=>'Projects!$'+col+'$'+FIRST+':$'+col+'$'+LAST;
-    const rS=R('F'),rK=R('K'),rL=R('L'),rN=R('N'),rJ=R('J'),rM=R('M'),rI=R('I'),rE=R('E'),rO=R('O'),rP=R('P'),rA=R('A'),rB=R('B'),rC=R('C');
+    const rS=R('F'),rK=R('K'),rL=R('L'),rN=R('N'),rJ=R('J'),rM=R('M'),rI=R('I'),rE=R('E'),rC=R('C');
     const crit=keys=>keys.length===1?q(L(keys[0])):'{'+keys.map(k=>q(L(k))).join(',')+'}';
     const sumSt=(rng,keys,extra)=>{const x=rng+','+rS+','+crit(keys)+(extra?','+extra:'');return keys.length===1?'SUMIFS('+x+')':'SUM(SUMIFS('+x+'))';};
     const cntSt=(keys,extra)=>{const x=rS+','+crit(keys)+(extra?','+extra:'');return keys.length===1?'COUNTIFS('+x+')':'SUM(COUNTIFS('+x+'))';};
@@ -4961,51 +4956,6 @@ window.exportFinancialOverview=async function(){
     }
     r++;
 
-    /* ---- top 5 by estimated value ---- */
-    const rankBy=(fn)=>[...projects].sort((a,b)=>(fn(b)-fn(a))||(rowOf.get(b)-rowOf.get(a)));
-    r++;
-    sectionTitle(wsF,r,FNC,'Top 5 Highest Value Projects');r+=2;
-    tableHeader(wsF,r,['Project','Package','Client','Status','Est. Value ($)','Margin %','Type'],['left','left','left','center','right','right','left']);r++;
-    {
-      const ranked=rankBy(ev);
-      for(let n=1;n<=5;n++){
-        const p=ranked[n-1];
-        const at=col=>'IFERROR(INDEX('+col+',MATCH(LARGE('+rO+','+n+'),'+rO+',0)),"")';
-        put(wsF,r,1,F(at(rA),p?p.name||'':''),{bold:true});
-        put(wsF,r,2,F(at(rB),p?p.package_number||'':''),{color:C.muted});
-        put(wsF,r,3,F(at(rC),p?clientOf(p):''));
-        put(wsF,r,4,F(at(rS),p?L(p.status)||'':''),{al:'center'});
-        put(wsF,r,5,F(at(rK),p?ev(p):''),{bold:true,al:'right',fmt:NUM});
-        put(wsF,r,6,F(at(rM),p?margin(p)/100:''),{al:'right',fmt:PCT1});
-        put(wsF,r,7,F(at(rE),p?niceType(p.project_type):''),{color:C.muted});
-        dataStyle(wsF,r,7,n%2===0);r++;
-      }
-    }
-    r++;
-
-    /* ---- top 10 by projected income ---- */
-    r++;
-    sectionTitle(wsF,r,FNC,'Top 10 Projects by Projected Income','Follows the scenario in use');r+=2;
-    tableHeader(wsF,r,['Project','Package','Status','Secured ($)','Weighted ($)','Projected ($)'],['left','left','center','right','right','right']);r++;
-    {
-      const s=r;
-      const ranked=rankBy(projV);
-      const wonOr=cell=>'OR('+WON_ST.map(k=>cell+'='+q(L(k))).join(',')+')';
-      for(let n=1;n<=10;n++){
-        const p=ranked[n-1];
-        const at=col=>'IFERROR(INDEX('+col+',MATCH(LARGE('+rP+','+n+'),'+rP+',0)),"")';
-        put(wsF,r,1,F(at(rA),p?p.name||'':''),{bold:true});
-        put(wsF,r,2,F(at(rB),p?p.package_number||'':''),{color:C.muted});
-        put(wsF,r,3,F(at(rS),p?L(p.status)||'':''),{al:'center'});
-        put(wsF,r,6,F(at(rN),p?projV(p):''),{bold:true,al:'right',fmt:NUM});
-        put(wsF,r,4,F('IF('+wonOr('C'+r)+',F'+r+',0)',p?secV(p):0),{al:'right',fmt:NUM});
-        put(wsF,r,5,F('IFERROR(F'+r+'-D'+r+',0)',p?projV(p)-secV(p):0),{al:'right',fmt:NUM});
-        dataStyle(wsF,r,6,n%2===0);r++;
-      }
-      ref.top10={s,e:r-1,ranked:ranked.slice(0,10)};
-    }
-    r++;
-
     /* ---- monthly summary ---- */
     r++;
     sectionTitle(wsF,r,FNC,'Monthly Summary','Last 12 months, by the month each project was added');r+=2;
@@ -5140,16 +5090,6 @@ window.exportFinancialOverview=async function(){
           ]}));
       }
       advance(14);
-    }
-    /* 8. projected by project (full) */
-    {
-      const {s,e,ranked}=ref.top10;
-      slot(FULL,'Projected Income by Project','Top 10 contributors under the scenario in use',16,
-        barXml({dir:'bar',grouping:'stacked',gap:50,valFmt:MONEY,cat:strRef(fref('A',s,e),Array.from({length:10},(_,i)=>ranked[i]?ranked[i].name||'':'')),series:[
-          {name:'Secured',ref:fref('D',s,e),vals:Array.from({length:10},(_,i)=>ranked[i]?secV(ranked[i]):0),color:TEAL},
-          {name:'Weighted pipeline',ref:fref('E',s,e),vals:Array.from({length:10},(_,i)=>ranked[i]?projV(ranked[i])-secV(ranked[i]):0),color:BLUE},
-        ]}));
-      advance(16);
     }
     printSetup(wsC,'portrait','Financial Charts');
     wsC.pageSetup.fitToHeight=1;
