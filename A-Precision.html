@@ -4501,6 +4501,7 @@ window.exportProductivityExcel=async function(){
 
 /* ================================================================
    FINANCIAL OVERVIEW EXPORT  (Projects · Financial · Charts)
+   Projects sheet is the single source of truth; Financial is all formulas.
 ================================================================ */
 window.exportFinancialOverview=async function(){
   const btn=document.getElementById('fin-xl-btn');
@@ -4516,59 +4517,49 @@ window.exportFinancialOverview=async function(){
     const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
     const todayStr=_localISO(now);
     const nowMonth=yyyy+'-'+mm;
-    const genLabel='Generated '+dd+'/'+mm+'/'+yyyy;
-    const plural=(n,w)=>n+' '+w+(n!==1?'s':'');
+    const asAt='As at '+now.toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
 
-    /* ---------- metrics (mirror renderFinancial / Dashboard) ---------- */
+    /* ---------- values (mirror renderFinancial / Dashboard); used as cached results + charts ---------- */
     const WON_ST=['awarded','in_progress','completed'];
     const PIPE_ST=['estimating','submitted'];
+    const ALL_ST=ALL_STATUSES.map(s=>s.key);
     const ev=p=>+p.estimated_value||0;
     const wonV=p=>+p.awarded_value||+p.estimated_value||0;
     const winPct=p=>{const v=p.win_probability;const n=(v!=null&&v!=='')?Number(v):15;return isNaN(n)?15:n;};
     const margin=p=>p.boq_margin!=null?+p.boq_margin:15;
     const openQ=q=>!['received','accepted','declined'].includes(q.status);
+    const winInput=p=>WON_ST.includes(p.status)?1:p.status==='lost'?0:winPct(p)/100;
+    const projV=p=>WON_ST.includes(p.status)?wonV(p):PIPE_ST.includes(p.status)?ev(p)*winPct(p)/100:0;
+    const by=keys=>projects.filter(p=>keys.includes(p.status));
+    const sumOf=(list,fn)=>list.reduce((s,p)=>s+fn(p),0);
 
-    const piped=projects.filter(p=>PIPE_ST.includes(p.status));
-    const pipelineVal=piped.reduce((s,p)=>s+ev(p),0);
-    const won=projects.filter(p=>WON_ST.includes(p.status));
-    const awardedVal=won.reduce((s,p)=>s+wonV(p),0);
-    const submitted=projects.filter(p=>p.status==='submitted');
-    const submittedVal=submitted.reduce((s,p)=>s+ev(p),0);
-    const lost=projects.filter(p=>p.status==='lost');
-    const winTotal=won.length+lost.length;
-    const winRate=winTotal>0?won.length/winTotal:0;
-    const avgTender=projects.length?projects.reduce((s,p)=>s+ev(p),0)/projects.length:0;
-    const avgMargin=projects.length?projects.reduce((s,p)=>s+margin(p),0)/projects.length:0;
+    const piped=by(PIPE_ST),won=by(WON_ST),lost=by(['lost']),submitted=by(['submitted']);
+    const winRate=(won.length+lost.length)?won.length/(won.length+lost.length):0;
+    const avgMargin=projects.length?sumOf(projects,margin)/projects.length:0;
+    const weightedTotal=sumOf(piped,projV);
+    const awardedVal=sumOf(won,wonV);
     const overdueQIds=new Set(quotes.filter(q=>q.due_date&&q.due_date<todayStr&&openQ(q)).map(q=>q.project_id));
     const overdueProj=projects.filter(p=>overdueQIds.has(p.id));
-    const overdueVal=overdueProj.reduce((s,p)=>s+ev(p),0);
     const awardedMonthVal=won.filter(p=>(p.updated_at||p.created_at||'').substring(0,7)===nowMonth).reduce((s,p)=>s+wonV(p),0);
-    const weightedTotal=piped.reduce((s,p)=>s+ev(p)*winPct(p)/100,0);
-    const avgWin=piped.length?piped.reduce((s,p)=>s+winPct(p),0)/piped.length/100:0;
+    const activeQProjIds=new Set(quotes.filter(openQ).map(q=>q.project_id));
+    const totalQVReq=projects.filter(p=>activeQProjIds.has(p.id)).reduce((s,p)=>s+ev(p),0);
 
     const monthRows=[];
     for(let i=11;i>=0;i--){
       const d=new Date(now.getFullYear(),now.getMonth()-i,1);
       const mk=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-      const mp=projects.filter(p=>(p.created_at||'').startsWith(mk));
-      const ma=mp.filter(p=>p.status==='awarded');
-      const mSub=mp.filter(p=>p.status==='submitted');
-      const mLost=mp.filter(p=>p.status==='lost').length;
+      const mp=projects.filter(p=>{const c=p.created_at?new Date(p.created_at):null;return c&&!isNaN(c)&&(c.getFullYear()+'-'+String(c.getMonth()+1).padStart(2,'0'))===mk;});
+      const st=k=>mp.filter(p=>p.status===k);
       monthRows.push({
+        date:new Date(Date.UTC(d.getFullYear(),d.getMonth(),1)),
         label:d.toLocaleDateString('en-AU',{month:'short',year:'numeric'}),
         short:d.toLocaleDateString('en-AU',{month:'short'}),
-        n:mp.length,sub:mSub.length,awd:ma.length,lost:mLost,
-        pipe:mp.filter(p=>PIPE_ST.includes(p.status)).reduce((s,p)=>s+ev(p),0),
-        subV:mSub.reduce((s,p)=>s+ev(p),0),
-        awdV:ma.reduce((s,p)=>s+(+p.awarded_value||0),0),
-        wr:(ma.length+mLost)>0?ma.length/(ma.length+mLost):null,
+        n:mp.length,sub:st('submitted').length,awd:st('awarded').length,lost:st('lost').length,
+        pipe:sumOf(mp.filter(p=>PIPE_ST.includes(p.status)),ev),subV:sumOf(st('submitted'),ev),
+        awdV:sumOf(st('awarded'),p=>+p.awarded_value||0),
       });
     }
 
-    const recQ=quotes.filter(q=>['received','accepted'].includes(q.status));
-    const totalQVRec=recQ.reduce((s,q)=>s+(+q.quoted_amount||0),0);
-    const activeQProjIds=new Set(quotes.filter(openQ).map(q=>q.project_id));
-    const totalQVReq=projects.filter(p=>activeQProjIds.has(p.id)).reduce((s,p)=>s+ev(p),0);
     const tradeMap={};
     quotes.forEach(q=>{
       const t=q.trade_package||'Other';
@@ -4579,39 +4570,31 @@ window.exportFinancialOverview=async function(){
     });
     const tradeRows=Object.entries(tradeMap).sort((a,b)=>b[1].val-a[1].val||b[1].sent-a[1].sent);
 
-    const top5=[...projects].sort((a,b)=>ev(b)-ev(a)).slice(0,5);
-    const BANDS=['0-5%','5-10%','10-15%','15-20%','20%+'];
-    const bandCounts=[0,0,0,0,0];
-    projects.forEach(p=>{const m=margin(p);bandCounts[m<5?0:m<10?1:m<15?2:m<20?3:4]++;});
-    const typeMap={};
-    projects.forEach(p=>{const t=p.project_type||'other';const m=typeMap[t]||(typeMap[t]={n:0,v:0});m.n++;m.v+=ev(p);});
-    const typeRows=Object.entries(typeMap).sort((a,b)=>b[1].v-a[1].v);
     const niceType=t=>String(t||'other').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
-    const cap=s=>s?String(s).charAt(0).toUpperCase()+String(s).slice(1):'—';
+    const cap=s=>s?String(s).charAt(0).toUpperCase()+String(s).slice(1):'';
+    const typeNames=[...new Set(projects.map(p=>niceType(p.project_type)))]
+      .map(t=>({t,list:projects.filter(p=>niceType(p.project_type)===t)}))
+      .sort((a,b)=>sumOf(b.list,ev)-sumOf(a.list,ev));
+    const BANDS=[['Under 5%',null,0.05],['5% to 10%',0.05,0.10],['10% to 15%',0.10,0.15],['15% to 20%',0.15,0.20],['20% and over',0.20,null]];
+    const inBand=(m,lo,hi)=>(lo==null||m>=lo)&&(hi==null||m<hi);
+    const xlDate=s=>{const m=s&&String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):null;};
+    const addedDate=p=>{const d=p.created_at?new Date(p.created_at):null;return d&&!isNaN(d)?new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())):null;};
 
-    /* ---------- workbook + A-Civil styling ---------- */
+    /* ---------- workbook styling ---------- */
     const wb=new ExcelJS.Workbook();
-    wb.creator='A-Civil Estimating Intelligence';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
-    const C={navy:'FF0B1F3A',blue:'FF2563D4',teal:'FF10D9A0',green:'FF10B981',purple:'FF7C3AED',red:'FFEF4444',amber:'FFF59E0B',
-      ink:'FF0F172A',muted:'FF64748B',faint:'FF94A3B8',line:'FFE2E8F0',tint:'FFEAF1FC',alt:'FFF8FAFD',tile:'FFF3F7FC',white:'FFFFFFFF',input:'FFFFF4DB'};
+    wb.creator='A-Civil';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
+    const C={navy:'FF0B1F3A',blue:'FF2563D4',teal:'FF10D9A0',ink:'FF1F2937',muted:'FF6B7280',faint:'FF9CA3AF',
+      rule:'FFCBD3DE',hair:'FFE8ECF1',band:'FFF3F6FA',input:'FF1D4ED8'};
+    const font=o=>Object.assign({name:'Calibri',size:10,color:{argb:C.ink}},o||{});
     const fill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
-    const font=o=>Object.assign({name:'Arial',size:9,color:{argb:C.ink}},o||{});
-    const hair={style:'thin',color:{argb:C.line}};
-    const AUD='"$"#,##0;[Red]-"$"#,##0;"—"';
-    const PCT='0%';
-    const CNT='0;-0;"—"';
+    const line=(style,c)=>({style,color:{argb:c}});
+    const NUM='#,##0;(#,##0);"–"';
+    const PCT='0%;-0%;"–"';
+    const PCT1='0.0%;-0.0%;"–"';
+    const CNT='#,##0;-#,##0;"–"';
     const DATE='dd/mm/yyyy';
-    const STATUS_XL={estimating:['FFE0EAFF','FF1D4ED8'],submitted:['FFEDE9FE','FF6D28D9'],awaiting_decision:['FFFEF3C7','FFB45309'],
-      awarded:['FFD1FAE5','FF047857'],lost:['FFFEE2E2','FFB91C1C'],on_hold:['FFF1F5F9','FF475569'],in_progress:['FFCFFAFE','FF0E7490'],
-      completed:['FFD1FAE5','FF047857'],not_submitted:['FFFCE7F3','FF9F1239']};
-    const RISK_XL={low:['FFD1FAE5','FF047857'],medium:['FFFEF3C7','FFB45309'],high:['FFFEE2E2','FFB91C1C'],extreme:['FF7F1D1D','FFFFFFFF']};
-    const pill=(cell,map,key,label)=>{
-      const s=map[key]||['FFF1F5F9','FF475569'];
-      cell.value=label;cell.fill=fill(s[0]);
-      cell.font=font({bold:true,size:8.5,color:{argb:s[1]}});
-      cell.alignment={horizontal:'center',vertical:'middle'};
-    };
-    const align=al=>({horizontal:al||'left',vertical:'middle',indent:al==='center'?0:1});
+    const q=s=>'"'+s+'"';
+    const L=k=>STATUS_LABELS[k];
 
     let logoId=null;
     try{
@@ -4623,365 +4606,356 @@ window.exportFinancialOverview=async function(){
       }
     }catch(_){}
 
-    function sheetHeader(ws,nc,title,sub){
-      ws.mergeCells(1,1,1,nc);
-      const t=ws.getCell(1,1);
-      t.value=title;t.font=font({size:20,bold:true,color:{argb:C.navy}});t.alignment={vertical:'bottom',indent:1};
-      ws.getRow(1).height=36;
-      ws.mergeCells(2,1,2,nc);
-      const s=ws.getCell(2,1);
-      s.value=sub;s.font=font({size:9,color:{argb:C.muted}});s.alignment={vertical:'top',indent:1};
+    function sheetHeader(ws,widths,title){
+      const nc=widths.length;
+      const t=ws.getCell(1,1);t.value=title;t.font=font({size:18,bold:true,color:{argb:C.navy}});t.alignment={vertical:'bottom'};
+      ws.getRow(1).height=30;
+      const s=ws.getCell(2,1);s.value='A-Civil   |   '+asAt;s.font=font({color:{argb:C.muted}});s.alignment={vertical:'top'};
       ws.getRow(2).height=22;
-      for(let c=1;c<=nc;c++)ws.getCell(3,c).fill=fill(c===nc?C.teal:C.blue);
-      ws.getRow(3).height=4;
-      ws.getRow(4).height=12;
-      if(logoId!==null)ws.addImage(logoId,{tl:{nativeCol:nc-1,nativeColOff:8*9525,nativeRow:0,nativeRowOff:4*9525},ext:{width:70,height:70},editAs:'oneCell'});
-    }
-    function sectionTitle(ws,row,nc,title,sub){
-      ws.mergeCells(row,1,row,nc);
-      const rt=[{text:title,font:font({size:12,bold:true,color:{argb:C.navy}})}];
-      if(sub)rt.push({text:'   '+sub,font:font({size:8.5,color:{argb:C.muted}})});
-      for(let c=1;c<=nc;c++){
-        const cell=ws.getCell(row,c);
-        cell.border={bottom:{style:'medium',color:{argb:C.blue}}};
-        cell.alignment={vertical:'middle'};
+      for(let c=1;c<=nc;c++)ws.getCell(3,c).border={bottom:line('medium',C.navy)};
+      ws.getRow(3).height=6;
+      ws.getRow(4).height=10;
+      if(logoId!==null){
+        const colPx=Math.floor(widths[nc-1]*7+5);
+        ws.addImage(logoId,{tl:{nativeCol:nc-1,nativeColOff:Math.max(0,colPx-60)*9525,nativeRow:0,nativeRowOff:3*9525},ext:{width:56,height:56},editAs:'oneCell'});
       }
-      ws.getCell(row,1).value={richText:rt};
-      ws.getRow(row).height=24;
     }
-    function groupLabel(ws,row,nc,text){
-      ws.mergeCells(row,1,row,nc);
-      for(let c=1;c<=nc;c++){const cell=ws.getCell(row,c);cell.fill=fill(C.white);cell.border={bottom:hair};cell.alignment={vertical:'middle',indent:1};}
-      const cell=ws.getCell(row,1);
-      cell.value=text;cell.font=font({size:8.5,bold:true,color:{argb:C.blue}});
-      ws.getRow(row).height=20;
+    function put(ws,row,col,v,o){
+      o=o||{};
+      const c=ws.getCell(row,col);
+      c.value=v;
+      c.font=font({bold:!!o.bold,italic:!!o.italic,size:o.size||10,color:{argb:o.color||(o.input?C.input:C.ink)}});
+      c.alignment={horizontal:o.al||'left',vertical:'middle',wrapText:!!o.wrap,indent:o.indent||0};
+      if(o.fmt)c.numFmt=o.fmt;
+      return c;
     }
-    function colHeaders(ws,row,hdrs,aligns){
+    function rule(ws,row,nc,border){for(let c=1;c<=nc;c++)ws.getCell(row,c).border=border;}
+    function heading(ws,row,nc,text){
+      put(ws,row,1,text,{bold:true,size:12,color:C.navy});
+      rule(ws,row,nc,{bottom:line('thin',C.navy)});
+      ws.getRow(row).height=22;
+    }
+    function hdrRow(ws,row,hdrs,als,wrap){
       hdrs.forEach((h,i)=>{
-        const c=ws.getCell(row,i+1);
-        c.value=h;c.font=font({bold:true,size:8.5,color:{argb:C.white}});
-        c.fill=fill(C.navy);c.alignment=align(aligns[i]);
+        const c=put(ws,row,i+1,h,{bold:true,size:9,color:C.muted,al:als[i],wrap});
+        c.alignment.vertical='bottom';
+        c.border={bottom:line('thin',C.rule)};
       });
-      ws.getRow(row).height=20;
+      ws.getRow(row).height=wrap?28:18;
     }
-    function writeRow(ws,row,vals,spec,alt){
-      vals.forEach((v,i)=>{
-        const c=ws.getCell(row,i+1);const s=spec[i]||{};
-        c.value=v;
-        c.font=font({bold:!!s.bold,color:{argb:s.color||C.ink}});
-        c.fill=fill(alt?C.alt:C.white);
-        c.border={bottom:hair};
-        c.alignment=align(s.al);
-        if(s.fmt)c.numFmt=s.fmt;
-      });
-      ws.getRow(row).height=18;
+    function totalBorders(ws,row,nc,grand){
+      rule(ws,row,nc,grand?{top:line('thin',C.ink),bottom:line('double',C.ink)}:{top:line('thin',C.ink)});
+      ws.getRow(row).height=grand?20:18;
     }
-    function totalRow(ws,row,nc,vals,spec,dark){
-      for(let i=1;i<=nc;i++){
-        const c=ws.getCell(row,i);const s=spec[i-1]||{};const v=vals[i-1];
-        c.value=v==null?null:v;
-        c.font=font({bold:true,size:dark?10:9,color:{argb:dark?C.white:C.navy}});
-        c.fill=fill(dark?C.navy:C.tint);
-        c.border=dark?{}:{top:{style:'thin',color:{argb:C.blue}}};
-        c.alignment=align(s.al);
-        if(s.fmt)c.numFmt=s.fmt;
-      }
-      ws.getRow(row).height=dark?24:20;
-    }
-    function emptyRow(ws,row,nc,text){
-      ws.mergeCells(row,1,row,nc);
-      const c=ws.getCell(row,1);
-      c.value=text;c.font=font({italic:true,color:{argb:C.faint}});c.alignment={vertical:'middle',indent:1};
-      ws.getRow(row).height=18;
-    }
-    function tile(ws,r,c,accent,label,value,fmt,sub){
-      const W={style:'thick',color:{argb:C.white}};
-      for(let k=0;k<3;k++){
-        ws.mergeCells(r+k,c,r+k,c+1);
-        for(let j=0;j<2;j++){
-          const x=ws.getCell(r+k,c+j);
-          const b={left:W,right:W};
-          if(k===0)b.top={style:'thick',color:{argb:accent}};
-          x.border=b;x.fill=fill(C.tile);
-          x.alignment={horizontal:'left',vertical:'middle',indent:1};
-        }
-      }
-      const l=ws.getCell(r,c),v=ws.getCell(r+1,c),s=ws.getCell(r+2,c);
-      l.value=label.toUpperCase();l.font=font({size:7.5,bold:true,color:{argb:C.muted}});
-      v.value=value;v.font=font({size:16,bold:true,color:{argb:C.navy}});if(fmt)v.numFmt=fmt;
-      s.value=sub||'';s.font=font({size:8,color:{argb:C.muted}});
-      return v;
-    }
-    function tileRow(ws,r,defs){
-      const cells=defs.map((d,i)=>tile(ws,r,1+i*2,...d));
-      ws.getRow(r).height=17;ws.getRow(r+1).height=27;ws.getRow(r+2).height=16;
-      ws.getRow(r+3).height=8;
-      return cells;
-    }
-    const printSetup=(ws,orientation,name)=>{
-      ws.pageSetup={paperSize:9,orientation,fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,
+    const F=(formula,result)=>({formula,result});
+    const printSetup=(ws,orientation,name,titleRows)=>{
+      ws.pageSetup={paperSize:9,orientation,fitToPage:true,fitToWidth:1,fitToHeight:0,
         margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.25,footer:0.25}};
-      ws.headerFooter={oddFooter:'&L&"Arial"&8A-Civil  ·  '+name+'&R&"Arial"&8Page &P of &N'};
+      if(titleRows)ws.pageSetup.printTitlesRow=titleRows;
+      ws.headerFooter={oddFooter:'&L&"Calibri"&8A-Civil  |  '+name+'&R&"Calibri"&8Page &P of &N'};
     };
 
-    /* ================= SHEET 1 — PROJECTS ================= */
-    const wsP=wb.addWorksheet('Projects',{properties:{tabColor:{argb:C.blue}},views:[{state:'frozen',ySplit:4,showGridLines:false}]});
-    wsP.columns=[{width:36},{width:11},{width:28},{width:42},{width:15},{width:18},{width:10},{width:13},{width:16}];
-    const PNC=9;
-    sheetHeader(wsP,PNC,'Projects Overview',plural(projects.length,'active project')+'  ·  '+genLabel+'  ·  A-Civil Estimating Intelligence');
-    const P_HDR=['Project','Package','Client','Location','Type','Status','Risk','Due Date','Est. Value'];
-    const P_AL=['left','center','left','left','left','center','center','center','right'];
-    const P_SPEC=[{bold:true},{al:'center',color:C.muted},{},{color:C.muted},{},{al:'center'},{al:'center'},{al:'center'},{al:'right',fmt:AUD,bold:true}];
+    /* ================= SHEET 1 — PROJECTS (inputs) ================= */
+    const PW=[34,10,26,32,13,17,9,11,11,8,14,14,9,15,6];
+    const wsP=wb.addWorksheet('Projects',{properties:{tabColor:{argb:C.navy}},views:[{state:'frozen',xSplit:1,ySplit:6,showGridLines:false}]});
+    wsP.columns=PW.map(w=>({width:w}));
+    wsP.getColumn(15).hidden=true;
+    const PNC=14;
+    sheetHeader(wsP,PW.slice(0,PNC),'Projects Register');
+    wsP.getCell(5,1).value={richText:[
+      {text:'Blue',font:font({size:9,bold:true,color:{argb:C.input}})},
+      {text:' figures are inputs. Black figures are formulas. Status and Risk have drop-down lists, and the Financial sheet updates from this sheet.',font:font({size:9,color:{argb:C.muted}})},
+    ]};
+    wsP.getRow(5).height=18;
+    const P_HDR=['Project','Package','Client','Location','Type','Status','Risk','Due Date','Date Added','Win %','Est. Value ($)','Awarded Value ($)','Margin %','Projected Value ($)'];
+    const P_AL=['left','left','left','left','left','left','left','center','center','right','right','right','right','right'];
+    hdrRow(wsP,6,P_HDR,P_AL,true);
+    const FIRST=7;
+    const statusList=q(ALL_STATUSES.map(s=>s.label).join(','));
+    const pctRule={type:'decimal',operator:'between',allowBlank:true,formulae:[0,1],showErrorMessage:true,errorTitle:'Percentage',error:'Enter a percentage between 0% and 100%.'};
+    const wonTest=r=>'OR('+WON_ST.map(k=>'F'+r+'='+q(L(k))).join(',')+')';
+    const pipeTest=r=>'OR('+PIPE_ST.map(k=>'F'+r+'='+q(L(k))).join(',')+')';
     const grp=_projGroupActive(projects);
-    let r=5;
-    const pSubs=[];let pCount=0;
-    [['Active Projects',grp.active],['Estimating',grp.estimating],['Other',grp.other]].forEach(([label,rows])=>{
+    let r=FIRST;
+    const subRows=[];
+    [['Active projects',grp.active],['Estimating',grp.estimating],['Other',grp.other]].forEach(([label,rows])=>{
       if(!rows.length)return;
-      sectionTitle(wsP,r,PNC,label,plural(rows.length,'project'));r++;
-      colHeaders(wsP,r,P_HDR,P_AL);r++;
+      for(let c=1;c<=PNC;c++){const x=wsP.getCell(r,c);x.fill=fill(C.band);x.border={bottom:line('thin',C.rule)};}
+      put(wsP,r,1,label,{bold:true,color:C.navy}).fill=fill(C.band);
+      wsP.getRow(r).height=20;r++;
       const start=r;
-      rows.forEach((p,i)=>{
-        const due=p.submission_due_date;
-        let dueVal='No date';
-        if(due){const[y,m,d]=String(due).split('-').map(Number);if(y&&m&&d)dueVal=new Date(Date.UTC(y,m-1,d));}
-        writeRow(wsP,r,[p.name||'',p.package_number||'',p.client||'',p.location||'',niceType(p.project_type),'','',dueVal,ev(p)],P_SPEC,i%2===1);
-        pill(wsP.getCell(r,6),STATUS_XL,p.status,STATUS_LABELS[p.status]||cap(p.status));
-        pill(wsP.getCell(r,7),RISK_XL,p.risk_level,cap(p.risk_level));
-        const dc=wsP.getCell(r,8);
-        if(dueVal instanceof Date){
-          dc.numFmt=DATE;
-          const n=daysUntil(due);
-          if(n!==null&&PROJ_ESTIMATING_STATUSES.includes(p.status)){
-            if(n<0)dc.font=font({bold:true,color:{argb:'FFDC2626'}});
-            else if(n<=7)dc.font=font({bold:true,color:{argb:'FFD97706'}});
-          }
-        }else dc.font=font({italic:true,color:{argb:C.faint}});
+      rows.forEach(p=>{
+        put(wsP,r,1,p.name||'',{bold:true});
+        put(wsP,r,2,p.package_number||'',{color:C.muted});
+        put(wsP,r,3,p.client||'');
+        put(wsP,r,4,p.location||'',{color:C.muted});
+        put(wsP,r,5,niceType(p.project_type));
+        put(wsP,r,6,L(p.status)||cap(p.status)).dataValidation={type:'list',allowBlank:true,formulae:[statusList],showErrorMessage:true,errorTitle:'Status',error:'Pick a status from the list.'};
+        put(wsP,r,7,cap(p.risk_level)).dataValidation={type:'list',allowBlank:true,formulae:['"Low,Medium,High,Extreme"']};
+        put(wsP,r,8,xlDate(p.submission_due_date),{input:true,al:'center',fmt:DATE});
+        put(wsP,r,9,addedDate(p),{input:true,al:'center',fmt:DATE});
+        put(wsP,r,10,winInput(p),{input:true,al:'right',fmt:PCT}).dataValidation=pctRule;
+        put(wsP,r,11,ev(p),{input:true,al:'right',fmt:NUM});
+        put(wsP,r,12,+p.awarded_value||0,{input:true,al:'right',fmt:NUM});
+        put(wsP,r,13,margin(p)/100,{input:true,al:'right',fmt:PCT1}).dataValidation=pctRule;
+        put(wsP,r,14,F('IF('+wonTest(r)+',IF(L'+r+'>0,L'+r+',K'+r+'),IF('+pipeTest(r)+',K'+r+'*J'+r+',0))',projV(p)),{bold:true,al:'right',fmt:NUM});
+        put(wsP,r,15,F('K'+r+'+ROW()/1000000000',ev(p)+r/1e9));
+        rule(wsP,r,PNC,{bottom:line('thin',C.hair)});
+        wsP.getRow(r).height=18;
         r++;
       });
       const end=r-1;
-      const secSum=rows.reduce((s,p)=>s+ev(p),0);
-      totalRow(wsP,r,PNC,[label+' subtotal',null,null,null,null,null,null,null,{formula:'SUM(I'+start+':I'+end+')',result:secSum}],P_AL.map(al=>({al:al==='right'?'right':'left',fmt:al==='right'?AUD:undefined})));
-      pSubs.push({ref:'I'+r,val:secSum});pCount+=rows.length;
-      r++;
-      wsP.getRow(r).height=12;r++;
+      put(wsP,r,1,'Total '+label.toLowerCase(),{bold:true});
+      [[11,'K',ev],[12,'L',p=>+p.awarded_value||0],[14,'N',projV]].forEach(([c,col,fn])=>put(wsP,r,c,F('SUM('+col+start+':'+col+end+')',sumOf(rows,fn)),{bold:true,al:'right',fmt:NUM}));
+      totalBorders(wsP,r,PNC,false);
+      subRows.push(r);r++;
+      wsP.getRow(r).height=10;r++;
     });
-    if(pSubs.length){
-      totalRow(wsP,r,PNC,['TOTAL  —  '+plural(pCount,'project'),null,null,null,null,null,null,null,{formula:'SUM('+pSubs.map(s=>s.ref).join(',')+')',result:pSubs.reduce((s,x)=>s+x.val,0)}],P_AL.map(al=>({al:al==='right'?'right':'left',fmt:al==='right'?AUD:undefined})),true);
-    }else emptyRow(wsP,r,PNC,'No active projects.');
-    printSetup(wsP,'landscape','Projects Overview');
+    const LAST=Math.max(FIRST,r-1);
+    if(subRows.length){
+      put(wsP,r,1,'Total all projects',{bold:true});
+      [[11,'K',ev],[12,'L',p=>+p.awarded_value||0],[14,'N',projV]].forEach(([c,col,fn])=>put(wsP,r,c,F(subRows.map(x=>col+x).join('+'),sumOf(projects,fn)),{bold:true,al:'right',fmt:NUM}));
+      totalBorders(wsP,r,PNC,true);
+    }else put(wsP,r,1,'No active projects.',{italic:true,color:C.faint});
 
-    /* ================= SHEET 2 — FINANCIAL ================= */
-    const wsF=wb.addWorksheet('Financial',{properties:{tabColor:{argb:C.teal}},views:[{showGridLines:false}]});
-    wsF.columns=[{width:30},{width:14},{width:24},{width:17},{width:18},{width:14},{width:18},{width:22}];
-    const FNC=8;
-    sheetHeader(wsF,FNC,'Financial Overview','Business performance, pipeline and projected income  ·  '+genLabel+'  ·  '+plural(projects.length,'active project'));
-    r=5;
-    const winCol=winRate>=0.5?C.green:winRate>=0.3?C.amber:C.red;
-
-    sectionTitle(wsF,r,FNC,'Key Metrics','As shown on the Financial tab');r++;
-    wsF.getRow(r).height=6;r++;
-    tileRow(wsF,r,[
-      [C.blue,'Total Pipeline Value',pipelineVal,AUD,'Across '+plural(piped.length,'active tender')],
-      [C.green,'Total Awarded Value',awardedVal,AUD,won.length+' won (incl. in progress & completed)'],
-      [C.purple,'Total Submitted Value',submittedVal,AUD,plural(submitted.length,'tender')+' submitted'],
-      [winCol,'Win Rate',winRate,PCT,won.length+' won, '+lost.length+' lost'],
-    ]);r+=4;
-    tileRow(wsF,r,[
-      [C.blue,'Avg. Tender Value',avgTender,AUD,'Across all active projects'],
-      [C.blue,'Average Margin',avgMargin/100,'0.0%','BOQ margin (15% where unset)'],
-      [C.red,'Overdue Quote Value',overdueVal,AUD,plural(overdueProj.length,'project')+' with overdue quotes'],
-      [C.green,'Awarded This Month',awardedMonthVal,AUD,now.toLocaleDateString('en-AU',{month:'long',year:'numeric'})],
-    ]);r+=4;
-
-    /* ---- Projected income ---- */
-    wsF.getRow(r).height=10;r++;
-    sectionTitle(wsF,r,FNC,'Projected Income','Won work at 100%  +  estimating & submitted tenders × win probability (15% where unset)');r++;
-    wsF.getRow(r).height=6;r++;
-    const projTiles=tileRow(wsF,r,[
-      [C.teal,'Projected Income',awardedVal+weightedTotal,AUD,'Secured + weighted pipeline'],
-      [C.green,'Secured Income',awardedVal,AUD,plural(won.length,'won job')+' at 100%'],
-      [C.blue,'Weighted Pipeline',weightedTotal,AUD,'Matches Dashboard "Projected Value"'],
-      [C.purple,'Avg. Win Probability',avgWin,PCT,'Across '+plural(piped.length,'open tender')],
-    ]);r+=4;
-
-    const PR_HDR=['Project','Package','Client','Status','Value','Win %','Projected Income','Basis'];
-    const PR_AL=['left','center','left','center','right','center','right','left'];
-    const PR_SPEC=[{bold:true},{al:'center',color:C.muted},{},{al:'center'},{al:'right',fmt:AUD},{al:'center',fmt:PCT},{al:'right',fmt:AUD,bold:true},{color:C.muted}];
-    const PR_TOT_SPEC=[{},{},{},{},{al:'right',fmt:AUD},{al:'center',fmt:PCT},{al:'right',fmt:AUD},{}];
-    colHeaders(wsF,r,PR_HDR,PR_AL);r++;
-    function projGroup(label,rows,valFn,pctFn,basisFn,editable){
-      groupLabel(wsF,r,FNC,label);r++;
-      if(!rows.length){emptyRow(wsF,r,FNC,'No projects in this group.');r++;return null;}
-      const start=r;let eSum=0,gSum=0;
-      rows.forEach((p,i)=>{
-        const v=valFn(p),pc=pctFn(p);eSum+=v;gSum+=v*pc;
-        writeRow(wsF,r,[p.name||'',p.package_number||'',p.client||'','',v,pc,{formula:'E'+r+'*F'+r,result:v*pc},basisFn(p)],PR_SPEC,i%2===1);
-        pill(wsF.getCell(r,4),STATUS_XL,p.status,STATUS_LABELS[p.status]||cap(p.status));
-        if(editable){const c=wsF.getCell(r,6);c.fill=fill(C.input);c.font=font({bold:true,color:{argb:'FF92400E'}});}
-        r++;
-      });
-      const end=r-1;
-      totalRow(wsF,r,FNC,[label.split(' — ')[0]+' subtotal',null,null,null,
-        {formula:'SUM(E'+start+':E'+end+')',result:eSum},null,
-        {formula:'SUM(G'+start+':G'+end+')',result:gSum},null],PR_TOT_SPEC);
-      const ref={e:'E'+r,g:'G'+r,f:'F'+start+':F'+end,eSum,gSum};
-      r++;
-      return ref;
+    if(projects.length){
+      let pr=1;
+      const cf=(ref,rules)=>wsP.addConditionalFormatting({ref,rules:rules.map(x=>Object.assign({type:'expression',priority:pr++},x))});
+      const tone=(fg,bg,bold)=>{const s={font:{color:{argb:fg},bold:!!bold}};if(bg)s.fill={type:'pattern',pattern:'solid',bgColor:{argb:bg}};return s;};
+      const ST_TONE={estimating:['FF1E40AF','FFE8EEFB'],submitted:['FF5B21B6','FFEFEAFB'],awaiting_decision:['FF92400E','FFFDF3E1'],
+        awarded:['FF065F46','FFE3F5EE'],completed:['FF065F46','FFE3F5EE'],in_progress:['FF155E75','FFE2F3F6'],
+        lost:['FF991B1B','FFFBE9E9'],on_hold:['FF4B5563','FFF1F3F6'],not_submitted:['FF4B5563','FFF1F3F6']};
+      cf('F'+FIRST+':F'+LAST,ALL_STATUSES.map(s=>({formulae:['$F'+FIRST+'='+q(s.label)],style:tone(...(ST_TONE[s.key]||['FF4B5563','FFF1F3F6']))})));
+      cf('G'+FIRST+':G'+LAST,[
+        {formulae:['$G'+FIRST+'="Extreme"'],style:tone('FFFFFFFF','FFB91C1C',true)},
+        {formulae:['$G'+FIRST+'="High"'],style:tone('FFB91C1C',null,true)},
+        {formulae:['$G'+FIRST+'="Medium"'],style:tone('FFB45309')},
+        {formulae:['$G'+FIRST+'="Low"'],style:tone('FF047857')},
+      ]);
+      const openTest='OR($F'+FIRST+'='+q(L('estimating'))+',$F'+FIRST+'='+q(L('submitted'))+',$F'+FIRST+'='+q(L('awaiting_decision'))+')';
+      cf('H'+FIRST+':H'+LAST,[
+        {formulae:['AND(ISNUMBER($H'+FIRST+'),$H'+FIRST+'<TODAY(),'+openTest+')'],style:tone('FFB91C1C','FFFBE9E9',true)},
+        {formulae:['AND(ISNUMBER($H'+FIRST+'),$H'+FIRST+'-TODAY()<=7,$H'+FIRST+'>=TODAY(),'+openTest+')'],style:tone('FFB45309','FFFDF3E1',true)},
+      ]);
     }
-    const secG=projGroup('SECURED — WON WORK (100%)',[...won].sort((a,b)=>wonV(b)-wonV(a)),wonV,()=>1,
-      p=>(STATUS_LABELS[p.status]||cap(p.status))+' — counted in full',false);
-    const pipeG=projGroup('WEIGHTED PIPELINE — ESTIMATING & SUBMITTED',[...piped].sort((a,b)=>ev(b)*winPct(b)-ev(a)*winPct(a)),ev,p=>winPct(p)/100,
-      p=>(p.win_probability!=null&&p.win_probability!=='')?'Win probability set':'Default 15%',true);
-    const refs=[secG,pipeG].filter(Boolean);
-    const grandRow=r;
-    const gE=refs.reduce((s,x)=>s+x.eSum,0),gG=refs.reduce((s,x)=>s+x.gSum,0);
-    totalRow(wsF,r,FNC,['TOTAL PROJECTED INCOME',null,null,null,
-      refs.length?{formula:refs.map(x=>x.e).join('+'),result:gE}:0,null,
-      refs.length?{formula:refs.map(x=>x.g).join('+'),result:gG}:0,null],PR_TOT_SPEC,true);
+    printSetup(wsP,'landscape','Projects Register','6:6');
+
+    /* ---------- range helpers for formulas ---------- */
+    const R=col=>'Projects!$'+col+'$'+FIRST+':$'+col+'$'+LAST;
+    const rS=R('F'),rK=R('K'),rL=R('L'),rN=R('N'),rJ=R('J'),rM=R('M'),rI=R('I'),rE=R('E'),rO=R('O'),rA=R('A'),rC=R('C');
+    const crit=keys=>keys.length===1?q(L(keys[0])):'{'+keys.map(k=>q(L(k))).join(',')+'}';
+    const sumSt=(rng,keys)=>keys.length===1?'SUMIFS('+rng+','+rS+','+crit(keys)+')':'SUM(SUMIFS('+rng+','+rS+','+crit(keys)+'))';
+    const cntSt=keys=>keys.length===1?'COUNTIFS('+rS+','+crit(keys)+')':'SUM(COUNTIFS('+rS+','+crit(keys)+'))';
+
+    /* ================= SHEET 2 — FINANCIAL (formulas) ================= */
+    const FW=[40,15,12,17,13,16,16,11];
+    const FNC=FW.length;
+    const wsF=wb.addWorksheet('Financial',{properties:{tabColor:{argb:C.blue}},views:[{showGridLines:false}]});
+    wsF.columns=FW.map(w=>({width:w}));
+    sheetHeader(wsF,FW,'Financial Overview');
+    put(wsF,5,1,'All figures below are formulas that read from the Projects sheet, except where marked as a snapshot.',{italic:true,size:9,color:C.muted});
+    r=7;
+
+    heading(wsF,r,FNC,'Summary');r++;
+    hdrRow(wsF,r,['','Value','Projects','Basis'],['left','right','right','left']);r++;
+    wsF.getCell(r-1,4).alignment={horizontal:'left',vertical:'bottom',indent:2};
+    const cell={};
+    const sub=t=>{put(wsF,r,1,t,{bold:true,color:C.navy});wsF.getRow(r).height=20;r++;};
+    const line1=(key,label,val,fmt,cnt,basis,o)=>{
+      o=o||{};
+      put(wsF,r,1,label,{bold:!!o.bold});
+      put(wsF,r,2,val,{al:'right',fmt,bold:!!o.bold,input:!!o.snapshot});
+      if(cnt!=null)put(wsF,r,3,cnt,{al:'right',fmt:CNT,input:!!o.snapshot});
+      put(wsF,r,4,basis||'',{color:C.muted,size:9,indent:2});
+      if(o.total)totalBorders(wsF,r,3,o.grand);else rule(wsF,r,3,{bottom:line('thin',C.hair)});
+      if(!o.total)wsF.getRow(r).height=18;
+      cell[key]=r;r++;
+    };
+    sub('Pipeline');
+    line1('pipe','Pipeline value',F(sumSt(rK,PIPE_ST),sumOf(piped,ev)),NUM,F(cntSt(PIPE_ST),piped.length),'Estimating and submitted tenders at estimated value');
+    line1('subm','Submitted value',F(sumSt(rK,['submitted']),sumOf(submitted,ev)),NUM,F(cntSt(['submitted']),submitted.length),'Submitted and awaiting an outcome');
     r++;
-    wsF.mergeCells(r,1,r,FNC);
-    const note=wsF.getCell(r,1);
-    note.value='Amber Win % cells are editable. Projected Income, subtotals and the tiles above recalculate automatically.';
-    note.font=font({italic:true,size:8,color:{argb:C.muted}});note.alignment={vertical:'middle',indent:1};
-    wsF.getRow(r).height=18;r++;
-    projTiles[0].value={formula:'G'+grandRow,result:gG};
-    if(secG)projTiles[1].value={formula:secG.g,result:secG.gSum};
-    if(pipeG){
-      projTiles[2].value={formula:pipeG.g,result:pipeG.gSum};
-      projTiles[3].value={formula:'AVERAGE('+pipeG.f+')',result:avgWin};
-    }
+    sub('Awards');
+    line1('won','Awarded value',F(sumSt(rN,WON_ST),awardedVal),NUM,F(cntSt(WON_ST),won.length),'Awarded, in progress and completed. Uses awarded value where entered');
+    line1('lost','Lost value',F(sumSt(rK,['lost']),sumOf(lost,ev)),NUM,F(cntSt(['lost']),lost.length),'Tenders lost');
+    line1('wr','Win rate',F('IFERROR(C'+cell.won+'/(C'+cell.won+'+C'+cell.lost+'),0)',winRate),PCT,null,'Won ÷ (won + lost)');
+    line1('awm','Awarded this month',awardedMonthVal,NUM,null,'Snapshot at export, based on each project\'s last update',{snapshot:true});
+    r++;
+    sub('Projected income');
+    line1('sec','Secured income',F('B'+cell.won,awardedVal),NUM,F('C'+cell.won,won.length),'Won work counted at 100%');
+    line1('wtd','Weighted pipeline',F(sumSt(rN,PIPE_ST),weightedTotal),NUM,F(cntSt(PIPE_ST),piped.length),'Open tenders × Win %. Same as the Dashboard "Projected Value"');
+    line1('awin','Average win probability',F('IFERROR('+sumSt(rJ,PIPE_ST)+'/C'+cell.wtd+',0)',piped.length?sumOf(piped,winInput)/piped.length:0),PCT,null,'Across open tenders');
+    line1('proj','Total projected income',F('B'+cell.sec+'+B'+cell.wtd,awardedVal+weightedTotal),NUM,null,'',{bold:true,total:true,grand:true});
+    r++;
+    sub('Pricing');
+    line1('avgt','Average tender value',F('IFERROR('+sumSt(rK,ALL_ST)+'/'+cntSt(ALL_ST)+',0)',projects.length?sumOf(projects,ev)/projects.length:0),NUM,F(cntSt(ALL_ST),projects.length),'All active projects');
+    line1('avgm','Average margin',F('IFERROR('+sumSt(rM,ALL_ST)+'/'+cntSt(ALL_ST)+',0)',avgMargin/100),PCT1,null,'BOQ margin, 15% where not set');
+    r++;
+    sub('Quotes');
+    line1('qreq','Quote value requested',totalQVReq,NUM,null,'Snapshot. Est. value of projects with open quote requests',{snapshot:true});
+    line1('qrec','Quote value received',0,NUM,null,'From the trade table below');
+    line1('qn','Quotes received',0,CNT,null,'From the trade table below');
+    line1('qover','Overdue quote value',sumOf(overdueProj,ev),NUM,overdueProj.length,'Snapshot. Projects with at least one overdue quote',{snapshot:true});
+    r++;
 
-    /* ---- Tender outcomes & status ---- */
-    wsF.getRow(r).height=14;r++;
-    sectionTitle(wsF,r,FNC,'Tender Outcomes & Status','Win rate '+Math.round(winRate*100)+'%  ·  '+won.length+' won, '+lost.length+' lost');r++;
-    colHeaders(wsF,r,['Status','Projects','Share','Est. Value'],['left','center','center','right']);r++;
+    /* ---- by status ---- */
+    heading(wsF,r,FNC,'By Status');r++;
+    hdrRow(wsF,r,['Status','Projects','Share','Est. Value ($)','Avg Win %','Projected ($)'],['left','right','right','right','right','right']);r++;
     {
-      const rowsS=ALL_STATUSES.map(s=>({s,list:projects.filter(p=>p.status===s.key)})).filter(x=>x.list.length);
-      if(!rowsS.length){emptyRow(wsF,r,4,'No projects yet.');r++;}
-      else{
-        const start=r,end=r+rowsS.length-1,totRow=end+1;
-        rowsS.forEach((x,i)=>{
-          writeRow(wsF,r,['',x.list.length,{formula:'IF($B$'+totRow+'=0,0,B'+r+'/$B$'+totRow+')',result:x.list.length/projects.length},x.list.reduce((s,p)=>s+ev(p),0)],
-            [{},{al:'center',fmt:CNT,bold:true},{al:'center',fmt:PCT},{al:'right',fmt:AUD}],i%2===1);
-          pill(wsF.getCell(r,1),STATUS_XL,x.s.key,x.s.label);
-          wsF.getCell(r,1).alignment={horizontal:'left',vertical:'middle',indent:1};
-          r++;
-        });
-        totalRow(wsF,r,4,['Total',{formula:'SUM(B'+start+':B'+end+')',result:projects.length},{formula:'SUM(C'+start+':C'+end+')',result:1},{formula:'SUM(D'+start+':D'+end+')',result:projects.reduce((s,p)=>s+ev(p),0)}],
-          [{},{al:'center',fmt:CNT},{al:'center',fmt:PCT},{al:'right',fmt:AUD}]);r++;
+      const start=r,end=r+ALL_STATUSES.length-1,tot=end+1;
+      ALL_STATUSES.forEach(s=>{
+        const list=by([s.key]);
+        put(wsF,r,1,s.label);
+        put(wsF,r,2,F(cntSt([s.key]),list.length),{al:'right',fmt:CNT});
+        put(wsF,r,3,F('IFERROR(B'+r+'/B$'+tot+',0)',projects.length?list.length/projects.length:0),{al:'right',fmt:PCT});
+        put(wsF,r,4,F(sumSt(rK,[s.key]),sumOf(list,ev)),{al:'right',fmt:NUM});
+        put(wsF,r,5,F('IFERROR('+sumSt(rJ,[s.key])+'/B'+r+',0)',list.length?sumOf(list,winInput)/list.length:0),{al:'right',fmt:PCT});
+        put(wsF,r,6,F(sumSt(rN,[s.key]),sumOf(list,projV)),{al:'right',fmt:NUM});
+        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+      });
+      put(wsF,r,1,'Total',{bold:true});
+      [[2,'B',projects.length,CNT],[3,'C',projects.length?1:0,PCT],[4,'D',sumOf(projects,ev),NUM],[6,'F',awardedVal+weightedTotal,NUM]]
+        .forEach(([c,col,res,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',res),{bold:true,al:'right',fmt}));
+      totalBorders(wsF,r,6,true);r++;
+    }
+    r++;
+
+    /* ---- by project type ---- */
+    heading(wsF,r,FNC,'By Project Type');r++;
+    hdrRow(wsF,r,['Project Type','Projects','Share','Est. Value ($)','','Projected ($)'],['left','right','right','right','right','right']);r++;
+    if(!typeNames.length){put(wsF,r,1,'No projects yet.',{italic:true,color:C.faint});r++;}
+    else{
+      const start=r,end=r+typeNames.length-1,tot=end+1,allV=sumOf(projects,ev);
+      typeNames.forEach(({t,list})=>{
+        put(wsF,r,1,t);
+        put(wsF,r,2,F('COUNTIFS('+rE+','+q(t)+')',list.length),{al:'right',fmt:CNT});
+        put(wsF,r,3,F('IFERROR(D'+r+'/D$'+tot+',0)',allV?sumOf(list,ev)/allV:0),{al:'right',fmt:PCT});
+        put(wsF,r,4,F('SUMIFS('+rK+','+rE+','+q(t)+')',sumOf(list,ev)),{al:'right',fmt:NUM});
+        put(wsF,r,6,F('SUMIFS('+rN+','+rE+','+q(t)+')',sumOf(list,projV)),{al:'right',fmt:NUM});
+        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+      });
+      put(wsF,r,1,'Total',{bold:true});
+      [[2,'B',projects.length,CNT],[3,'C',allV?1:0,PCT],[4,'D',allV,NUM],[6,'F',sumOf(projects,projV),NUM]]
+        .forEach(([c,col,res,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',res),{bold:true,al:'right',fmt}));
+      totalBorders(wsF,r,6,true);r++;
+    }
+    r++;
+
+    /* ---- margin bands ---- */
+    heading(wsF,r,FNC,'Margin Distribution');r++;
+    hdrRow(wsF,r,['Margin Band','Projects','Share'],['left','right','right']);r++;
+    {
+      const start=r,end=r+BANDS.length-1,tot=end+1;
+      BANDS.forEach(([label,lo,hi])=>{
+        const n=projects.filter(p=>inBand(margin(p)/100,lo,hi)).length;
+        const parts=[rM];
+        if(lo!=null)parts.push(q('>='+lo));
+        if(hi!=null){if(lo!=null)parts.push(rM);parts.push(q('<'+hi));}
+        put(wsF,r,1,label);
+        put(wsF,r,2,F('COUNTIFS('+parts.join(',')+')',n),{al:'right',fmt:CNT});
+        put(wsF,r,3,F('IFERROR(B'+r+'/B$'+tot+',0)',projects.length?n/projects.length:0),{al:'right',fmt:PCT});
+        rule(wsF,r,3,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+      });
+      put(wsF,r,1,'Total',{bold:true});
+      put(wsF,r,2,F('SUM(B'+start+':B'+end+')',projects.length),{bold:true,al:'right',fmt:CNT});
+      put(wsF,r,3,F('SUM(C'+start+':C'+end+')',projects.length?1:0),{bold:true,al:'right',fmt:PCT});
+      totalBorders(wsF,r,3,true);r++;
+    }
+    r++;
+
+    /* ---- top 5 ---- */
+    heading(wsF,r,FNC,'Top 5 Projects by Estimated Value');r++;
+    hdrRow(wsF,r,['Project','Est. Value ($)','Margin %','Status','Type','Client'],['left','right','right','left','left','left']);
+    wsF.getCell(r,4).alignment={horizontal:'left',vertical:'bottom',indent:2};r++;
+    {
+      const ranked=[...projects].map((p,i)=>({p,i})).sort((a,b)=>ev(b.p)-ev(a.p)||b.i-a.i).map(x=>x.p);
+      for(let n=1;n<=5;n++){
+        const p=ranked[n-1];
+        const at=col=>'IFERROR(INDEX('+col+',MATCH(LARGE('+rO+','+n+'),'+rO+',0)),"")';
+        put(wsF,r,1,F(at(rA),p?p.name||'':''),{bold:true});
+        put(wsF,r,2,F(at(rK),p?ev(p):''),{al:'right',fmt:NUM});
+        put(wsF,r,3,F(at(rM),p?margin(p)/100:''),{al:'right',fmt:PCT1});
+        put(wsF,r,4,F(at(rS),p?L(p.status)||'':''),{indent:2});
+        put(wsF,r,5,F(at(rE),p?niceType(p.project_type):''));
+        put(wsF,r,6,F(at(rC),p?p.client||'':''),{color:C.muted});
+        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
       }
     }
+    r++;
 
-    /* ---- Pipeline by project type ---- */
-    wsF.getRow(r).height=14;r++;
-    sectionTitle(wsF,r,FNC,'Pipeline by Project Type','Estimated value by category');r++;
-    colHeaders(wsF,r,['Project Type','Projects','Est. Value','Share'],['left','center','right','center']);r++;
-    if(!typeRows.length){emptyRow(wsF,r,4,'No projects yet.');r++;}
-    else{
-      const start=r,end=r+typeRows.length-1,totRow=end+1;
-      const allV=typeRows.reduce((s,[,v])=>s+v.v,0);
-      typeRows.forEach(([t,v],i)=>{
-        writeRow(wsF,r,[niceType(t),v.n,v.v,{formula:'IF($C$'+totRow+'=0,0,C'+r+'/$C$'+totRow+')',result:allV?v.v/allV:0}],
-          [{bold:true},{al:'center',fmt:CNT},{al:'right',fmt:AUD},{al:'center',fmt:PCT}],i%2===1);r++;
-      });
-      totalRow(wsF,r,4,['Total',{formula:'SUM(B'+start+':B'+end+')',result:projects.length},{formula:'SUM(C'+start+':C'+end+')',result:allV},{formula:'SUM(D'+start+':D'+end+')',result:1}],
-        [{},{al:'center',fmt:CNT},{al:'right',fmt:AUD},{al:'center',fmt:PCT}]);r++;
-    }
-
-    /* ---- Margin distribution ---- */
-    wsF.getRow(r).height=14;r++;
-    sectionTitle(wsF,r,FNC,'Margin Analysis','Average margin '+avgMargin.toFixed(1)+'%  ·  projects by margin band');r++;
-    colHeaders(wsF,r,['Margin Band','Projects','Share'],['left','center','center']);r++;
-    {
-      const start=r,end=r+BANDS.length-1,totRow=end+1;
-      BANDS.forEach((b,i)=>{
-        writeRow(wsF,r,[b,bandCounts[i],{formula:'IF($B$'+totRow+'=0,0,B'+r+'/$B$'+totRow+')',result:projects.length?bandCounts[i]/projects.length:0}],
-          [{bold:true},{al:'center',fmt:CNT},{al:'center',fmt:PCT}],i%2===1);r++;
-      });
-      totalRow(wsF,r,3,['Total',{formula:'SUM(B'+start+':B'+end+')',result:projects.length},{formula:'SUM(C'+start+':C'+end+')',result:projects.length?1:0}],
-        [{},{al:'center',fmt:CNT},{al:'center',fmt:PCT}]);r++;
-    }
-
-    /* ---- Top 5 ---- */
-    wsF.getRow(r).height=14;r++;
-    sectionTitle(wsF,r,FNC,'Top 5 Highest Value Projects','Sorted by estimated value');r++;
-    colHeaders(wsF,r,['Project','Package','Client','Status','Est. Value','Margin','Type'],['left','center','left','center','right','center','left']);r++;
-    if(!top5.length){emptyRow(wsF,r,7,'No projects yet.');r++;}
-    top5.forEach((p,i)=>{
-      const m=margin(p);
-      writeRow(wsF,r,[p.name||'',p.package_number||'',p.client||'','',ev(p),m/100,niceType(p.project_type)],
-        [{bold:true},{al:'center',color:C.muted},{},{al:'center'},{al:'right',fmt:AUD,bold:true},{al:'center',fmt:'0.0%',bold:true,color:m>=15?'FF047857':m>=10?'FFB45309':'FFB91C1C'},{color:C.muted}],i%2===1);
-      pill(wsF.getCell(r,4),STATUS_XL,p.status,STATUS_LABELS[p.status]||cap(p.status));
-      r++;
-    });
-
-    /* ---- Quote activity ---- */
-    wsF.getRow(r).height=14;r++;
-    sectionTitle(wsF,r,FNC,'Quote Activity & Value','Supplier quote requests and received values');r++;
-    wsF.getRow(r).height=6;r++;
-    tileRow(wsF,r,[
-      [C.blue,'Quote Value Requested',totalQVReq,AUD,'Est. value of projects awaiting quotes'],
-      [C.green,'Quote Value Received',totalQVRec,AUD,'Sum of received & accepted quotes'],
-      [C.teal,'Quotes Received',recQ.length,CNT,'Received or accepted'],
-      [C.purple,'Quotes Sent',quotes.length,CNT,'All quote requests'],
-    ]);r+=4;
-    colHeaders(wsF,r,['Trade Package','Sent','Received','Total Value Received','Avg Value','Overdue'],['left','center','center','right','right','center']);r++;
-    if(!tradeRows.length){emptyRow(wsF,r,6,'No quote data yet.');r++;}
+    /* ---- quotes by trade ---- */
+    heading(wsF,r,FNC,'Quote Activity by Trade Package');r++;
+    hdrRow(wsF,r,['Trade Package','Sent','Received','Value Received ($)','Overdue','Avg Value ($)'],['left','right','right','right','right','right']);r++;
+    if(!tradeRows.length){put(wsF,r,1,'No quote data yet.',{italic:true,color:C.faint});r++;}
     else{
       const start=r;
-      tradeRows.forEach(([t,d],i)=>{
-        writeRow(wsF,r,[t,d.sent,d.recv,d.val,{formula:'IF(C'+r+'=0,0,D'+r+'/C'+r+')',result:d.recv?d.val/d.recv:0},d.over],
-          [{bold:true},{al:'center',fmt:CNT},{al:'center',fmt:CNT,color:'FF047857'},{al:'right',fmt:AUD},{al:'right',fmt:AUD},{al:'center',fmt:CNT,bold:d.over>0,color:d.over>0?'FFDC2626':C.muted}],i%2===1);r++;
+      tradeRows.forEach(([t,d])=>{
+        put(wsF,r,1,t);
+        put(wsF,r,2,d.sent,{al:'right',fmt:CNT,input:true});
+        put(wsF,r,3,d.recv,{al:'right',fmt:CNT,input:true});
+        put(wsF,r,4,d.val,{al:'right',fmt:NUM,input:true});
+        put(wsF,r,5,d.over,{al:'right',fmt:CNT,input:true,bold:d.over>0});
+        put(wsF,r,6,F('IFERROR(D'+r+'/C'+r+',0)',d.recv?d.val/d.recv:0),{al:'right',fmt:NUM});
+        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
       });
       const end=r-1;
       const tv=tradeRows.reduce((s,[,d])=>s+d.val,0),tr=tradeRows.reduce((s,[,d])=>s+d.recv,0);
-      totalRow(wsF,r,6,['Total',{formula:'SUM(B'+start+':B'+end+')',result:quotes.length},{formula:'SUM(C'+start+':C'+end+')',result:tr},{formula:'SUM(D'+start+':D'+end+')',result:tv},{formula:'IF(C'+r+'=0,0,D'+r+'/C'+r+')',result:tr?tv/tr:0},{formula:'SUM(F'+start+':F'+end+')',result:tradeRows.reduce((s,[,d])=>s+d.over,0)}],
-        [{},{al:'center',fmt:CNT},{al:'center',fmt:CNT},{al:'right',fmt:AUD},{al:'right',fmt:AUD},{al:'center',fmt:CNT}]);r++;
+      put(wsF,r,1,'Total',{bold:true});
+      [[2,'B',quotes.length,CNT],[3,'C',tr,CNT],[4,'D',tv,NUM],[5,'E',tradeRows.reduce((s,[,d])=>s+d.over,0),CNT]]
+        .forEach(([c,col,res,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',res),{bold:true,al:'right',fmt}));
+      put(wsF,r,6,F('IFERROR(D'+r+'/C'+r+',0)',tr?tv/tr:0),{bold:true,al:'right',fmt:NUM});
+      totalBorders(wsF,r,6,true);
+      wsF.getCell(cell.qrec,2).value=F('D'+r,tv);
+      wsF.getCell(cell.qn,2).value=F('C'+r,tr);
+      r++;
     }
+    r++;
 
-    /* ---- Monthly summary ---- */
-    wsF.getRow(r).height=14;r++;
-    sectionTitle(wsF,r,FNC,'Monthly Summary','Financial activity for the last 12 months (by project creation month)');r++;
-    colHeaders(wsF,r,['Month','New Tenders','Submitted','Awarded','Lost','Pipeline Value','Awarded Value','Win Rate'],['left','center','center','center','center','right','right','center']);r++;
+    /* ---- monthly summary ---- */
+    heading(wsF,r,FNC,'Monthly Summary');r++;
+    put(wsF,r,1,'Last 12 months, grouped by the month each project was added.',{italic:true,size:9,color:C.muted});r++;
+    hdrRow(wsF,r,['Month','New','Submitted','Awarded','Lost','Pipeline ($)','Awarded ($)','Win Rate'],['left','right','right','right','right','right','right','right']);r++;
     {
       const start=r;
-      monthRows.forEach((m,i)=>{
-        writeRow(wsF,r,[m.label,m.n,m.sub,m.awd,m.lost,m.pipe,m.awdV,m.wr===null?'—':m.wr],
-          [{color:C.muted},{al:'center',fmt:CNT},{al:'center',fmt:CNT},{al:'center',fmt:CNT,color:'FF047857'},{al:'center',fmt:CNT,color:'FFB91C1C'},{al:'right',fmt:AUD},{al:'right',fmt:AUD,color:'FF047857'},
-           {al:'center',fmt:PCT,bold:m.wr!==null,color:m.wr===null?C.faint:m.wr>=0.5?'FF047857':m.wr>=0.3?'FFB45309':'FFB91C1C'}],i%2===1);r++;
+      monthRows.forEach(m=>{
+        const inMonth=rI+',">="&$A'+r+','+rI+',"<"&EDATE($A'+r+',1)';
+        put(wsF,r,1,m.date,{fmt:'mmm yyyy'});
+        put(wsF,r,2,F('COUNTIFS('+inMonth+')',m.n),{al:'right',fmt:CNT});
+        put(wsF,r,3,F('COUNTIFS('+inMonth+','+rS+','+q(L('submitted'))+')',m.sub),{al:'right',fmt:CNT});
+        put(wsF,r,4,F('COUNTIFS('+inMonth+','+rS+','+q(L('awarded'))+')',m.awd),{al:'right',fmt:CNT});
+        put(wsF,r,5,F('COUNTIFS('+inMonth+','+rS+','+q(L('lost'))+')',m.lost),{al:'right',fmt:CNT});
+        put(wsF,r,6,F('SUM(SUMIFS('+rK+','+inMonth+','+rS+','+crit(PIPE_ST)+'))',m.pipe),{al:'right',fmt:NUM});
+        put(wsF,r,7,F('SUMIFS('+rL+','+inMonth+','+rS+','+q(L('awarded'))+')',m.awdV),{al:'right',fmt:NUM});
+        put(wsF,r,8,F('IF(D'+r+'+E'+r+'=0,"–",D'+r+'/(D'+r+'+E'+r+'))',(m.awd+m.lost)?m.awd/(m.awd+m.lost):'–'),{al:'right',fmt:PCT});
+        rule(wsF,r,FNC,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
       });
       const end=r-1;
-      const sum=k=>monthRows.reduce((s,m)=>s+m[k],0);
-      const col=L=>({formula:'SUM('+L+start+':'+L+end+')'});
-      totalRow(wsF,r,FNC,['Totals',{...col('B'),result:sum('n')},{...col('C'),result:sum('sub')},{...col('D'),result:sum('awd')},{...col('E'),result:sum('lost')},{...col('F'),result:sum('pipe')},{...col('G'),result:sum('awdV')},winRate],
-        [{},{al:'center',fmt:CNT},{al:'center',fmt:CNT},{al:'center',fmt:CNT},{al:'center',fmt:CNT},{al:'right',fmt:AUD},{al:'right',fmt:AUD},{al:'center',fmt:PCT}]);r++;
+      const sm=k=>monthRows.reduce((s,m)=>s+m[k],0);
+      put(wsF,r,1,'Total',{bold:true});
+      [[2,'B','n',CNT],[3,'C','sub',CNT],[4,'D','awd',CNT],[5,'E','lost',CNT],[6,'F','pipe',NUM],[7,'G','awdV',NUM]]
+        .forEach(([c,col,k,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',sm(k)),{bold:true,al:'right',fmt}));
+      put(wsF,r,8,F('B'+cell.wr,winRate),{bold:true,al:'right',fmt:PCT});
+      totalBorders(wsF,r,FNC,true);r++;
     }
     printSetup(wsF,'portrait','Financial Overview');
 
-    /* ================= SHEET 3 — CHARTS ================= */
-    const wsC=wb.addWorksheet('Charts',{properties:{tabColor:{argb:C.navy}},views:[{showGridLines:false}]});
-    const CNC=12;
-    wsC.columns=Array.from({length:CNC},()=>({width:13}));
-    sheetHeader(wsC,CNC,'Financial Charts','Visual summary of the Financial tab  ·  '+genLabel+'  ·  static snapshot');
+    /* ================= SHEET 3 — CHARTS (snapshot images) ================= */
+    const CW=Array.from({length:12},()=>13);
+    const wsC=wb.addWorksheet('Charts',{properties:{tabColor:{argb:C.teal}},views:[{showGridLines:false}]});
+    wsC.columns=CW.map(w=>({width:w}));
+    sheetHeader(wsC,CW,'Financial Charts');
+    put(wsC,5,1,'Snapshot at export. The Financial sheet recalculates when the Projects sheet is edited; these charts do not.',{italic:true,size:9,color:C.muted});
 
     host=document.createElement('div');
     host.style.cssText='position:fixed;left:-20000px;top:0;width:1200px;pointer-events:none;opacity:0';
     document.body.appendChild(host);
-    const TXT='#0B1F3A',MUT='#64748B',GRID='#E6ECF5',BLUE='#2563D4',TEAL='#10D9A0',GREEN='#10B981',PURPLE='#7C3AED',RED='#EF4444',SLATE='#94A3B8';
-    const FONT='Arial';
-    const money=v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v);
-    const bgPlugin={id:'xlBg',beforeDraw(ch){
-      const{ctx,width,height}=ch;ctx.save();
-      ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,width,height);
-      ctx.strokeStyle='#DCE4EF';ctx.lineWidth=1;ctx.beginPath();
-      if(ctx.roundRect)ctx.roundRect(0.5,0.5,width-1,height-1,10);else ctx.rect(0.5,0.5,width-1,height-1);
-      ctx.stroke();
-      ctx.fillStyle=BLUE;ctx.fillRect(18,0,44,3);ctx.fillStyle=TEAL;ctx.fillRect(62,0,10,3);
-      ctx.restore();
-    }};
+    const TXT='#0B1F3A',MUT='#6B7280',GRID='#EDF0F4',BLUE='#2563D4',LBLUE='#A9C1EE',NAVY='#0B1F3A',TEAL='#12B886',GREY='#B8C0CC',LOSS='#C96A6A';
+    const FONT='Calibri, Carlito, Arial, sans-serif';
+    const money=v=>Math.abs(v)>=1e6?'$'+(v/1e6).toFixed(1)+'M':Math.abs(v)>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v);
+    const bgPlugin={id:'xlBg',beforeDraw(ch){const{ctx,width,height}=ch;ctx.save();ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,width,height);ctx.restore();}};
     const valLabels=fmt=>({id:'xlVals',afterDatasetsDraw(ch){
       const{ctx}=ch;const horiz=ch.options.indexAxis==='y';
-      ctx.save();ctx.font='bold 11px '+FONT;ctx.fillStyle=TXT;
+      ctx.save();ctx.font='12px '+FONT;ctx.fillStyle=TXT;
       ch.data.datasets.forEach((ds,di)=>{
         const meta=ch.getDatasetMeta(di);if(meta.hidden)return;
         meta.data.forEach((el,i)=>{
@@ -4993,102 +4967,90 @@ window.exportFinancialOverview=async function(){
       ctx.restore();
     }});
     const heads=(title,sub)=>({
-      title:{display:true,text:title,align:'start',color:TXT,font:{family:FONT,size:16,weight:'bold'},padding:{top:6,bottom:sub?2:14}},
-      subtitle:{display:!!sub,text:sub||'',align:'start',color:MUT,font:{family:FONT,size:11},padding:{bottom:14}},
+      title:{display:true,text:title,align:'start',color:TXT,font:{family:FONT,size:15,weight:'bold'},padding:{top:4,bottom:sub?2:12}},
+      subtitle:{display:!!sub,text:sub||'',align:'start',color:MUT,font:{family:FONT,size:12},padding:{bottom:12}},
       tooltip:{enabled:false},
     });
-    const legend=(position)=>({display:true,position:position||'top',align:'end',labels:{color:TXT,font:{family:FONT,size:11},boxWidth:12,boxHeight:12,padding:14}});
-    const ax=(cb,extra)=>{
-      const t={color:MUT,font:{family:FONT,size:11},padding:6};if(cb)t.callback=cb;
-      return Object.assign({grid:{color:GRID},border:{display:false},ticks:t},extra||{});
-    };
-    const PAD={left:18,right:24,top:12,bottom:14};
+    const legend=()=>({display:true,position:'top',align:'start',labels:{color:TXT,font:{family:FONT,size:12},boxWidth:10,boxHeight:10,padding:16}});
+    const tk=(extra)=>Object.assign({color:MUT,font:{family:FONT,size:12},padding:6},extra||{});
+    const ax=(o)=>Object.assign({grid:{color:GRID,drawTicks:false},border:{display:false}},o||{});
     function renderChart(w,h,cfg){
-      const cv=document.createElement('canvas');cv.width=w;cv.height=h;
-      host.appendChild(cv);
-      cfg.options=Object.assign({responsive:false,animation:false,devicePixelRatio:2,layout:{padding:PAD}},cfg.options||{});
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;host.appendChild(cv);
+      cfg.options=Object.assign({responsive:false,animation:false,devicePixelRatio:2,layout:{padding:{left:8,right:28,top:8,bottom:8}}},cfg.options||{});
       cfg.plugins=[bgPlugin].concat(cfg.plugins||[]);
       const ch=new Chart(cv,cfg);
       const url=cv.toDataURL('image/png');
       ch.destroy();cv.remove();
       return url;
     }
-
-    const FULL_W=1060,HALF_W=522,HALF_H=340;
+    const FULL_W=1060,HALF_W=522,HALF_H=330;
     const charts=[];
 
-    charts.push({w:FULL_W,h:360,full:true,url:renderChart(FULL_W,360,{type:'line',
+    charts.push({w:FULL_W,h:340,full:true,url:renderChart(FULL_W,340,{type:'line',
       data:{labels:monthRows.map(m=>m.label),datasets:[
-        {label:'Pipeline',data:monthRows.map(m=>m.pipe),borderColor:BLUE,backgroundColor:'rgba(37,99,212,.10)',fill:true,tension:.35,pointRadius:3.5,pointBackgroundColor:BLUE,borderWidth:2.5},
-        {label:'Submitted',data:monthRows.map(m=>m.subV),borderColor:PURPLE,backgroundColor:'rgba(124,58,237,.06)',fill:true,tension:.35,pointRadius:3.5,pointBackgroundColor:PURPLE,borderWidth:2.5},
-        {label:'Awarded',data:monthRows.map(m=>m.awdV),borderColor:GREEN,backgroundColor:'rgba(16,185,129,.08)',fill:true,tension:.35,pointRadius:3.5,pointBackgroundColor:GREEN,borderWidth:2.5},
+        {label:'Pipeline',data:monthRows.map(m=>m.pipe),borderColor:BLUE,pointBackgroundColor:BLUE,tension:.3,pointRadius:3,borderWidth:2.5},
+        {label:'Submitted',data:monthRows.map(m=>m.subV),borderColor:NAVY,pointBackgroundColor:NAVY,borderDash:[6,4],tension:.3,pointRadius:3,borderWidth:2},
+        {label:'Awarded',data:monthRows.map(m=>m.awdV),borderColor:TEAL,pointBackgroundColor:TEAL,tension:.3,pointRadius:3,borderWidth:2.5},
       ]},
-      options:{plugins:{...heads('Financial Performance','Pipeline, submitted and awarded value by project creation month — last 12 months'),legend:legend()},
-        scales:{x:ax(null,{grid:{display:false}}),y:ax(money,{beginAtZero:true})}}})});
+      options:{plugins:{...heads('Financial performance','Value by the month each project was added, last 12 months'),legend:legend()},
+        scales:{x:ax({grid:{display:false},ticks:tk()}),y:ax({beginAtZero:true,ticks:tk({callback:money})})}}})});
 
     {
-      const aC=projects.filter(p=>p.status==='awarded').length,lC=lost.length,sC=submitted.length,hC=projects.filter(p=>p.status==='on_hold').length;
-      const any=aC+lC+sC+hC>0;
-      const pct=Math.round(winRate*100)+'%';
-      const center={id:'xlCenter',afterDraw(ch){
-        const a=ch.chartArea;const cx=(a.left+a.right)/2,cy=(a.top+a.bottom)/2;const ctx=ch.ctx;
-        ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillStyle=TXT;ctx.font='bold 30px '+FONT;ctx.fillText(pct,cx,cy-8);
-        ctx.fillStyle=MUT;ctx.font='12px '+FONT;ctx.fillText('Win Rate',cx,cy+18);ctx.restore();
-      }};
-      charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'doughnut',
-        data:{labels:any?['Awarded ('+aC+')','Lost ('+lC+')','Submitted ('+sC+')','On Hold ('+hC+')']:['No tenders yet'],
-          datasets:[{data:any?[aC,lC,sC,hC]:[1],backgroundColor:any?[GREEN,RED,PURPLE,SLATE]:['#E2E8F0'],borderColor:'#FFFFFF',borderWidth:2}]},
-        options:{cutout:'64%',plugins:{...heads('Tender Outcomes','Results across all tenders'),legend:legend('right')}},
-        plugins:[center]})});
-    }
-
-    {
-      const TC={drainage:'#2563D4',road:'#10B981',culvert:'#F59E0B',structural:'#7C3AED',earthworks:'#EF4444',electrical:'#06B6D4',water_main:'#EC4899',sewer:'#F97316',mixed:'#6366F1',other:'#64748B'};
+      const rowsS=ALL_STATUSES.map(s=>({s,n:by([s.key]).length})).filter(x=>x.n);
+      const col=k=>WON_ST.includes(k)?TEAL:k==='lost'?LOSS:PIPE_ST.includes(k)?BLUE:k==='awaiting_decision'?LBLUE:GREY;
       charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
-        data:{labels:typeRows.map(([t])=>niceType(t)),datasets:[{data:typeRows.map(([,v])=>v.v),backgroundColor:typeRows.map(([t])=>TC[t]||'#64748B'),borderRadius:5,maxBarThickness:56}]},
-        options:{plugins:{...heads('Pipeline by Project Type','Estimated value by category'),legend:{display:false}},
-          scales:{x:ax(null,{grid:{display:false}}),y:ax(money,{beginAtZero:true,grace:'14%'})}},
-        plugins:[valLabels(money)]})});
+        data:{labels:rowsS.length?rowsS.map(x=>x.s.label):['No projects'],datasets:[{data:rowsS.map(x=>x.n),backgroundColor:rowsS.map(x=>col(x.s.key)),maxBarThickness:22}]},
+        options:{indexAxis:'y',plugins:{...heads('Tender outcomes','Win rate '+Math.round(winRate*100)+'% ('+won.length+' won, '+lost.length+' lost)'),legend:{display:false}},
+          scales:{x:ax({beginAtZero:true,grace:'12%',ticks:tk({stepSize:1,precision:0})}),y:ax({grid:{display:false},ticks:tk({color:TXT})})}},
+        plugins:[valLabels(v=>String(v))]})});
     }
 
     charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
-      data:{labels:BANDS,datasets:[{data:bandCounts,backgroundColor:BLUE,borderRadius:5,maxBarThickness:56}]},
-      options:{plugins:{...heads('Margin Distribution','Projects by margin band · avg '+avgMargin.toFixed(1)+'%'),legend:{display:false}},
-        scales:{x:ax(null,{grid:{display:false}}),y:ax(v=>Number.isInteger(v)?v:'',{beginAtZero:true,grace:'14%',ticks:{color:MUT,font:{family:FONT,size:11},padding:6,stepSize:1}})}},
-      plugins:[valLabels(v=>String(v))]})});
+      data:{labels:typeNames.length?typeNames.map(x=>x.t):['No projects'],datasets:[{data:typeNames.map(x=>sumOf(x.list,ev)),backgroundColor:NAVY,maxBarThickness:22}]},
+      options:{indexAxis:'y',plugins:{...heads('Pipeline by project type','Estimated value'),legend:{display:false}},
+        scales:{x:ax({beginAtZero:true,grace:'16%',ticks:tk({callback:money})}),y:ax({grid:{display:false},ticks:tk({color:TXT})})}},
+      plugins:[valLabels(money)]})});
+
+    {
+      const counts=BANDS.map(([,lo,hi])=>projects.filter(p=>inBand(margin(p)/100,lo,hi)).length);
+      charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
+        data:{labels:BANDS.map(b=>b[0]),datasets:[{data:counts,backgroundColor:BLUE,maxBarThickness:48}]},
+        options:{plugins:{...heads('Margin distribution','Projects by margin band, average '+avgMargin.toFixed(1)+'%'),legend:{display:false}},
+          scales:{x:ax({grid:{display:false},ticks:tk()}),y:ax({beginAtZero:true,grace:'14%',ticks:tk({stepSize:1,precision:0})})}},
+        plugins:[valLabels(v=>String(v))]})});
+    }
 
     charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
       data:{labels:monthRows.map(m=>m.short),datasets:[
-        {label:'New',data:monthRows.map(m=>m.n),backgroundColor:BLUE,borderRadius:3,maxBarThickness:14},
-        {label:'Awarded',data:monthRows.map(m=>m.awd),backgroundColor:GREEN,borderRadius:3,maxBarThickness:14},
-        {label:'Lost',data:monthRows.map(m=>m.lost),backgroundColor:RED,borderRadius:3,maxBarThickness:14},
+        {label:'New',data:monthRows.map(m=>m.n),backgroundColor:BLUE,maxBarThickness:12},
+        {label:'Awarded',data:monthRows.map(m=>m.awd),backgroundColor:TEAL,maxBarThickness:12},
+        {label:'Lost',data:monthRows.map(m=>m.lost),backgroundColor:GREY,maxBarThickness:12},
       ]},
-      options:{plugins:{...heads('Monthly Tender Activity','New, awarded and lost tenders — last 12 months'),legend:legend()},
-        scales:{x:ax(null,{grid:{display:false}}),y:ax(null,{beginAtZero:true,ticks:{color:MUT,font:{family:FONT,size:11},padding:6,stepSize:1,precision:0}})}}})});
+      options:{plugins:{...heads('Monthly tender activity','Last 12 months'),legend:legend()},
+        scales:{x:ax({grid:{display:false},ticks:tk()}),y:ax({beginAtZero:true,ticks:tk({stepSize:1,precision:0})})}}})});
 
     {
-      const items=[...won.map(p=>({p,sec:wonV(p),wt:0})),...piped.map(p=>({p,sec:0,wt:ev(p)*winPct(p)/100}))]
+      const items=[...won,...piped].map(p=>({p,sec:WON_ST.includes(p.status)?wonV(p):0,wt:PIPE_ST.includes(p.status)?projV(p):0}))
         .filter(x=>x.sec+x.wt>0).sort((a,b)=>(b.sec+b.wt)-(a.sec+a.wt)).slice(0,15);
-      const h=Math.max(280,130+items.length*30);
-      const lbl=p=>{const n=p.name||'Untitled';return(n.length>34?n.slice(0,33)+'…':n)+(p.package_number?'  ('+p.package_number+')':'');};
+      const h=Math.max(260,120+items.length*28);
+      const lbl=p=>{const n=p.name||'Untitled';return(n.length>34?n.slice(0,33)+'…':n)+(p.package_number?'  '+p.package_number:'');};
       charts.push({w:FULL_W,h,full:true,url:renderChart(FULL_W,h,{type:'bar',
         data:{labels:items.length?items.map(x=>lbl(x.p)):['No projected income yet'],datasets:[
-          {label:'Secured (won, 100%)',data:items.map(x=>x.sec),backgroundColor:GREEN,borderRadius:4,maxBarThickness:20},
-          {label:'Weighted pipeline (× win %)',data:items.map(x=>x.wt),backgroundColor:BLUE,borderRadius:4,maxBarThickness:20},
+          {label:'Secured (won, 100%)',data:items.map(x=>x.sec),backgroundColor:TEAL,maxBarThickness:18},
+          {label:'Weighted pipeline (value × Win %)',data:items.map(x=>x.wt),backgroundColor:BLUE,maxBarThickness:18},
         ]},
-        options:{indexAxis:'y',plugins:{...heads('Projected Income by Project','Top '+items.length+' contributors  ·  total projected income '+fmtAUD(awardedVal+weightedTotal)),legend:legend()},
-          scales:{x:ax(money,{stacked:true,beginAtZero:true,grace:'10%'}),y:ax(null,{stacked:true,grid:{display:false},ticks:{color:TXT,font:{family:FONT,size:11},padding:6}})}},
+        options:{indexAxis:'y',plugins:{...heads('Projected income by project','Top '+items.length+' contributors, total '+fmtAUD(awardedVal+weightedTotal)),legend:legend()},
+          scales:{x:ax({stacked:true,beginAtZero:true,grace:'10%',ticks:tk({callback:money})}),y:ax({stacked:true,grid:{display:false},ticks:tk({color:TXT})})}},
         plugins:[valLabels(money)]})});
     }
 
-    const PX_COL=91,EMU=9525,ROW_PX=20,LEFT=14,GAP=16;
+    const PX_COL=91,EMU=9525,ROW_PX=20,LEFT=0,GAP=16;
     const place=(c,x,row)=>{
       const id=wb.addImage({base64:c.url,extension:'png'});
       const col=Math.floor(x/PX_COL);
       wsC.addImage(id,{tl:{nativeCol:col,nativeColOff:Math.round((x-col*PX_COL)*EMU),nativeRow:row,nativeRowOff:0},ext:{width:c.w,height:c.h},editAs:'oneCell'});
     };
-    let crow=5;
+    let crow=6;
     for(let i=0;i<charts.length;){
       const c=charts[i];
       if(c.full){place(c,LEFT,crow);crow+=Math.ceil(c.h/ROW_PX)+1;i++;continue;}
