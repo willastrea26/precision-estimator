@@ -4521,10 +4521,8 @@ window.exportFinancialOverview=async function(){
   try{
     if(!window.ExcelJS)throw new Error('ExcelJS not loaded — please refresh the page.');
     const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
-    const quotes=DB.getQuotes();
     const now=new Date();
     const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
-    const todayStr=_localISO(now);
     const nowMonth=yyyy+'-'+mm;
     const asAt=now.toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
     const plural=(n,w)=>n+' '+w+(n!==1?'s':'');
@@ -4537,7 +4535,6 @@ window.exportFinancialOverview=async function(){
     const wonV=p=>+p.awarded_value||+p.estimated_value||0;
     const winPct=p=>{const v=p.win_probability;const n=(v!=null&&v!=='')?Number(v):15;return isNaN(n)?15:n;};
     const margin=p=>p.boq_margin!=null?+p.boq_margin:15;
-    const openQ=q=>!['received','accepted','declined'].includes(q.status);
     const winInput=p=>WON_ST.includes(p.status)?1:p.status==='lost'?0:winPct(p)/100;
     const projV=p=>WON_ST.includes(p.status)?wonV(p):PIPE_ST.includes(p.status)?ev(p)*winPct(p)/100:0;
     const secV=p=>WON_ST.includes(p.status)?wonV(p):0;
@@ -4551,11 +4548,7 @@ window.exportFinancialOverview=async function(){
     const awardedVal=sumOf(won,wonV);
     const weightedAt=s=>sumOf(piped,p=>ev(p)*clamp01(winPct(p)/100+s));
     const weightedTotal=weightedAt(0);
-    const overdueQIds=new Set(quotes.filter(q=>q.due_date&&q.due_date<todayStr&&openQ(q)).map(q=>q.project_id));
-    const overdueProj=projects.filter(p=>overdueQIds.has(p.id));
     const awardedMonthVal=won.filter(p=>(p.updated_at||p.created_at||'').substring(0,7)===nowMonth).reduce((s,p)=>s+wonV(p),0);
-    const activeQProjIds=new Set(quotes.filter(openQ).map(q=>q.project_id));
-    const totalQVReq=projects.filter(p=>activeQProjIds.has(p.id)).reduce((s,p)=>s+ev(p),0);
 
     const monthKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     const monthRows=[];
@@ -4569,15 +4562,6 @@ window.exportFinancialOverview=async function(){
         pipe:sumOf(mp.filter(p=>PIPE_ST.includes(p.status)),ev),awdV:sumOf(st('awarded'),p=>+p.awarded_value||0)});
     }
 
-    const tradeMap={};
-    quotes.forEach(q=>{
-      const t=q.trade_package||'Other';
-      const m=tradeMap[t]||(tradeMap[t]={sent:0,recv:0,val:0,over:0});
-      m.sent++;
-      if(['received','accepted'].includes(q.status)){m.recv++;m.val+=+q.quoted_amount||0;}
-      if(q.due_date&&q.due_date<todayStr&&openQ(q))m.over++;
-    });
-    const tradeRows=Object.entries(tradeMap).sort((a,b)=>b[1].val-a[1].val||b[1].sent-a[1].sent);
 
     const niceType=t=>String(t||'other').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
     const cap=s=>s?String(s).charAt(0).toUpperCase()+String(s).slice(1):'';
@@ -4837,7 +4821,7 @@ window.exportFinancialOverview=async function(){
     tileRow(wsF,r,[
       ['Avg. Tender Value',F('IFERROR('+sumSt(rK,ALL_ST)+'/'+nAll+',0)',projects.length?sumOf(projects,ev)/projects.length:0),NUM,capF(nAll,projects.length,'active project','active projects','')],
       ['Average Margin',F('IFERROR('+sumSt(rM,ALL_ST)+'/'+nAll+',0)',avgMargin/100),PCT1,'BOQ margin, 15% where not set'],
-      ['Overdue Quote Value',sumOf(overdueProj,ev),NUM,'Snapshot at export: '+plural(overdueProj.length,'project'),{snapshot:true}],
+      ['Total Lost Value',F(sumSt(rK,['lost']),sumOf(lost,ev)),NUM,capF(nLost,lost.length,'tender lost','tenders lost')],
       ['Awarded This Month',awardedMonthVal,NUM,'Snapshot at export',{snapshot:true}],
     ]);r+=4;
 
@@ -5019,40 +5003,6 @@ window.exportFinancialOverview=async function(){
         dataStyle(wsF,r,6,n%2===0);r++;
       }
       ref.top10={s,e:r-1,ranked:ranked.slice(0,10)};
-    }
-    r++;
-
-    /* ---- quotes ---- */
-    r++;
-    sectionTitle(wsF,r,FNC,'Quote Activity & Value','Sent, received and overdue counts are inputs from the quote register');r+=2;
-    const qt=tileRow(wsF,r,[
-      ['Quote Value Requested',totalQVReq,NUM,'Snapshot: est. value of projects awaiting quotes',{snapshot:true}],
-      ['Quote Value Received',0,NUM,'Received and accepted quotes'],
-      ['Quotes Received',0,CNT,'Received or accepted'],
-      ['Quotes Sent',0,CNT,'All quote requests'],
-    ]);r+=4;
-    tableHeader(wsF,r,['Trade Package','Sent','Received','Value Received ($)','Avg Value ($)','Overdue'],['left','center','center','right','right','center']);r++;
-    if(!tradeRows.length){put(wsF,r,1,'No quote data yet.',{italic:true,color:C.faint});r++;}
-    else{
-      const s=r;
-      tradeRows.forEach(([t,d],i)=>{
-        put(wsF,r,1,t,{bold:true});
-        put(wsF,r,2,d.sent,{al:'center',fmt:CNT,input:true});
-        put(wsF,r,3,d.recv,{al:'center',fmt:CNT,input:true});
-        put(wsF,r,4,d.val,{al:'right',fmt:NUM,input:true});
-        put(wsF,r,5,F('IFERROR(D'+r+'/C'+r+',0)',d.recv?d.val/d.recv:0),{al:'right',fmt:NUM});
-        put(wsF,r,6,d.over,{al:'center',fmt:CNT,input:true});
-        dataStyle(wsF,r,6,i%2===1);r++;
-      });
-      const e=r-1;
-      const tv=tradeRows.reduce((a,[,d])=>a+d.val,0),tr=tradeRows.reduce((a,[,d])=>a+d.recv,0);
-      put(wsF,r,1,'Total');
-      [[2,'B',quotes.length,CNT,'center'],[3,'C',tr,CNT,'center'],[4,'D',tv,NUM,'right'],[6,'F',tradeRows.reduce((a,[,d])=>a+d.over,0),CNT,'center']]
-        .forEach(([c,col,res,fmt,al])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',res),{al,fmt}));
-      put(wsF,r,5,F('IFERROR(D'+r+'/C'+r+',0)',tr?tv/tr:0),{al:'right',fmt:NUM});
-      totalStyle(wsF,r,6,false);
-      qt[1].value=F('D'+r,tv);qt[2].value=F('C'+r,tr);qt[3].value=F('B'+r,quotes.length);
-      r++;
     }
     r++;
 
