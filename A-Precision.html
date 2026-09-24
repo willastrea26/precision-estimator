@@ -4501,25 +4501,35 @@ window.exportProductivityExcel=async function(){
 
 /* ================================================================
    FINANCIAL OVERVIEW EXPORT  (Projects · Financial · Charts)
-   Projects sheet is the single source of truth; Financial is all formulas.
+   Projects is the editable source, Financial is formulas, Charts are
+   native Excel charts (injected with JSZip) that read from Financial.
 ================================================================ */
+async function _loadJSZip(){
+  if(window.JSZip)return window.JSZip;
+  await new Promise((ok,bad)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload=ok;s.onerror=()=>bad(new Error('JSZip failed to load'));
+    document.head.appendChild(s);
+  });
+  return window.JSZip;
+}
 window.exportFinancialOverview=async function(){
   const btn=document.getElementById('fin-xl-btn');
   const origHtml=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.innerHTML='⏳ Generating...';}
-  let host=null;
   try{
     if(!window.ExcelJS)throw new Error('ExcelJS not loaded — please refresh the page.');
-    if(!window.Chart)throw new Error('Chart.js not loaded — please refresh the page.');
     const projects=DB.getProjects().filter(p=>p.lifecycle_status==='active');
     const quotes=DB.getQuotes();
     const now=new Date();
     const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
     const todayStr=_localISO(now);
     const nowMonth=yyyy+'-'+mm;
-    const asAt='As at '+now.toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
+    const asAt=now.toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
+    const plural=(n,w)=>n+' '+w+(n!==1?'s':'');
 
-    /* ---------- values (mirror renderFinancial / Dashboard); used as cached results + charts ---------- */
+    /* ---------- values (mirror renderFinancial / Dashboard): cached results + chart caches ---------- */
     const WON_ST=['awarded','in_progress','completed'];
     const PIPE_ST=['estimating','submitted'];
     const ALL_ST=ALL_STATUSES.map(s=>s.key);
@@ -4530,34 +4540,33 @@ window.exportFinancialOverview=async function(){
     const openQ=q=>!['received','accepted','declined'].includes(q.status);
     const winInput=p=>WON_ST.includes(p.status)?1:p.status==='lost'?0:winPct(p)/100;
     const projV=p=>WON_ST.includes(p.status)?wonV(p):PIPE_ST.includes(p.status)?ev(p)*winPct(p)/100:0;
+    const secV=p=>WON_ST.includes(p.status)?wonV(p):0;
     const by=keys=>projects.filter(p=>keys.includes(p.status));
     const sumOf=(list,fn)=>list.reduce((s,p)=>s+fn(p),0);
+    const clamp01=x=>Math.max(0,Math.min(1,x));
 
     const piped=by(PIPE_ST),won=by(WON_ST),lost=by(['lost']),submitted=by(['submitted']);
     const winRate=(won.length+lost.length)?won.length/(won.length+lost.length):0;
     const avgMargin=projects.length?sumOf(projects,margin)/projects.length:0;
-    const weightedTotal=sumOf(piped,projV);
     const awardedVal=sumOf(won,wonV);
+    const weightedAt=s=>sumOf(piped,p=>ev(p)*clamp01(winPct(p)/100+s));
+    const weightedTotal=weightedAt(0);
     const overdueQIds=new Set(quotes.filter(q=>q.due_date&&q.due_date<todayStr&&openQ(q)).map(q=>q.project_id));
     const overdueProj=projects.filter(p=>overdueQIds.has(p.id));
     const awardedMonthVal=won.filter(p=>(p.updated_at||p.created_at||'').substring(0,7)===nowMonth).reduce((s,p)=>s+wonV(p),0);
     const activeQProjIds=new Set(quotes.filter(openQ).map(q=>q.project_id));
     const totalQVReq=projects.filter(p=>activeQProjIds.has(p.id)).reduce((s,p)=>s+ev(p),0);
 
+    const monthKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     const monthRows=[];
     for(let i=11;i>=0;i--){
       const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-      const mk=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-      const mp=projects.filter(p=>{const c=p.created_at?new Date(p.created_at):null;return c&&!isNaN(c)&&(c.getFullYear()+'-'+String(c.getMonth()+1).padStart(2,'0'))===mk;});
+      const mk=monthKey(d);
+      const mp=projects.filter(p=>{const c=p.created_at?new Date(p.created_at):null;return c&&!isNaN(c)&&monthKey(c)===mk;});
       const st=k=>mp.filter(p=>p.status===k);
-      monthRows.push({
-        date:new Date(Date.UTC(d.getFullYear(),d.getMonth(),1)),
-        label:d.toLocaleDateString('en-AU',{month:'short',year:'numeric'}),
-        short:d.toLocaleDateString('en-AU',{month:'short'}),
+      monthRows.push({date:new Date(Date.UTC(d.getFullYear(),d.getMonth(),1)),
         n:mp.length,sub:st('submitted').length,awd:st('awarded').length,lost:st('lost').length,
-        pipe:sumOf(mp.filter(p=>PIPE_ST.includes(p.status)),ev),subV:sumOf(st('submitted'),ev),
-        awdV:sumOf(st('awarded'),p=>+p.awarded_value||0),
-      });
+        pipe:sumOf(mp.filter(p=>PIPE_ST.includes(p.status)),ev),awdV:sumOf(st('awarded'),p=>+p.awarded_value||0)});
     }
 
     const tradeMap={};
@@ -4572,82 +4581,119 @@ window.exportFinancialOverview=async function(){
 
     const niceType=t=>String(t||'other').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
     const cap=s=>s?String(s).charAt(0).toUpperCase()+String(s).slice(1):'';
-    const typeNames=[...new Set(projects.map(p=>niceType(p.project_type)))]
-      .map(t=>({t,list:projects.filter(p=>niceType(p.project_type)===t)}))
+    const clientOf=p=>String(p.client||'').trim();
+    const groupBy=keyFn=>[...new Set(projects.map(keyFn).filter(Boolean))]
+      .map(k=>({k,list:projects.filter(p=>keyFn(p)===k)}))
       .sort((a,b)=>sumOf(b.list,ev)-sumOf(a.list,ev));
+    const typeGroups=groupBy(p=>niceType(p.project_type));
+    const clientGroups=groupBy(clientOf);
     const BANDS=[['Under 5%',null,0.05],['5% to 10%',0.05,0.10],['10% to 15%',0.10,0.15],['15% to 20%',0.15,0.20],['20% and over',0.20,null]];
     const inBand=(m,lo,hi)=>(lo==null||m>=lo)&&(hi==null||m<hi);
+    const bandCounts=BANDS.map(([,lo,hi])=>projects.filter(p=>inBand(margin(p)/100,lo,hi)).length);
+    const SCEN=[['Worst case',-0.10],['Likely',0],['Best case',0.10]];
     const xlDate=s=>{const m=s&&String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):null;};
     const addedDate=p=>{const d=p.created_at?new Date(p.created_at):null;return d&&!isNaN(d)?new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())):null;};
 
     /* ---------- workbook styling ---------- */
     const wb=new ExcelJS.Workbook();
     wb.creator='A-Civil';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
-    const C={navy:'FF0B1F3A',blue:'FF2563D4',teal:'FF10D9A0',ink:'FF1F2937',muted:'FF6B7280',faint:'FF9CA3AF',
-      rule:'FFCBD3DE',hair:'FFE8ECF1',band:'FFF3F6FA',input:'FF1D4ED8'};
+    const C={navy:'FF0B1F3A',blue:'FF2563D4',teal:'FF10D9A0',ink:'FF1F2937',muted:'FF6B7280',faint:'FF9CA3AF',white:'FFFFFFFF',
+      rule:'FFCBD3DE',hair:'FFE6EAF0',band:'FFF7F9FC',tint:'FFEAF0F8',tile:'FFF3F6FA',input:'FF1D4ED8',inputBg:'FFFFF6E0',amber:'FFE3A63B'};
     const font=o=>Object.assign({name:'Calibri',size:10,color:{argb:C.ink}},o||{});
     const fill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
     const line=(style,c)=>({style,color:{argb:c}});
     const NUM='#,##0;(#,##0);"–"';
     const PCT='0%;-0%;"–"';
     const PCT1='0.0%;-0.0%;"–"';
+    const WR='0%';
+    const SHIFT_FMT='+0%;-0%;0%';
     const CNT='#,##0;-#,##0;"–"';
     const DATE='dd/mm/yyyy';
-    const q=s=>'"'+s+'"';
+    const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
     const L=k=>STATUS_LABELS[k];
+    const F=(formula,result)=>({formula,result});
 
-    let logoId=null;
+    let logoB64=null;
     try{
       const res=await fetch('assets/a-civil-logo-transparent.png');
-      if(res.ok){
-        const blob=await res.blob();
-        const b64=await new Promise((ok,bad)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=bad;fr.readAsDataURL(blob);});
-        logoId=wb.addImage({base64:b64,extension:'png'});
-      }
+      if(res.ok){const blob=await res.blob();logoB64=await new Promise((ok,bad)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=bad;fr.readAsDataURL(blob);});}
     }catch(_){}
+    const BLANK_PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const logoId=wb.addImage({base64:logoB64||BLANK_PNG,extension:'png'});
 
-    function sheetHeader(ws,widths,title){
-      const nc=widths.length;
-      const t=ws.getCell(1,1);t.value=title;t.font=font({size:18,bold:true,color:{argb:C.navy}});t.alignment={vertical:'bottom'};
-      ws.getRow(1).height=30;
-      const s=ws.getCell(2,1);s.value='A-Civil   |   '+asAt;s.font=font({color:{argb:C.muted}});s.alignment={vertical:'top'};
-      ws.getRow(2).height=22;
-      for(let c=1;c<=nc;c++)ws.getCell(3,c).border={bottom:line('medium',C.navy)};
-      ws.getRow(3).height=6;
-      ws.getRow(4).height=10;
-      if(logoId!==null){
-        const colPx=Math.floor(widths[nc-1]*7+5);
-        ws.addImage(logoId,{tl:{nativeCol:nc-1,nativeColOff:Math.max(0,colPx-60)*9525,nativeRow:0,nativeRowOff:3*9525},ext:{width:56,height:56},editAs:'oneCell'});
-      }
-    }
     function put(ws,row,col,v,o){
       o=o||{};
       const c=ws.getCell(row,col);
       c.value=v;
       c.font=font({bold:!!o.bold,italic:!!o.italic,size:o.size||10,color:{argb:o.color||(o.input?C.input:C.ink)}});
-      c.alignment={horizontal:o.al||'left',vertical:'middle',wrapText:!!o.wrap,indent:o.indent||0};
+      const al=o.al||'left';
+      c.alignment={horizontal:al,vertical:o.va||'middle',wrapText:!!o.wrap,indent:o.indent!=null?o.indent:(al==='center'?0:1)};
       if(o.fmt)c.numFmt=o.fmt;
       return c;
     }
-    function rule(ws,row,nc,border){for(let c=1;c<=nc;c++)ws.getCell(row,c).border=border;}
-    function heading(ws,row,nc,text){
-      put(ws,row,1,text,{bold:true,size:12,color:C.navy});
-      rule(ws,row,nc,{bottom:line('thin',C.navy)});
-      ws.getRow(row).height=22;
+    function sheetHeader(ws,widths,title,sub){
+      const nc=widths.length;
+      put(ws,1,1,title,{size:20,bold:true,color:C.navy,va:'bottom'});
+      ws.getRow(1).height=34;
+      put(ws,2,1,sub,{color:C.muted,va:'top'});
+      ws.getRow(2).height=22;
+      for(let c=1;c<=nc;c++)ws.getCell(3,c).fill=fill(c===nc?C.teal:C.navy);
+      ws.getRow(3).height=4;
+      ws.getRow(4).height=10;
+      if(logoB64){
+        const colPx=Math.floor(widths[nc-1]*7+5);
+        ws.addImage(logoId,{tl:{nativeCol:nc-1,nativeColOff:Math.max(0,colPx-64)*9525,nativeRow:0,nativeRowOff:4*9525},ext:{width:58,height:58},editAs:'oneCell'});
+      }else{
+        ws.addImage(logoId,{tl:{nativeCol:0,nativeColOff:0,nativeRow:0,nativeRowOff:0},ext:{width:1,height:1},editAs:'oneCell'});
+      }
     }
-    function hdrRow(ws,row,hdrs,als,wrap){
-      hdrs.forEach((h,i)=>{
-        const c=put(ws,row,i+1,h,{bold:true,size:9,color:C.muted,al:als[i],wrap});
-        c.alignment.vertical='bottom';
-        c.border={bottom:line('thin',C.rule)};
-      });
-      ws.getRow(row).height=wrap?28:18;
+    function sectionTitle(ws,row,nc,title,note){
+      put(ws,row,1,title,{bold:true,size:12,color:C.navy,indent:0});
+      if(note)put(ws,row,3,note,{italic:true,size:9,color:C.muted,indent:0});
+      for(let c=1;c<=nc;c++)ws.getCell(row,c).border={bottom:line('thin',C.navy)};
+      ws.getRow(row).height=24;
     }
-    function totalBorders(ws,row,nc,grand){
-      rule(ws,row,nc,grand?{top:line('thin',C.ink),bottom:line('double',C.ink)}:{top:line('thin',C.ink)});
-      ws.getRow(row).height=grand?20:18;
+    function tableHeader(ws,row,hdrs,als){
+      hdrs.forEach((h,i)=>{const c=put(ws,row,i+1,h,{bold:true,size:9,color:C.white,al:als[i],wrap:true});c.fill=fill(C.navy);});
+      ws.getRow(row).height=26;
     }
-    const F=(formula,result)=>({formula,result});
+    function dataStyle(ws,row,nc,alt){
+      for(let c=1;c<=nc;c++){const x=ws.getCell(row,c);x.fill=fill(alt?C.band:C.white);x.border={bottom:line('thin',C.hair)};}
+      ws.getRow(row).height=18;
+    }
+    function totalStyle(ws,row,nc,grand){
+      for(let c=1;c<=nc;c++){
+        const x=ws.getCell(row,c);
+        x.fill=fill(grand?C.navy:C.tint);
+        x.border=grand?{}:{top:line('thin',C.navy)};
+        x.font=Object.assign(font(),x.font||{},{bold:true,color:{argb:grand?C.white:C.navy}});
+      }
+      ws.getRow(row).height=grand?22:20;
+    }
+    function tile(ws,r,c,label,value,fmt,caption,o){
+      o=o||{};
+      const G=line('thick',C.white);
+      for(let k=0;k<3;k++){
+        ws.mergeCells(r+k,c,r+k,c+1);
+        for(let j=0;j<2;j++){
+          const x=ws.getCell(r+k,c+j);
+          const b={left:G,right:G};
+          if(k===0)b.top=line('medium',o.accent||C.navy);
+          x.border=b;x.fill=fill(C.tile);
+          x.alignment={horizontal:'left',vertical:k===0?'bottom':k===1?'middle':'top',indent:1};
+        }
+      }
+      const l=ws.getCell(r,c),v=ws.getCell(r+1,c),s=ws.getCell(r+2,c);
+      l.value=label;l.font=font({size:9,bold:true,color:{argb:C.muted}});
+      v.value=value;v.font=font({size:18,bold:true,color:{argb:o.snapshot?C.input:C.navy}});if(fmt)v.numFmt=fmt;
+      s.value=caption||'';s.font=font({size:8.5,color:{argb:C.muted}});
+      return v;
+    }
+    function tileRow(ws,r,defs){
+      const cells=defs.map((d,i)=>tile(ws,r,1+i*2,...d));
+      ws.getRow(r).height=20;ws.getRow(r+1).height=30;ws.getRow(r+2).height=18;ws.getRow(r+3).height=10;
+      return cells;
+    }
     const printSetup=(ws,orientation,name,titleRows)=>{
       ws.pageSetup={paperSize:9,orientation,fitToPage:true,fitToWidth:1,fitToHeight:0,
         margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.25,footer:0.25}};
@@ -4655,422 +4701,554 @@ window.exportFinancialOverview=async function(){
       ws.headerFooter={oddFooter:'&L&"Calibri"&8A-Civil  |  '+name+'&R&"Calibri"&8Page &P of &N'};
     };
 
-    /* ================= SHEET 1 — PROJECTS (inputs) ================= */
-    const PW=[34,10,26,32,13,17,9,11,11,8,14,14,9,15,6];
     const wsP=wb.addWorksheet('Projects',{properties:{tabColor:{argb:C.navy}},views:[{state:'frozen',xSplit:1,ySplit:6,showGridLines:false}]});
-    wsP.columns=PW.map(w=>({width:w}));
-    wsP.getColumn(15).hidden=true;
+    const wsF=wb.addWorksheet('Financial',{properties:{tabColor:{argb:C.blue}},views:[{state:'frozen',ySplit:5,showGridLines:false}]});
+    const wsC=wb.addWorksheet('Charts',{properties:{tabColor:{argb:C.teal}},views:[{showGridLines:false}]});
+    const SHIFT='Financial!$E$5';
+
+    /* ================= SHEET 1 — PROJECTS (inputs) ================= */
+    const PW=[34,10,26,30,13,17,10,11,11,9,14,14,10,15,4,4];
     const PNC=14;
-    sheetHeader(wsP,PW.slice(0,PNC),'Projects Register');
+    wsP.columns=PW.map(w=>({width:w}));
+    wsP.getColumn(15).hidden=true;wsP.getColumn(16).hidden=true;
+    sheetHeader(wsP,PW.slice(0,PNC),'Projects Overview','A-Civil   |   As at '+asAt+'   |   '+plural(projects.length,'active project'));
     wsP.getCell(5,1).value={richText:[
       {text:'Blue',font:font({size:9,bold:true,color:{argb:C.input}})},
-      {text:' figures are inputs. Black figures are formulas. Status and Risk have drop-down lists, and the Financial sheet updates from this sheet.',font:font({size:9,color:{argb:C.muted}})},
+      {text:' figures are inputs you can change. Black figures are formulas. Status and Risk have drop-down lists. Everything on the Financial and Charts sheets updates from this sheet.',font:font({size:9,color:{argb:C.muted}})},
     ]};
-    wsP.getRow(5).height=18;
+    wsP.getCell(5,1).alignment={vertical:'middle',indent:0};
+    wsP.getRow(5).height=20;
     const P_HDR=['Project','Package','Client','Location','Type','Status','Risk','Due Date','Date Added','Win %','Est. Value ($)','Awarded Value ($)','Margin %','Projected Value ($)'];
-    const P_AL=['left','left','left','left','left','left','left','center','center','right','right','right','right','right'];
-    hdrRow(wsP,6,P_HDR,P_AL,true);
+    const P_AL=['left','left','left','left','left','center','center','center','center','right','right','right','right','right'];
+    tableHeader(wsP,6,P_HDR,P_AL);
+    wsP.getRow(6).height=30;
     const FIRST=7;
     const statusList=q(ALL_STATUSES.map(s=>s.label).join(','));
     const pctRule={type:'decimal',operator:'between',allowBlank:true,formulae:[0,1],showErrorMessage:true,errorTitle:'Percentage',error:'Enter a percentage between 0% and 100%.'};
-    const wonTest=r=>'OR('+WON_ST.map(k=>'F'+r+'='+q(L(k))).join(',')+')';
-    const pipeTest=r=>'OR('+PIPE_ST.map(k=>'F'+r+'='+q(L(k))).join(',')+')';
+    const orTest=(r,keys)=>'OR('+keys.map(k=>'F'+r+'='+q(L(k))).join(',')+')';
     const grp=_projGroupActive(projects);
+    const rowOf=new Map();
     let r=FIRST;
     const subRows=[];
-    [['Active projects',grp.active],['Estimating',grp.estimating],['Other',grp.other]].forEach(([label,rows])=>{
+    [['Active Projects',grp.active],['Estimating',grp.estimating],['Other',grp.other]].forEach(([label,rows])=>{
       if(!rows.length)return;
-      for(let c=1;c<=PNC;c++){const x=wsP.getCell(r,c);x.fill=fill(C.band);x.border={bottom:line('thin',C.rule)};}
-      put(wsP,r,1,label,{bold:true,color:C.navy}).fill=fill(C.band);
-      wsP.getRow(r).height=20;r++;
+      wsP.getCell(r,1).value={richText:[
+        {text:label,font:font({bold:true,size:11,color:{argb:C.navy}})},
+        {text:'    '+plural(rows.length,'project'),font:font({size:9,color:{argb:C.muted}})},
+      ]};
+      wsP.getCell(r,1).alignment={vertical:'bottom',indent:0};
+      for(let c=1;c<=PNC;c++)wsP.getCell(r,c).border={bottom:line('thin',C.navy)};
+      wsP.getRow(r).height=26;r++;
       const start=r;
-      rows.forEach(p=>{
+      rows.forEach((p,i)=>{
+        rowOf.set(p,r);
         put(wsP,r,1,p.name||'',{bold:true});
         put(wsP,r,2,p.package_number||'',{color:C.muted});
-        put(wsP,r,3,p.client||'');
+        put(wsP,r,3,clientOf(p));
         put(wsP,r,4,p.location||'',{color:C.muted});
         put(wsP,r,5,niceType(p.project_type));
-        put(wsP,r,6,L(p.status)||cap(p.status)).dataValidation={type:'list',allowBlank:true,formulae:[statusList],showErrorMessage:true,errorTitle:'Status',error:'Pick a status from the list.'};
-        put(wsP,r,7,cap(p.risk_level)).dataValidation={type:'list',allowBlank:true,formulae:['"Low,Medium,High,Extreme"']};
+        put(wsP,r,6,L(p.status)||cap(p.status),{al:'center'}).dataValidation={type:'list',allowBlank:true,formulae:[statusList],showErrorMessage:true,errorTitle:'Status',error:'Pick a status from the list.'};
+        put(wsP,r,7,cap(p.risk_level),{al:'center'}).dataValidation={type:'list',allowBlank:true,formulae:['"Low,Medium,High,Extreme"']};
         put(wsP,r,8,xlDate(p.submission_due_date),{input:true,al:'center',fmt:DATE});
         put(wsP,r,9,addedDate(p),{input:true,al:'center',fmt:DATE});
         put(wsP,r,10,winInput(p),{input:true,al:'right',fmt:PCT}).dataValidation=pctRule;
         put(wsP,r,11,ev(p),{input:true,al:'right',fmt:NUM});
         put(wsP,r,12,+p.awarded_value||0,{input:true,al:'right',fmt:NUM});
         put(wsP,r,13,margin(p)/100,{input:true,al:'right',fmt:PCT1}).dataValidation=pctRule;
-        put(wsP,r,14,F('IF('+wonTest(r)+',IF(L'+r+'>0,L'+r+',K'+r+'),IF('+pipeTest(r)+',K'+r+'*J'+r+',0))',projV(p)),{bold:true,al:'right',fmt:NUM});
+        put(wsP,r,14,F('IF('+orTest(r,WON_ST)+',IF(L'+r+'>0,L'+r+',K'+r+'),IF('+orTest(r,PIPE_ST)+',K'+r+'*MAX(0,MIN(1,J'+r+'+'+SHIFT+')),0))',projV(p)),{bold:true,al:'right',fmt:NUM});
         put(wsP,r,15,F('K'+r+'+ROW()/1000000000',ev(p)+r/1e9));
-        rule(wsP,r,PNC,{bottom:line('thin',C.hair)});
-        wsP.getRow(r).height=18;
+        put(wsP,r,16,F('N'+r+'+ROW()/1000000000',projV(p)+r/1e9));
+        dataStyle(wsP,r,PNC,i%2===1);
         r++;
       });
       const end=r-1;
-      put(wsP,r,1,'Total '+label.toLowerCase(),{bold:true});
-      [[11,'K',ev],[12,'L',p=>+p.awarded_value||0],[14,'N',projV]].forEach(([c,col,fn])=>put(wsP,r,c,F('SUM('+col+start+':'+col+end+')',sumOf(rows,fn)),{bold:true,al:'right',fmt:NUM}));
-      totalBorders(wsP,r,PNC,false);
+      put(wsP,r,1,'Total '+label.toLowerCase());
+      [[11,'K',ev],[12,'L',p=>+p.awarded_value||0],[14,'N',projV]].forEach(([c,col,fn])=>put(wsP,r,c,F('SUM('+col+start+':'+col+end+')',sumOf(rows,fn)),{al:'right',fmt:NUM}));
+      totalStyle(wsP,r,PNC,false);
       subRows.push(r);r++;
-      wsP.getRow(r).height=10;r++;
+      wsP.getRow(r).height=12;r++;
     });
     const LAST=Math.max(FIRST,r-1);
     if(subRows.length){
-      put(wsP,r,1,'Total all projects',{bold:true});
-      [[11,'K',ev],[12,'L',p=>+p.awarded_value||0],[14,'N',projV]].forEach(([c,col,fn])=>put(wsP,r,c,F(subRows.map(x=>col+x).join('+'),sumOf(projects,fn)),{bold:true,al:'right',fmt:NUM}));
-      totalBorders(wsP,r,PNC,true);
+      put(wsP,r,1,'Total all projects');
+      [[11,'K',ev],[12,'L',p=>+p.awarded_value||0],[14,'N',projV]].forEach(([c,col,fn])=>put(wsP,r,c,F(subRows.map(x=>col+x).join('+'),sumOf(projects,fn)),{al:'right',fmt:NUM}));
+      totalStyle(wsP,r,PNC,true);
     }else put(wsP,r,1,'No active projects.',{italic:true,color:C.faint});
 
     if(projects.length){
       let pr=1;
       const cf=(ref,rules)=>wsP.addConditionalFormatting({ref,rules:rules.map(x=>Object.assign({type:'expression',priority:pr++},x))});
       const tone=(fg,bg,bold)=>{const s={font:{color:{argb:fg},bold:!!bold}};if(bg)s.fill={type:'pattern',pattern:'solid',bgColor:{argb:bg}};return s;};
-      const ST_TONE={estimating:['FF1E40AF','FFE8EEFB'],submitted:['FF5B21B6','FFEFEAFB'],awaiting_decision:['FF92400E','FFFDF3E1'],
-        awarded:['FF065F46','FFE3F5EE'],completed:['FF065F46','FFE3F5EE'],in_progress:['FF155E75','FFE2F3F6'],
-        lost:['FF991B1B','FFFBE9E9'],on_hold:['FF4B5563','FFF1F3F6'],not_submitted:['FF4B5563','FFF1F3F6']};
-      cf('F'+FIRST+':F'+LAST,ALL_STATUSES.map(s=>({formulae:['$F'+FIRST+'='+q(s.label)],style:tone(...(ST_TONE[s.key]||['FF4B5563','FFF1F3F6']))})));
+      const ST_TONE={estimating:['FF1E40AF','FFE6EDFB'],submitted:['FF5B21B6','FFEEEAFB'],awaiting_decision:['FF92400E','FFFCF1DC'],
+        awarded:['FF065F46','FFDFF3EA'],completed:['FF065F46','FFDFF3EA'],in_progress:['FF155E75','FFDDF1F5'],
+        lost:['FF991B1B','FFF9E6E6'],on_hold:['FF4B5563','FFEEF1F4'],not_submitted:['FF4B5563','FFEEF1F4']};
+      cf('F'+FIRST+':F'+LAST,ALL_STATUSES.map(s=>({formulae:['$F'+FIRST+'='+q(s.label)],style:tone(...(ST_TONE[s.key]||['FF4B5563','FFEEF1F4']),true)})));
       cf('G'+FIRST+':G'+LAST,[
-        {formulae:['$G'+FIRST+'="Extreme"'],style:tone('FFFFFFFF','FFB91C1C',true)},
-        {formulae:['$G'+FIRST+'="High"'],style:tone('FFB91C1C',null,true)},
-        {formulae:['$G'+FIRST+'="Medium"'],style:tone('FFB45309')},
-        {formulae:['$G'+FIRST+'="Low"'],style:tone('FF047857')},
+        {formulae:['$G'+FIRST+'="Extreme"'],style:tone('FFFFFFFF','FFA61B1B',true)},
+        {formulae:['$G'+FIRST+'="High"'],style:tone('FF991B1B','FFF9E6E6',true)},
+        {formulae:['$G'+FIRST+'="Medium"'],style:tone('FF92400E','FFFCF1DC',true)},
+        {formulae:['$G'+FIRST+'="Low"'],style:tone('FF065F46','FFDFF3EA',true)},
       ]);
       const openTest='OR($F'+FIRST+'='+q(L('estimating'))+',$F'+FIRST+'='+q(L('submitted'))+',$F'+FIRST+'='+q(L('awaiting_decision'))+')';
       cf('H'+FIRST+':H'+LAST,[
-        {formulae:['AND(ISNUMBER($H'+FIRST+'),$H'+FIRST+'<TODAY(),'+openTest+')'],style:tone('FFB91C1C','FFFBE9E9',true)},
-        {formulae:['AND(ISNUMBER($H'+FIRST+'),$H'+FIRST+'-TODAY()<=7,$H'+FIRST+'>=TODAY(),'+openTest+')'],style:tone('FFB45309','FFFDF3E1',true)},
+        {formulae:['AND(ISNUMBER($H'+FIRST+'),$H'+FIRST+'<TODAY(),'+openTest+')'],style:tone('FF991B1B','FFF9E6E6',true)},
+        {formulae:['AND(ISNUMBER($H'+FIRST+'),$H'+FIRST+'>=TODAY(),$H'+FIRST+'-TODAY()<=7,'+openTest+')'],style:tone('FF92400E','FFFCF1DC',true)},
       ]);
     }
-    printSetup(wsP,'landscape','Projects Register','6:6');
+    printSetup(wsP,'landscape','Projects Overview','6:6');
 
-    /* ---------- range helpers for formulas ---------- */
+    /* ---------- formula helpers over the Projects range ---------- */
     const R=col=>'Projects!$'+col+'$'+FIRST+':$'+col+'$'+LAST;
-    const rS=R('F'),rK=R('K'),rL=R('L'),rN=R('N'),rJ=R('J'),rM=R('M'),rI=R('I'),rE=R('E'),rO=R('O'),rA=R('A'),rC=R('C');
+    const rS=R('F'),rK=R('K'),rL=R('L'),rN=R('N'),rJ=R('J'),rM=R('M'),rI=R('I'),rE=R('E'),rO=R('O'),rP=R('P'),rA=R('A'),rB=R('B'),rC=R('C');
     const crit=keys=>keys.length===1?q(L(keys[0])):'{'+keys.map(k=>q(L(k))).join(',')+'}';
-    const sumSt=(rng,keys)=>keys.length===1?'SUMIFS('+rng+','+rS+','+crit(keys)+')':'SUM(SUMIFS('+rng+','+rS+','+crit(keys)+'))';
-    const cntSt=keys=>keys.length===1?'COUNTIFS('+rS+','+crit(keys)+')':'SUM(COUNTIFS('+rS+','+crit(keys)+'))';
+    const sumSt=(rng,keys,extra)=>{const x=rng+','+rS+','+crit(keys)+(extra?','+extra:'');return keys.length===1?'SUMIFS('+x+')':'SUM(SUMIFS('+x+'))';};
+    const cntSt=(keys,extra)=>{const x=rS+','+crit(keys)+(extra?','+extra:'');return keys.length===1?'COUNTIFS('+x+')':'SUM(COUNTIFS('+x+'))';};
+    const isPipe='(('+rS+'='+q(L('estimating'))+')+('+rS+'='+q(L('submitted'))+'))';
+    const clampJ=s=>{const t='('+rJ+'+'+s+')';return '('+t+'*('+t+'>0)*('+t+'<=1)+('+t+'>1))';};
+    const capF=(expr,n,sing,plur,suffix)=>F('IF('+expr+'=1,"1 '+sing+'",'+expr+'&" '+plur+'")'+(suffix?'&'+q(suffix):''),(n===1?'1 '+sing:n+' '+plur)+(suffix||''));
 
     /* ================= SHEET 2 — FINANCIAL (formulas) ================= */
-    const FW=[40,15,12,17,13,16,16,11];
+    const FW=[30,12,21,21,21,21,21,21];
     const FNC=FW.length;
-    const wsF=wb.addWorksheet('Financial',{properties:{tabColor:{argb:C.blue}},views:[{showGridLines:false}]});
     wsF.columns=FW.map(w=>({width:w}));
-    sheetHeader(wsF,FW,'Financial Overview');
-    put(wsF,5,1,'All figures below are formulas that read from the Projects sheet, except where marked as a snapshot.',{italic:true,size:9,color:C.muted});
+    sheetHeader(wsF,FW,'Financial Overview','A-Civil   |   As at '+asAt+'   |   Business performance, pipeline and projected income');
+    /* scenario control (row 5, frozen) */
+    put(wsF,5,1,'Scenario in use',{bold:true,color:C.navy});
+    wsF.mergeCells(5,2,5,3);
+    for(const c of [2,3]){const x=wsF.getCell(5,c);x.fill=fill(C.inputBg);x.border={top:line('thin',C.amber),bottom:line('thin',C.amber),left:line('thin',C.amber),right:line('thin',C.amber)};}
+    const scCell=put(wsF,5,2,'Likely',{bold:true,input:true,al:'center'});
+    scCell.dataValidation={type:'list',allowBlank:false,formulae:['"'+SCEN.map(s=>s[0]).join(',')+'"'],showErrorMessage:true,errorTitle:'Scenario',error:'Pick Worst case, Likely or Best case.',showInputMessage:true,promptTitle:'Scenario',prompt:'Shifts every open tender\'s Win % by the amount in the Scenarios table.'};
+    put(wsF,5,4,'Win % shift',{al:'right',color:C.muted});
+    const shiftCell=put(wsF,5,5,0,{bold:true,al:'left',fmt:SHIFT_FMT});
+    put(wsF,5,6,'Change the scenario to update every projected figure.',{italic:true,size:9,color:C.muted});
+    wsF.getRow(5).height=24;
     r=7;
+    const ref={};
 
-    heading(wsF,r,FNC,'Summary');r++;
-    hdrRow(wsF,r,['','Value','Projects','Basis'],['left','right','right','left']);r++;
-    wsF.getCell(r-1,4).alignment={horizontal:'left',vertical:'bottom',indent:2};
-    const cell={};
-    const sub=t=>{put(wsF,r,1,t,{bold:true,color:C.navy});wsF.getRow(r).height=20;r++;};
-    const line1=(key,label,val,fmt,cnt,basis,o)=>{
-      o=o||{};
-      put(wsF,r,1,label,{bold:!!o.bold});
-      put(wsF,r,2,val,{al:'right',fmt,bold:!!o.bold,input:!!o.snapshot});
-      if(cnt!=null)put(wsF,r,3,cnt,{al:'right',fmt:CNT,input:!!o.snapshot});
-      put(wsF,r,4,basis||'',{color:C.muted,size:9,indent:2});
-      if(o.total)totalBorders(wsF,r,3,o.grand);else rule(wsF,r,3,{bottom:line('thin',C.hair)});
-      if(!o.total)wsF.getRow(r).height=18;
-      cell[key]=r;r++;
-    };
-    sub('Pipeline');
-    line1('pipe','Pipeline value',F(sumSt(rK,PIPE_ST),sumOf(piped,ev)),NUM,F(cntSt(PIPE_ST),piped.length),'Estimating and submitted tenders at estimated value');
-    line1('subm','Submitted value',F(sumSt(rK,['submitted']),sumOf(submitted,ev)),NUM,F(cntSt(['submitted']),submitted.length),'Submitted and awaiting an outcome');
+    /* ---- key metrics ---- */
+    sectionTitle(wsF,r,FNC,'Key Metrics');r+=2;
+    const nPipe=cntSt(PIPE_ST),nWon=cntSt(WON_ST),nLost=cntSt(['lost']),nSub=cntSt(['submitted']),nAll=cntSt(ALL_ST);
+    tileRow(wsF,r,[
+      ['Total Pipeline Value',F(sumSt(rK,PIPE_ST),sumOf(piped,ev)),NUM,capF(nPipe,piped.length,'open tender','open tenders')],
+      ['Total Awarded Value',F(sumSt(rN,WON_ST),awardedVal),NUM,capF(nWon,won.length,'job won','jobs won',', incl. in progress & completed')],
+      ['Total Submitted Value',F(sumSt(rK,['submitted']),sumOf(submitted,ev)),NUM,capF(nSub,submitted.length,'tender submitted','tenders submitted')],
+      ['Win Rate',F('IFERROR('+nWon+'/('+nWon+'+'+nLost+'),0)',winRate),WR,F(nWon+'&" won, "&'+nLost+'&" lost"',won.length+' won, '+lost.length+' lost')],
+    ]);r+=4;
+    tileRow(wsF,r,[
+      ['Avg. Tender Value',F('IFERROR('+sumSt(rK,ALL_ST)+'/'+nAll+',0)',projects.length?sumOf(projects,ev)/projects.length:0),NUM,capF(nAll,projects.length,'active project','active projects','')],
+      ['Average Margin',F('IFERROR('+sumSt(rM,ALL_ST)+'/'+nAll+',0)',avgMargin/100),PCT1,'BOQ margin, 15% where not set'],
+      ['Overdue Quote Value',sumOf(overdueProj,ev),NUM,'Snapshot at export: '+plural(overdueProj.length,'project'),{snapshot:true}],
+      ['Awarded This Month',awardedMonthVal,NUM,'Snapshot at export',{snapshot:true}],
+    ]);r+=4;
+
+    /* ---- projected income + scenarios ---- */
     r++;
-    sub('Awards');
-    line1('won','Awarded value',F(sumSt(rN,WON_ST),awardedVal),NUM,F(cntSt(WON_ST),won.length),'Awarded, in progress and completed. Uses awarded value where entered');
-    line1('lost','Lost value',F(sumSt(rK,['lost']),sumOf(lost,ev)),NUM,F(cntSt(['lost']),lost.length),'Tenders lost');
-    line1('wr','Win rate',F('IFERROR(C'+cell.won+'/(C'+cell.won+'+C'+cell.lost+'),0)',winRate),PCT,null,'Won ÷ (won + lost)');
-    line1('awm','Awarded this month',awardedMonthVal,NUM,null,'Snapshot at export, based on each project\'s last update',{snapshot:true});
-    r++;
-    sub('Projected income');
-    line1('sec','Secured income',F('B'+cell.won,awardedVal),NUM,F('C'+cell.won,won.length),'Won work counted at 100%');
-    line1('wtd','Weighted pipeline',F(sumSt(rN,PIPE_ST),weightedTotal),NUM,F(cntSt(PIPE_ST),piped.length),'Open tenders × Win %. Same as the Dashboard "Projected Value"');
-    line1('awin','Average win probability',F('IFERROR('+sumSt(rJ,PIPE_ST)+'/C'+cell.wtd+',0)',piped.length?sumOf(piped,winInput)/piped.length:0),PCT,null,'Across open tenders');
-    line1('proj','Total projected income',F('B'+cell.sec+'+B'+cell.wtd,awardedVal+weightedTotal),NUM,null,'',{bold:true,total:true,grand:true});
-    r++;
-    sub('Pricing');
-    line1('avgt','Average tender value',F('IFERROR('+sumSt(rK,ALL_ST)+'/'+cntSt(ALL_ST)+',0)',projects.length?sumOf(projects,ev)/projects.length:0),NUM,F(cntSt(ALL_ST),projects.length),'All active projects');
-    line1('avgm','Average margin',F('IFERROR('+sumSt(rM,ALL_ST)+'/'+cntSt(ALL_ST)+',0)',avgMargin/100),PCT1,null,'BOQ margin, 15% where not set');
-    r++;
-    sub('Quotes');
-    line1('qreq','Quote value requested',totalQVReq,NUM,null,'Snapshot. Est. value of projects with open quote requests',{snapshot:true});
-    line1('qrec','Quote value received',0,NUM,null,'From the trade table below');
-    line1('qn','Quotes received',0,CNT,null,'From the trade table below');
-    line1('qover','Overdue quote value',sumOf(overdueProj,ev),NUM,overdueProj.length,'Snapshot. Projects with at least one overdue quote',{snapshot:true});
+    sectionTitle(wsF,r,FNC,'Projected Income','Won work at 100% plus open tenders × Win %, adjusted by the scenario in use');r+=2;
+    const pt=tileRow(wsF,r,[
+      ['Total Projected Income',0,NUM,F('"Scenario: "&$B$5','Scenario: Likely'),{accent:C.teal}],
+      ['Secured Income',F(sumSt(rN,WON_ST),awardedVal),NUM,capF(nWon,won.length,'won job','won jobs',' at 100%')],
+      ['Weighted Pipeline',F(sumSt(rN,PIPE_ST),weightedTotal),NUM,F('IF($E$5=0,"Matches the Dashboard Projected Value","Win % shifted "&TEXT($E$5,"+0%;-0%"))','Matches the Dashboard Projected Value')],
+      ['Avg. Win Probability',F('IFERROR(SUMPRODUCT('+isPipe+'*'+clampJ('$E$5')+')/'+nPipe+',0)',piped.length?sumOf(piped,p=>clamp01(winPct(p)/100))/piped.length:0),PCT,'Across open tenders, after the shift'],
+    ]);
+    pt[0].value=F(pt[1].address+'+'+pt[2].address,awardedVal+weightedTotal);
+    r+=4;
+    put(wsF,r,1,'Scenarios',{bold:true,color:C.navy,indent:0});
+    put(wsF,r,3,'Edit the amber Win % shifts. Each is added to every open tender\'s Win % (capped at 0% and 100%).',{italic:true,size:9,color:C.muted,indent:0});
+    wsF.getRow(r).height=20;r++;
+    tableHeader(wsF,r,['Scenario','Win % Shift','Secured ($)','Weighted Pipeline ($)','Total Projected ($)','vs Likely ($)'],['left','center','right','right','right','right']);r++;
+    {
+      const s=r,e=r+SCEN.length-1;
+      const likelyRow=s+SCEN.findIndex(x=>x[0]==='Likely');
+      SCEN.forEach(([name,shift],i)=>{
+        put(wsF,r,1,name,{bold:true});
+        const sh=put(wsF,r,2,shift,{input:true,bold:true,al:'center',fmt:SHIFT_FMT});
+        put(wsF,r,3,F(sumSt(rN,WON_ST),awardedVal),{al:'right',fmt:NUM});
+        put(wsF,r,4,F('SUMPRODUCT('+isPipe+'*'+rK+'*'+clampJ('$B'+r)+')',weightedAt(shift)),{al:'right',fmt:NUM});
+        put(wsF,r,5,F('C'+r+'+D'+r,awardedVal+weightedAt(shift)),{bold:true,al:'right',fmt:NUM});
+        put(wsF,r,6,F('E'+r+'-E$'+likelyRow,weightedAt(shift)-weightedAt(0)),{al:'right',fmt:NUM});
+        dataStyle(wsF,r,6,i%2===1);
+        sh.fill=fill(C.inputBg);
+        r++;
+      });
+      shiftCell.value=F('IFERROR(INDEX($B$'+s+':$B$'+e+',MATCH($B$5,$A$'+s+':$A$'+e+',0)),0)',0);
+      ref.scen={s,e};
+      wsF.addConditionalFormatting({ref:'A'+s+':F'+e,rules:[{type:'expression',priority:1,formulae:['$A'+s+'=$B$5'],style:{font:{bold:true,color:{argb:C.navy}},fill:{type:'pattern',pattern:'solid',bgColor:{argb:'FFE6EDFB'}}}}]});
+    }
     r++;
 
     /* ---- by status ---- */
-    heading(wsF,r,FNC,'By Status');r++;
-    hdrRow(wsF,r,['Status','Projects','Share','Est. Value ($)','Avg Win %','Projected ($)'],['left','right','right','right','right','right']);r++;
+    r++;
+    sectionTitle(wsF,r,FNC,'Tender Outcomes by Status');r+=2;
+    tableHeader(wsF,r,['Status','Projects','Share','Est. Value ($)','Avg Win %','Projected ($)'],['left','center','right','right','right','right']);r++;
     {
-      const start=r,end=r+ALL_STATUSES.length-1,tot=end+1;
-      ALL_STATUSES.forEach(s=>{
-        const list=by([s.key]);
-        put(wsF,r,1,s.label);
-        put(wsF,r,2,F(cntSt([s.key]),list.length),{al:'right',fmt:CNT});
+      const s=r,e=r+ALL_STATUSES.length-1,tot=e+1;
+      ALL_STATUSES.forEach((st,i)=>{
+        const list=by([st.key]);
+        put(wsF,r,1,st.label);
+        put(wsF,r,2,F(cntSt([st.key]),list.length),{al:'center',fmt:CNT});
         put(wsF,r,3,F('IFERROR(B'+r+'/B$'+tot+',0)',projects.length?list.length/projects.length:0),{al:'right',fmt:PCT});
-        put(wsF,r,4,F(sumSt(rK,[s.key]),sumOf(list,ev)),{al:'right',fmt:NUM});
-        put(wsF,r,5,F('IFERROR('+sumSt(rJ,[s.key])+'/B'+r+',0)',list.length?sumOf(list,winInput)/list.length:0),{al:'right',fmt:PCT});
-        put(wsF,r,6,F(sumSt(rN,[s.key]),sumOf(list,projV)),{al:'right',fmt:NUM});
-        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+        put(wsF,r,4,F(sumSt(rK,[st.key]),sumOf(list,ev)),{al:'right',fmt:NUM});
+        put(wsF,r,5,F('IFERROR('+sumSt(rJ,[st.key])+'/B'+r+',0)',list.length?sumOf(list,winInput)/list.length:0),{al:'right',fmt:PCT});
+        put(wsF,r,6,F(sumSt(rN,[st.key]),sumOf(list,projV)),{al:'right',fmt:NUM});
+        dataStyle(wsF,r,6,i%2===1);r++;
       });
-      put(wsF,r,1,'Total',{bold:true});
-      [[2,'B',projects.length,CNT],[3,'C',projects.length?1:0,PCT],[4,'D',sumOf(projects,ev),NUM],[6,'F',awardedVal+weightedTotal,NUM]]
-        .forEach(([c,col,res,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',res),{bold:true,al:'right',fmt}));
-      totalBorders(wsF,r,6,true);r++;
+      put(wsF,r,1,'Total');
+      [[2,'B',projects.length,CNT,'center'],[3,'C',projects.length?1:0,PCT,'right'],[4,'D',sumOf(projects,ev),NUM,'right'],[6,'F',awardedVal+weightedTotal,NUM,'right']]
+        .forEach(([c,col,res,fmt,al])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',res),{al,fmt}));
+      put(wsF,r,5,'');
+      totalStyle(wsF,r,6,false);r++;
+      ref.status={s,e};
+    }
+    r++;
+
+    /* ---- by client ---- */
+    r++;
+    sectionTitle(wsF,r,FNC,'Performance by Client','Who we tender for and who we win work with');r+=2;
+    tableHeader(wsF,r,['Client','Tenders','Won','Lost','Win Rate','Tender Value ($)','Awarded Value ($)','Projected ($)'],['left','center','center','center','right','right','right','right']);r++;
+    if(!clientGroups.length){put(wsF,r,1,'No clients yet.',{italic:true,color:C.faint});r++;ref.client=null;}
+    else{
+      const s=r;
+      clientGroups.forEach(({k,list},i)=>{
+        const w=list.filter(p=>WON_ST.includes(p.status)).length,l=list.filter(p=>p.status==='lost').length;
+        const ck='$A'+r;
+        put(wsF,r,1,k,{bold:true});
+        put(wsF,r,2,F('COUNTIFS('+rC+','+ck+')',list.length),{al:'center',fmt:CNT});
+        put(wsF,r,3,F(cntSt(WON_ST,rC+','+ck),w),{al:'center',fmt:CNT});
+        put(wsF,r,4,F(cntSt(['lost'],rC+','+ck),l),{al:'center',fmt:CNT});
+        put(wsF,r,5,F('IF(C'+r+'+D'+r+'=0,"–",C'+r+'/(C'+r+'+D'+r+'))',(w+l)?w/(w+l):'–'),{al:'right',fmt:WR});
+        put(wsF,r,6,F('SUMIFS('+rK+','+rC+','+ck+')',sumOf(list,ev)),{al:'right',fmt:NUM});
+        put(wsF,r,7,F(sumSt(rN,WON_ST,rC+','+ck),sumOf(list,secV)),{al:'right',fmt:NUM});
+        put(wsF,r,8,F('SUMIFS('+rN+','+rC+','+ck+')',sumOf(list,projV)),{bold:true,al:'right',fmt:NUM});
+        dataStyle(wsF,r,FNC,i%2===1);r++;
+      });
+      const e=r-1;
+      put(wsF,r,1,'Total');
+      [[2,'B',projects.length],[3,'C',won.length],[4,'D',lost.length]].forEach(([c,col,res])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',res),{al:'center',fmt:CNT}));
+      put(wsF,r,5,F('IF(C'+r+'+D'+r+'=0,"–",C'+r+'/(C'+r+'+D'+r+'))',winRate),{al:'right',fmt:WR});
+      [[6,'F',sumOf(projects,ev)],[7,'G',awardedVal],[8,'H',awardedVal+weightedTotal]].forEach(([c,col,res])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',res),{al:'right',fmt:NUM}));
+      totalStyle(wsF,r,FNC,false);r++;
+      ref.client={s,e};
     }
     r++;
 
     /* ---- by project type ---- */
-    heading(wsF,r,FNC,'By Project Type');r++;
-    hdrRow(wsF,r,['Project Type','Projects','Share','Est. Value ($)','','Projected ($)'],['left','right','right','right','right','right']);r++;
-    if(!typeNames.length){put(wsF,r,1,'No projects yet.',{italic:true,color:C.faint});r++;}
+    r++;
+    sectionTitle(wsF,r,FNC,'Pipeline by Project Type');r+=2;
+    tableHeader(wsF,r,['Project Type','Projects','Share','Est. Value ($)','Projected ($)'],['left','center','right','right','right']);r++;
+    if(!typeGroups.length){put(wsF,r,1,'No projects yet.',{italic:true,color:C.faint});r++;ref.type=null;}
     else{
-      const start=r,end=r+typeNames.length-1,tot=end+1,allV=sumOf(projects,ev);
-      typeNames.forEach(({t,list})=>{
-        put(wsF,r,1,t);
-        put(wsF,r,2,F('COUNTIFS('+rE+','+q(t)+')',list.length),{al:'right',fmt:CNT});
+      const s=r,e=r+typeGroups.length-1,tot=e+1,allV=sumOf(projects,ev);
+      typeGroups.forEach(({k,list},i)=>{
+        put(wsF,r,1,k);
+        put(wsF,r,2,F('COUNTIFS('+rE+',$A'+r+')',list.length),{al:'center',fmt:CNT});
         put(wsF,r,3,F('IFERROR(D'+r+'/D$'+tot+',0)',allV?sumOf(list,ev)/allV:0),{al:'right',fmt:PCT});
-        put(wsF,r,4,F('SUMIFS('+rK+','+rE+','+q(t)+')',sumOf(list,ev)),{al:'right',fmt:NUM});
-        put(wsF,r,6,F('SUMIFS('+rN+','+rE+','+q(t)+')',sumOf(list,projV)),{al:'right',fmt:NUM});
-        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+        put(wsF,r,4,F('SUMIFS('+rK+','+rE+',$A'+r+')',sumOf(list,ev)),{al:'right',fmt:NUM});
+        put(wsF,r,5,F('SUMIFS('+rN+','+rE+',$A'+r+')',sumOf(list,projV)),{al:'right',fmt:NUM});
+        dataStyle(wsF,r,5,i%2===1);r++;
       });
-      put(wsF,r,1,'Total',{bold:true});
-      [[2,'B',projects.length,CNT],[3,'C',allV?1:0,PCT],[4,'D',allV,NUM],[6,'F',sumOf(projects,projV),NUM]]
-        .forEach(([c,col,res,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',res),{bold:true,al:'right',fmt}));
-      totalBorders(wsF,r,6,true);r++;
+      put(wsF,r,1,'Total');
+      [[2,'B',projects.length,CNT,'center'],[3,'C',allV?1:0,PCT,'right'],[4,'D',allV,NUM,'right'],[5,'E',sumOf(projects,projV),NUM,'right']]
+        .forEach(([c,col,res,fmt,al])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',res),{al,fmt}));
+      totalStyle(wsF,r,5,false);r++;
+      ref.type={s,e};
     }
     r++;
 
     /* ---- margin bands ---- */
-    heading(wsF,r,FNC,'Margin Distribution');r++;
-    hdrRow(wsF,r,['Margin Band','Projects','Share'],['left','right','right']);r++;
+    r++;
+    sectionTitle(wsF,r,FNC,'Margin Distribution','Average margin across projects: see Key Metrics');r+=2;
+    tableHeader(wsF,r,['Margin Band','Projects','Share'],['left','center','right']);r++;
     {
-      const start=r,end=r+BANDS.length-1,tot=end+1;
-      BANDS.forEach(([label,lo,hi])=>{
-        const n=projects.filter(p=>inBand(margin(p)/100,lo,hi)).length;
+      const s=r,e=r+BANDS.length-1,tot=e+1;
+      BANDS.forEach(([label,lo,hi],i)=>{
         const parts=[rM];
         if(lo!=null)parts.push(q('>='+lo));
         if(hi!=null){if(lo!=null)parts.push(rM);parts.push(q('<'+hi));}
         put(wsF,r,1,label);
-        put(wsF,r,2,F('COUNTIFS('+parts.join(',')+')',n),{al:'right',fmt:CNT});
-        put(wsF,r,3,F('IFERROR(B'+r+'/B$'+tot+',0)',projects.length?n/projects.length:0),{al:'right',fmt:PCT});
-        rule(wsF,r,3,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+        put(wsF,r,2,F('COUNTIFS('+parts.join(',')+')',bandCounts[i]),{al:'center',fmt:CNT});
+        put(wsF,r,3,F('IFERROR(B'+r+'/B$'+tot+',0)',projects.length?bandCounts[i]/projects.length:0),{al:'right',fmt:PCT});
+        dataStyle(wsF,r,3,i%2===1);r++;
       });
-      put(wsF,r,1,'Total',{bold:true});
-      put(wsF,r,2,F('SUM(B'+start+':B'+end+')',projects.length),{bold:true,al:'right',fmt:CNT});
-      put(wsF,r,3,F('SUM(C'+start+':C'+end+')',projects.length?1:0),{bold:true,al:'right',fmt:PCT});
-      totalBorders(wsF,r,3,true);r++;
+      put(wsF,r,1,'Total');
+      put(wsF,r,2,F('SUM(B'+s+':B'+e+')',projects.length),{al:'center',fmt:CNT});
+      put(wsF,r,3,F('SUM(C'+s+':C'+e+')',projects.length?1:0),{al:'right',fmt:PCT});
+      totalStyle(wsF,r,3,false);r++;
+      ref.band={s,e};
     }
     r++;
 
-    /* ---- top 5 ---- */
-    heading(wsF,r,FNC,'Top 5 Projects by Estimated Value');r++;
-    hdrRow(wsF,r,['Project','Est. Value ($)','Margin %','Status','Type','Client'],['left','right','right','left','left','left']);
-    wsF.getCell(r,4).alignment={horizontal:'left',vertical:'bottom',indent:2};r++;
+    /* ---- top 5 by estimated value ---- */
+    const rankBy=(fn)=>[...projects].sort((a,b)=>(fn(b)-fn(a))||(rowOf.get(b)-rowOf.get(a)));
+    r++;
+    sectionTitle(wsF,r,FNC,'Top 5 Highest Value Projects');r+=2;
+    tableHeader(wsF,r,['Project','Package','Client','Status','Est. Value ($)','Margin %','Type'],['left','left','left','center','right','right','left']);r++;
     {
-      const ranked=[...projects].map((p,i)=>({p,i})).sort((a,b)=>ev(b.p)-ev(a.p)||b.i-a.i).map(x=>x.p);
+      const ranked=rankBy(ev);
       for(let n=1;n<=5;n++){
         const p=ranked[n-1];
         const at=col=>'IFERROR(INDEX('+col+',MATCH(LARGE('+rO+','+n+'),'+rO+',0)),"")';
         put(wsF,r,1,F(at(rA),p?p.name||'':''),{bold:true});
-        put(wsF,r,2,F(at(rK),p?ev(p):''),{al:'right',fmt:NUM});
-        put(wsF,r,3,F(at(rM),p?margin(p)/100:''),{al:'right',fmt:PCT1});
-        put(wsF,r,4,F(at(rS),p?L(p.status)||'':''),{indent:2});
-        put(wsF,r,5,F(at(rE),p?niceType(p.project_type):''));
-        put(wsF,r,6,F(at(rC),p?p.client||'':''),{color:C.muted});
-        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+        put(wsF,r,2,F(at(rB),p?p.package_number||'':''),{color:C.muted});
+        put(wsF,r,3,F(at(rC),p?clientOf(p):''));
+        put(wsF,r,4,F(at(rS),p?L(p.status)||'':''),{al:'center'});
+        put(wsF,r,5,F(at(rK),p?ev(p):''),{bold:true,al:'right',fmt:NUM});
+        put(wsF,r,6,F(at(rM),p?margin(p)/100:''),{al:'right',fmt:PCT1});
+        put(wsF,r,7,F(at(rE),p?niceType(p.project_type):''),{color:C.muted});
+        dataStyle(wsF,r,7,n%2===0);r++;
       }
     }
     r++;
 
-    /* ---- quotes by trade ---- */
-    heading(wsF,r,FNC,'Quote Activity by Trade Package');r++;
-    hdrRow(wsF,r,['Trade Package','Sent','Received','Value Received ($)','Overdue','Avg Value ($)'],['left','right','right','right','right','right']);r++;
+    /* ---- top 10 by projected income ---- */
+    r++;
+    sectionTitle(wsF,r,FNC,'Top 10 Projects by Projected Income','Follows the scenario in use');r+=2;
+    tableHeader(wsF,r,['Project','Package','Status','Secured ($)','Weighted ($)','Projected ($)'],['left','left','center','right','right','right']);r++;
+    {
+      const s=r;
+      const ranked=rankBy(projV);
+      const wonOr=cell=>'OR('+WON_ST.map(k=>cell+'='+q(L(k))).join(',')+')';
+      for(let n=1;n<=10;n++){
+        const p=ranked[n-1];
+        const at=col=>'IFERROR(INDEX('+col+',MATCH(LARGE('+rP+','+n+'),'+rP+',0)),"")';
+        put(wsF,r,1,F(at(rA),p?p.name||'':''),{bold:true});
+        put(wsF,r,2,F(at(rB),p?p.package_number||'':''),{color:C.muted});
+        put(wsF,r,3,F(at(rS),p?L(p.status)||'':''),{al:'center'});
+        put(wsF,r,6,F(at(rN),p?projV(p):''),{bold:true,al:'right',fmt:NUM});
+        put(wsF,r,4,F('IF('+wonOr('C'+r)+',F'+r+',0)',p?secV(p):0),{al:'right',fmt:NUM});
+        put(wsF,r,5,F('IFERROR(F'+r+'-D'+r+',0)',p?projV(p)-secV(p):0),{al:'right',fmt:NUM});
+        dataStyle(wsF,r,6,n%2===0);r++;
+      }
+      ref.top10={s,e:r-1,ranked:ranked.slice(0,10)};
+    }
+    r++;
+
+    /* ---- quotes ---- */
+    r++;
+    sectionTitle(wsF,r,FNC,'Quote Activity & Value','Sent, received and overdue counts are inputs from the quote register');r+=2;
+    const qt=tileRow(wsF,r,[
+      ['Quote Value Requested',totalQVReq,NUM,'Snapshot: est. value of projects awaiting quotes',{snapshot:true}],
+      ['Quote Value Received',0,NUM,'Received and accepted quotes'],
+      ['Quotes Received',0,CNT,'Received or accepted'],
+      ['Quotes Sent',0,CNT,'All quote requests'],
+    ]);r+=4;
+    tableHeader(wsF,r,['Trade Package','Sent','Received','Value Received ($)','Avg Value ($)','Overdue'],['left','center','center','right','right','center']);r++;
     if(!tradeRows.length){put(wsF,r,1,'No quote data yet.',{italic:true,color:C.faint});r++;}
     else{
-      const start=r;
-      tradeRows.forEach(([t,d])=>{
-        put(wsF,r,1,t);
-        put(wsF,r,2,d.sent,{al:'right',fmt:CNT,input:true});
-        put(wsF,r,3,d.recv,{al:'right',fmt:CNT,input:true});
+      const s=r;
+      tradeRows.forEach(([t,d],i)=>{
+        put(wsF,r,1,t,{bold:true});
+        put(wsF,r,2,d.sent,{al:'center',fmt:CNT,input:true});
+        put(wsF,r,3,d.recv,{al:'center',fmt:CNT,input:true});
         put(wsF,r,4,d.val,{al:'right',fmt:NUM,input:true});
-        put(wsF,r,5,d.over,{al:'right',fmt:CNT,input:true,bold:d.over>0});
-        put(wsF,r,6,F('IFERROR(D'+r+'/C'+r+',0)',d.recv?d.val/d.recv:0),{al:'right',fmt:NUM});
-        rule(wsF,r,6,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+        put(wsF,r,5,F('IFERROR(D'+r+'/C'+r+',0)',d.recv?d.val/d.recv:0),{al:'right',fmt:NUM});
+        put(wsF,r,6,d.over,{al:'center',fmt:CNT,input:true});
+        dataStyle(wsF,r,6,i%2===1);r++;
       });
-      const end=r-1;
-      const tv=tradeRows.reduce((s,[,d])=>s+d.val,0),tr=tradeRows.reduce((s,[,d])=>s+d.recv,0);
-      put(wsF,r,1,'Total',{bold:true});
-      [[2,'B',quotes.length,CNT],[3,'C',tr,CNT],[4,'D',tv,NUM],[5,'E',tradeRows.reduce((s,[,d])=>s+d.over,0),CNT]]
-        .forEach(([c,col,res,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',res),{bold:true,al:'right',fmt}));
-      put(wsF,r,6,F('IFERROR(D'+r+'/C'+r+',0)',tr?tv/tr:0),{bold:true,al:'right',fmt:NUM});
-      totalBorders(wsF,r,6,true);
-      wsF.getCell(cell.qrec,2).value=F('D'+r,tv);
-      wsF.getCell(cell.qn,2).value=F('C'+r,tr);
+      const e=r-1;
+      const tv=tradeRows.reduce((a,[,d])=>a+d.val,0),tr=tradeRows.reduce((a,[,d])=>a+d.recv,0);
+      put(wsF,r,1,'Total');
+      [[2,'B',quotes.length,CNT,'center'],[3,'C',tr,CNT,'center'],[4,'D',tv,NUM,'right'],[6,'F',tradeRows.reduce((a,[,d])=>a+d.over,0),CNT,'center']]
+        .forEach(([c,col,res,fmt,al])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',res),{al,fmt}));
+      put(wsF,r,5,F('IFERROR(D'+r+'/C'+r+',0)',tr?tv/tr:0),{al:'right',fmt:NUM});
+      totalStyle(wsF,r,6,false);
+      qt[1].value=F('D'+r,tv);qt[2].value=F('C'+r,tr);qt[3].value=F('B'+r,quotes.length);
       r++;
     }
     r++;
 
     /* ---- monthly summary ---- */
-    heading(wsF,r,FNC,'Monthly Summary');r++;
-    put(wsF,r,1,'Last 12 months, grouped by the month each project was added.',{italic:true,size:9,color:C.muted});r++;
-    hdrRow(wsF,r,['Month','New','Submitted','Awarded','Lost','Pipeline ($)','Awarded ($)','Win Rate'],['left','right','right','right','right','right','right','right']);r++;
+    r++;
+    sectionTitle(wsF,r,FNC,'Monthly Summary','Last 12 months, by the month each project was added');r+=2;
+    tableHeader(wsF,r,['Month','New Tenders','Submitted','Awarded','Lost','Pipeline Value ($)','Awarded Value ($)','Win Rate'],['left','center','center','center','center','right','right','right']);r++;
     {
-      const start=r;
-      monthRows.forEach(m=>{
+      const s=r;
+      monthRows.forEach((m,i)=>{
         const inMonth=rI+',">="&$A'+r+','+rI+',"<"&EDATE($A'+r+',1)';
         put(wsF,r,1,m.date,{fmt:'mmm yyyy'});
-        put(wsF,r,2,F('COUNTIFS('+inMonth+')',m.n),{al:'right',fmt:CNT});
-        put(wsF,r,3,F('COUNTIFS('+inMonth+','+rS+','+q(L('submitted'))+')',m.sub),{al:'right',fmt:CNT});
-        put(wsF,r,4,F('COUNTIFS('+inMonth+','+rS+','+q(L('awarded'))+')',m.awd),{al:'right',fmt:CNT});
-        put(wsF,r,5,F('COUNTIFS('+inMonth+','+rS+','+q(L('lost'))+')',m.lost),{al:'right',fmt:CNT});
-        put(wsF,r,6,F('SUM(SUMIFS('+rK+','+inMonth+','+rS+','+crit(PIPE_ST)+'))',m.pipe),{al:'right',fmt:NUM});
-        put(wsF,r,7,F('SUMIFS('+rL+','+inMonth+','+rS+','+q(L('awarded'))+')',m.awdV),{al:'right',fmt:NUM});
-        put(wsF,r,8,F('IF(D'+r+'+E'+r+'=0,"–",D'+r+'/(D'+r+'+E'+r+'))',(m.awd+m.lost)?m.awd/(m.awd+m.lost):'–'),{al:'right',fmt:PCT});
-        rule(wsF,r,FNC,{bottom:line('thin',C.hair)});wsF.getRow(r).height=18;r++;
+        put(wsF,r,2,F('COUNTIFS('+inMonth+')',m.n),{al:'center',fmt:CNT});
+        put(wsF,r,3,F(cntSt(['submitted'],inMonth),m.sub),{al:'center',fmt:CNT});
+        put(wsF,r,4,F(cntSt(['awarded'],inMonth),m.awd),{al:'center',fmt:CNT});
+        put(wsF,r,5,F(cntSt(['lost'],inMonth),m.lost),{al:'center',fmt:CNT});
+        put(wsF,r,6,F(sumSt(rK,PIPE_ST,inMonth),m.pipe),{al:'right',fmt:NUM});
+        put(wsF,r,7,F(sumSt(rL,['awarded'],inMonth),m.awdV),{al:'right',fmt:NUM});
+        put(wsF,r,8,F('IF(D'+r+'+E'+r+'=0,"–",D'+r+'/(D'+r+'+E'+r+'))',(m.awd+m.lost)?m.awd/(m.awd+m.lost):'–'),{al:'right',fmt:WR});
+        dataStyle(wsF,r,FNC,i%2===1);r++;
       });
-      const end=r-1;
-      const sm=k=>monthRows.reduce((s,m)=>s+m[k],0);
-      put(wsF,r,1,'Total',{bold:true});
-      [[2,'B','n',CNT],[3,'C','sub',CNT],[4,'D','awd',CNT],[5,'E','lost',CNT],[6,'F','pipe',NUM],[7,'G','awdV',NUM]]
-        .forEach(([c,col,k,fmt])=>put(wsF,r,c,F('SUM('+col+start+':'+col+end+')',sm(k)),{bold:true,al:'right',fmt}));
-      put(wsF,r,8,F('B'+cell.wr,winRate),{bold:true,al:'right',fmt:PCT});
-      totalBorders(wsF,r,FNC,true);r++;
+      const e=r-1;
+      const sm=k=>monthRows.reduce((a,m)=>a+m[k],0);
+      put(wsF,r,1,'Total');
+      [[2,'B','n',CNT,'center'],[3,'C','sub',CNT,'center'],[4,'D','awd',CNT,'center'],[5,'E','lost',CNT,'center'],[6,'F','pipe',NUM,'right'],[7,'G','awdV',NUM,'right']]
+        .forEach(([c,col,k,fmt,al])=>put(wsF,r,c,F('SUM('+col+s+':'+col+e+')',sm(k)),{al,fmt}));
+      put(wsF,r,8,F('IF(D'+r+'+E'+r+'=0,"–",D'+r+'/(D'+r+'+E'+r+'))',(sm('awd')+sm('lost'))?sm('awd')/(sm('awd')+sm('lost')):'–'),{al:'right',fmt:WR});
+      totalStyle(wsF,r,FNC,false);r++;
+      ref.month={s,e};
     }
-    printSetup(wsF,'portrait','Financial Overview');
+    printSetup(wsF,'landscape','Financial Overview');
 
-    /* ================= SHEET 3 — CHARTS (snapshot images) ================= */
-    const CW=Array.from({length:12},()=>13);
-    const wsC=wb.addWorksheet('Charts',{properties:{tabColor:{argb:C.teal}},views:[{showGridLines:false}]});
-    wsC.columns=CW.map(w=>({width:w}));
-    sheetHeader(wsC,CW,'Financial Charts');
-    put(wsC,5,1,'Snapshot at export. The Financial sheet recalculates when the Projects sheet is edited; these charts do not.',{italic:true,size:9,color:C.muted});
-
-    host=document.createElement('div');
-    host.style.cssText='position:fixed;left:-20000px;top:0;width:1200px;pointer-events:none;opacity:0';
-    document.body.appendChild(host);
-    const TXT='#0B1F3A',MUT='#6B7280',GRID='#EDF0F4',BLUE='#2563D4',LBLUE='#A9C1EE',NAVY='#0B1F3A',TEAL='#12B886',GREY='#B8C0CC',LOSS='#C96A6A';
-    const FONT='Calibri, Carlito, Arial, sans-serif';
-    const money=v=>Math.abs(v)>=1e6?'$'+(v/1e6).toFixed(1)+'M':Math.abs(v)>=1e3?'$'+Math.round(v/1e3)+'K':'$'+Math.round(v);
-    const bgPlugin={id:'xlBg',beforeDraw(ch){const{ctx,width,height}=ch;ctx.save();ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,width,height);ctx.restore();}};
-    const valLabels=fmt=>({id:'xlVals',afterDatasetsDraw(ch){
-      const{ctx}=ch;const horiz=ch.options.indexAxis==='y';
-      ctx.save();ctx.font='12px '+FONT;ctx.fillStyle=TXT;
-      ch.data.datasets.forEach((ds,di)=>{
-        const meta=ch.getDatasetMeta(di);if(meta.hidden)return;
-        meta.data.forEach((el,i)=>{
-          const v=ds.data[i];if(!v)return;
-          if(horiz){ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(fmt(v),el.x+6,el.y);}
-          else{ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(fmt(v),el.x,el.y-4);}
-        });
-      });
-      ctx.restore();
-    }});
-    const heads=(title,sub)=>({
-      title:{display:true,text:title,align:'start',color:TXT,font:{family:FONT,size:15,weight:'bold'},padding:{top:4,bottom:sub?2:12}},
-      subtitle:{display:!!sub,text:sub||'',align:'start',color:MUT,font:{family:FONT,size:12},padding:{bottom:12}},
-      tooltip:{enabled:false},
-    });
-    const legend=()=>({display:true,position:'top',align:'start',labels:{color:TXT,font:{family:FONT,size:12},boxWidth:10,boxHeight:10,padding:16}});
-    const tk=(extra)=>Object.assign({color:MUT,font:{family:FONT,size:12},padding:6},extra||{});
-    const ax=(o)=>Object.assign({grid:{color:GRID,drawTicks:false},border:{display:false}},o||{});
-    function renderChart(w,h,cfg){
-      const cv=document.createElement('canvas');cv.width=w;cv.height=h;host.appendChild(cv);
-      cfg.options=Object.assign({responsive:false,animation:false,devicePixelRatio:2,layout:{padding:{left:8,right:28,top:8,bottom:8}}},cfg.options||{});
-      cfg.plugins=[bgPlugin].concat(cfg.plugins||[]);
-      const ch=new Chart(cv,cfg);
-      const url=cv.toDataURL('image/png');
-      ch.destroy();cv.remove();
-      return url;
+    /* ================= SHEET 3 — CHARTS (native, linked to Financial) ================= */
+    const CWID=[14,14,14,14,14,14,3,14,14,14,14,14,14];
+    wsC.columns=CWID.map(w=>({width:w}));
+    sheetHeader(wsC,CWID,'Financial Charts','A-Civil   |   As at '+asAt+'   |   Linked to the Financial sheet');
+    put(wsC,5,1,'These charts read from the Financial sheet, so they update when you edit the Projects sheet or change the scenario.',{italic:true,size:9,color:C.muted,indent:0});
+    const chartSpecs=[];
+    let cr=7;
+    const LEFT=[0,6],RIGHT=[7,13],FULL=[0,13];
+    function slot(cols,title,sub,rowsTall,xml){
+      put(wsC,cr,cols[0]+1,title,{bold:true,size:11,color:C.navy,indent:0});
+      put(wsC,cr+1,cols[0]+1,sub,{size:9,color:C.muted,indent:0});
+      chartSpecs.push({xml,from:{col:cols[0],row:cr+1},to:{col:cols[1],row:cr+1+rowsTall}});
     }
-    const FULL_W=1060,HALF_W=522,HALF_H=330;
-    const charts=[];
+    function advance(rowsTall){cr+=rowsTall+4;}
 
-    charts.push({w:FULL_W,h:340,full:true,url:renderChart(FULL_W,340,{type:'line',
-      data:{labels:monthRows.map(m=>m.label),datasets:[
-        {label:'Pipeline',data:monthRows.map(m=>m.pipe),borderColor:BLUE,pointBackgroundColor:BLUE,tension:.3,pointRadius:3,borderWidth:2.5},
-        {label:'Submitted',data:monthRows.map(m=>m.subV),borderColor:NAVY,pointBackgroundColor:NAVY,borderDash:[6,4],tension:.3,pointRadius:3,borderWidth:2},
-        {label:'Awarded',data:monthRows.map(m=>m.awdV),borderColor:TEAL,pointBackgroundColor:TEAL,tension:.3,pointRadius:3,borderWidth:2.5},
-      ]},
-      options:{plugins:{...heads('Financial performance','Value by the month each project was added, last 12 months'),legend:legend()},
-        scales:{x:ax({grid:{display:false},ticks:tk()}),y:ax({beginAtZero:true,ticks:tk({callback:money})})}}})});
+    /* chart XML builders */
+    const X=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const solid=hex=>'<a:solidFill><a:srgbClr val="'+hex+'"/></a:solidFill>';
+    const txPr=(sz,hex,b)=>'<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="'+sz+'" b="'+(b?1:0)+'">'+solid(hex)+'<a:latin typeface="Calibri"/></a:defRPr></a:pPr><a:endParaRPr lang="en-AU"/></a:p></c:txPr>';
+    const fref=(col,s,e)=>'Financial!$'+col+'$'+s+':$'+col+'$'+e;
+    const strRef=(f,vals)=>'<c:strRef><c:f>'+X(f)+'</c:f><c:strCache><c:ptCount val="'+vals.length+'"/>'+vals.map((v,i)=>'<c:pt idx="'+i+'"><c:v>'+X(v)+'</c:v></c:pt>').join('')+'</c:strCache></c:strRef>';
+    const numRef=(f,vals,fmt)=>'<c:numRef><c:f>'+X(f)+'</c:f><c:numCache><c:formatCode>'+X(fmt||'General')+'</c:formatCode><c:ptCount val="'+vals.length+'"/>'+vals.map((v,i)=>(typeof v==='number'&&isFinite(v))?'<c:pt idx="'+i+'"><c:v>'+v+'</c:v></c:pt>':'').join('')+'</c:numCache></c:numRef>';
+    const MONEY='[>=1000000]$#,##0.0,,"M";[>=1000]$#,##0,"K";$#,##0';
+    const MONEY_LBL='[>=1000000]$#,##0.0,,"M";[>=1000]$#,##0,"K";""';
+    const dLbls=(fmt,pos)=>'<c:dLbls><c:numFmt formatCode="'+X(fmt)+'" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>'+txPr(900,'1F2937',false)+(pos?'<c:dLblPos val="'+pos+'"/>':'')+'<c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>';
+    const catAx=(pos,o)=>'<c:catAx><c:axId val="111"/><c:scaling><c:orientation val="'+(o.reverse?'maxMin':'minMax')+'"/></c:scaling><c:delete val="0"/><c:axPos val="'+pos+'"/>'+(o.fmt?'<c:numFmt formatCode="'+X(o.fmt)+'" sourceLinked="0"/>':'')+'<c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln w="9525">'+solid('CBD3DE')+'</a:ln></c:spPr>'+txPr(900,'374151',false)+'<c:crossAx val="222"/><c:crosses val="autoZero"/><c:auto val="0"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>';
+    const valAx=(pos,o)=>'<c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="'+(o.del?1:0)+'"/><c:axPos val="'+pos+'"/>'+(o.grid?'<c:majorGridlines><c:spPr><a:ln w="6350">'+solid('E5E9EF')+'</a:ln></c:spPr></c:majorGridlines>':'')+'<c:numFmt formatCode="'+X(o.fmt||'General')+'" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr>'+txPr(900,'6B7280',false)+'<c:crossAx val="111"/><c:crosses val="'+(o.crossMax?'max':'autoZero')+'"/><c:crossBetween val="between"/>'+(o.major?'<c:majorUnit val="'+o.major+'"/>':'')+'</c:valAx>';
+    const legendXml='<c:legend><c:legendPos val="t"/><c:overlay val="0"/>'+txPr(900,'374151',false)+'</c:legend>';
+    const space=(plot,axes,legend)=>'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-AU"/><c:roundedCorners val="0"/><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/>'+plot+axes+'<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>'+(legend?legendXml:'')+'<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr>'+solid('FFFFFF')+'<a:ln w="9525">'+solid('DCE2EA')+'</a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:latin typeface="Calibri"/></a:defRPr></a:pPr><a:endParaRPr lang="en-AU"/></a:p></c:txPr></c:chartSpace>';
+    function barXml(o){
+      const horiz=o.dir==='bar';
+      const ser=o.series.map((s,i)=>'<c:ser><c:idx val="'+i+'"/><c:order val="'+i+'"/><c:tx><c:v>'+X(s.name)+'</c:v></c:tx><c:spPr>'+solid(s.color)+'<a:ln><a:noFill/></a:ln></c:spPr><c:invertIfNegative val="0"/>'+(o.labels?dLbls(o.labelFmt||'General',o.grouping==='clustered'?'outEnd':null):'')+'<c:cat>'+o.cat+'</c:cat><c:val>'+numRef(s.ref,s.vals,s.fmt)+'</c:val></c:ser>').join('');
+      const plot='<c:barChart><c:barDir val="'+o.dir+'"/><c:grouping val="'+o.grouping+'"/><c:varyColors val="0"/>'+ser+'<c:gapWidth val="'+(o.gap||70)+'"/>'+(o.grouping!=='clustered'?'<c:overlap val="100"/>':(o.series.length>1?'<c:overlap val="-10"/>':''))+'<c:axId val="111"/><c:axId val="222"/></c:barChart>';
+      const axes=catAx(horiz?'l':'b',{reverse:horiz,fmt:o.catFmt})+valAx(horiz?'b':'l',{del:o.hideVal,grid:!o.hideVal,fmt:o.valFmt,crossMax:horiz,major:o.major});
+      return space(plot,axes,o.series.length>1);
+    }
+    function lineXml(o){
+      const ser=o.series.map((s,i)=>'<c:ser><c:idx val="'+i+'"/><c:order val="'+i+'"/><c:tx><c:v>'+X(s.name)+'</c:v></c:tx><c:spPr><a:ln w="28575" cap="rnd">'+solid(s.color)+(s.dash?'<a:prstDash val="dash"/>':'')+'<a:round/></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr>'+solid(s.color)+'<a:ln w="9525">'+solid('FFFFFF')+'</a:ln></c:spPr></c:marker><c:cat>'+o.cat+'</c:cat><c:val>'+numRef(s.ref,s.vals,s.fmt)+'</c:val><c:smooth val="0"/></c:ser>').join('');
+      const plot='<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>'+ser+'<c:marker val="1"/><c:axId val="111"/><c:axId val="222"/></c:lineChart>';
+      return space(plot,catAx('b',{fmt:o.catFmt})+valAx('l',{grid:true,fmt:o.valFmt}),true);
+    }
+    const NAVY='0B1F3A',BLUE='2563D4',LBLUE='9DB6E8',TEAL='12B886',GREY='B8C0CC',LOSS='C96A6A';
 
+    /* 1. performance (full) */
     {
-      const rowsS=ALL_STATUSES.map(s=>({s,n:by([s.key]).length})).filter(x=>x.n);
-      const col=k=>WON_ST.includes(k)?TEAL:k==='lost'?LOSS:PIPE_ST.includes(k)?BLUE:k==='awaiting_decision'?LBLUE:GREY;
-      charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
-        data:{labels:rowsS.length?rowsS.map(x=>x.s.label):['No projects'],datasets:[{data:rowsS.map(x=>x.n),backgroundColor:rowsS.map(x=>col(x.s.key)),maxBarThickness:22}]},
-        options:{indexAxis:'y',plugins:{...heads('Tender outcomes','Win rate '+Math.round(winRate*100)+'% ('+won.length+' won, '+lost.length+' lost)'),legend:{display:false}},
-          scales:{x:ax({beginAtZero:true,grace:'12%',ticks:tk({stepSize:1,precision:0})}),y:ax({grid:{display:false},ticks:tk({color:TXT})})}},
-        plugins:[valLabels(v=>String(v))]})});
+      const {s,e}=ref.month;
+      const cat=numRef(fref('A',s,e),monthRows.map(m=>(m.date-Date.UTC(1899,11,30))/864e5),'mmm yy');
+      slot(FULL,'Financial Performance','Pipeline and awarded value by the month each project was added',15,
+        lineXml({cat,catFmt:'mmm yy',valFmt:MONEY,series:[
+          {name:'Pipeline value',ref:fref('F',s,e),vals:monthRows.map(m=>m.pipe),color:BLUE},
+          {name:'Awarded value',ref:fref('G',s,e),vals:monthRows.map(m=>m.awdV),color:TEAL},
+        ]}));
+      advance(15);
     }
-
-    charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
-      data:{labels:typeNames.length?typeNames.map(x=>x.t):['No projects'],datasets:[{data:typeNames.map(x=>sumOf(x.list,ev)),backgroundColor:NAVY,maxBarThickness:22}]},
-      options:{indexAxis:'y',plugins:{...heads('Pipeline by project type','Estimated value'),legend:{display:false}},
-        scales:{x:ax({beginAtZero:true,grace:'16%',ticks:tk({callback:money})}),y:ax({grid:{display:false},ticks:tk({color:TXT})})}},
-      plugins:[valLabels(money)]})});
-
+    /* 2. scenarios | 3. status */
     {
-      const counts=BANDS.map(([,lo,hi])=>projects.filter(p=>inBand(margin(p)/100,lo,hi)).length);
-      charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
-        data:{labels:BANDS.map(b=>b[0]),datasets:[{data:counts,backgroundColor:BLUE,maxBarThickness:48}]},
-        options:{plugins:{...heads('Margin distribution','Projects by margin band, average '+avgMargin.toFixed(1)+'%'),legend:{display:false}},
-          scales:{x:ax({grid:{display:false},ticks:tk()}),y:ax({beginAtZero:true,grace:'14%',ticks:tk({stepSize:1,precision:0})})}},
-        plugins:[valLabels(v=>String(v))]})});
+      const {s,e}=ref.scen;
+      slot(LEFT,'Projected Income by Scenario','Secured work plus the weighted pipeline',14,
+        barXml({dir:'col',grouping:'stacked',gap:80,valFmt:MONEY,cat:strRef(fref('A',s,e),SCEN.map(x=>x[0])),series:[
+          {name:'Secured',ref:fref('C',s,e),vals:SCEN.map(()=>awardedVal),color:TEAL},
+          {name:'Weighted pipeline',ref:fref('D',s,e),vals:SCEN.map(x=>weightedAt(x[1])),color:BLUE},
+        ]}));
+      const st=ref.status;
+      slot(RIGHT,'Tender Outcomes','Number of projects in each status',14,
+        barXml({dir:'bar',grouping:'clustered',gap:60,hideVal:true,labels:true,labelFmt:'0;-0;;',cat:strRef(fref('A',st.s,st.e),ALL_STATUSES.map(x=>x.label)),series:[
+          {name:'Projects',ref:fref('B',st.s,st.e),vals:ALL_STATUSES.map(x=>by([x.key]).length),color:NAVY},
+        ]}));
+      advance(14);
     }
-
-    charts.push({w:HALF_W,h:HALF_H,url:renderChart(HALF_W,HALF_H,{type:'bar',
-      data:{labels:monthRows.map(m=>m.short),datasets:[
-        {label:'New',data:monthRows.map(m=>m.n),backgroundColor:BLUE,maxBarThickness:12},
-        {label:'Awarded',data:monthRows.map(m=>m.awd),backgroundColor:TEAL,maxBarThickness:12},
-        {label:'Lost',data:monthRows.map(m=>m.lost),backgroundColor:GREY,maxBarThickness:12},
-      ]},
-      options:{plugins:{...heads('Monthly tender activity','Last 12 months'),legend:legend()},
-        scales:{x:ax({grid:{display:false},ticks:tk()}),y:ax({beginAtZero:true,ticks:tk({stepSize:1,precision:0})})}}})});
-
+    /* 4. type | 5. margin */
     {
-      const items=[...won,...piped].map(p=>({p,sec:WON_ST.includes(p.status)?wonV(p):0,wt:PIPE_ST.includes(p.status)?projV(p):0}))
-        .filter(x=>x.sec+x.wt>0).sort((a,b)=>(b.sec+b.wt)-(a.sec+a.wt)).slice(0,15);
-      const h=Math.max(260,120+items.length*28);
-      const lbl=p=>{const n=p.name||'Untitled';return(n.length>34?n.slice(0,33)+'…':n)+(p.package_number?'  '+p.package_number:'');};
-      charts.push({w:FULL_W,h,full:true,url:renderChart(FULL_W,h,{type:'bar',
-        data:{labels:items.length?items.map(x=>lbl(x.p)):['No projected income yet'],datasets:[
-          {label:'Secured (won, 100%)',data:items.map(x=>x.sec),backgroundColor:TEAL,maxBarThickness:18},
-          {label:'Weighted pipeline (value × Win %)',data:items.map(x=>x.wt),backgroundColor:BLUE,maxBarThickness:18},
-        ]},
-        options:{indexAxis:'y',plugins:{...heads('Projected income by project','Top '+items.length+' contributors, total '+fmtAUD(awardedVal+weightedTotal)),legend:legend()},
-          scales:{x:ax({stacked:true,beginAtZero:true,grace:'10%',ticks:tk({callback:money})}),y:ax({stacked:true,grid:{display:false},ticks:tk({color:TXT})})}},
-        plugins:[valLabels(money)]})});
+      if(ref.type){
+        const {s,e}=ref.type;
+        slot(LEFT,'Pipeline by Project Type','Estimated value by category',14,
+          barXml({dir:'bar',grouping:'clustered',gap:60,hideVal:true,labels:true,labelFmt:MONEY_LBL,cat:strRef(fref('A',s,e),typeGroups.map(x=>x.k)),series:[
+            {name:'Est. value',ref:fref('D',s,e),vals:typeGroups.map(x=>sumOf(x.list,ev)),color:BLUE},
+          ]}));
+      }
+      const b=ref.band;
+      slot(RIGHT,'Margin Distribution','Projects by margin band',14,
+        barXml({dir:'col',grouping:'clustered',gap:60,hideVal:true,labels:true,labelFmt:'0;-0;;',cat:strRef(fref('A',b.s,b.e),BANDS.map(x=>x[0])),series:[
+          {name:'Projects',ref:fref('B',b.s,b.e),vals:bandCounts,color:BLUE},
+        ]}));
+      advance(14);
     }
-
-    const PX_COL=91,EMU=9525,ROW_PX=20,LEFT=0,GAP=16;
-    const place=(c,x,row)=>{
-      const id=wb.addImage({base64:c.url,extension:'png'});
-      const col=Math.floor(x/PX_COL);
-      wsC.addImage(id,{tl:{nativeCol:col,nativeColOff:Math.round((x-col*PX_COL)*EMU),nativeRow:row,nativeRowOff:0},ext:{width:c.w,height:c.h},editAs:'oneCell'});
-    };
-    let crow=6;
-    for(let i=0;i<charts.length;){
-      const c=charts[i];
-      if(c.full){place(c,LEFT,crow);crow+=Math.ceil(c.h/ROW_PX)+1;i++;continue;}
-      const d=charts[i+1]&&!charts[i+1].full?charts[i+1]:null;
-      place(c,LEFT,crow);
-      if(d)place(d,LEFT+HALF_W+GAP,crow);
-      crow+=Math.ceil(Math.max(c.h,d?d.h:0)/ROW_PX)+1;
-      i+=d?2:1;
+    /* 6. monthly activity | 7. clients */
+    {
+      const {s,e}=ref.month;
+      const cat=numRef(fref('A',s,e),monthRows.map(m=>(m.date-Date.UTC(1899,11,30))/864e5),'mmm yy');
+      slot(LEFT,'Monthly Tender Activity','New, awarded and lost tenders, last 12 months',14,
+        barXml({dir:'col',grouping:'clustered',gap:90,valFmt:'0',major:1,catFmt:'mmm',cat,series:[
+          {name:'New',ref:fref('B',s,e),vals:monthRows.map(m=>m.n),color:BLUE},
+          {name:'Awarded',ref:fref('D',s,e),vals:monthRows.map(m=>m.awd),color:TEAL},
+          {name:'Lost',ref:fref('E',s,e),vals:monthRows.map(m=>m.lost),color:GREY},
+        ]}));
+      if(ref.client){
+        const n=Math.min(8,clientGroups.length);
+        const cs=ref.client.s,ce=cs+n-1;
+        slot(RIGHT,'Top Clients','Tender value and awarded value, top '+n+' by tender value',14,
+          barXml({dir:'bar',grouping:'clustered',gap:50,hideVal:true,labels:true,labelFmt:MONEY_LBL,cat:strRef(fref('A',cs,ce),clientGroups.slice(0,n).map(x=>x.k)),series:[
+            {name:'Tender value',ref:fref('F',cs,ce),vals:clientGroups.slice(0,n).map(x=>sumOf(x.list,ev)),color:BLUE},
+            {name:'Awarded value',ref:fref('G',cs,ce),vals:clientGroups.slice(0,n).map(x=>sumOf(x.list,secV)),color:TEAL},
+          ]}));
+      }
+      advance(14);
+    }
+    /* 8. projected by project (full) */
+    {
+      const {s,e,ranked}=ref.top10;
+      slot(FULL,'Projected Income by Project','Top 10 contributors under the scenario in use',16,
+        barXml({dir:'bar',grouping:'stacked',gap:50,valFmt:MONEY,cat:strRef(fref('A',s,e),Array.from({length:10},(_,i)=>ranked[i]?ranked[i].name||'':'')),series:[
+          {name:'Secured',ref:fref('D',s,e),vals:Array.from({length:10},(_,i)=>ranked[i]?secV(ranked[i]):0),color:TEAL},
+          {name:'Weighted pipeline',ref:fref('E',s,e),vals:Array.from({length:10},(_,i)=>ranked[i]?projV(ranked[i])-secV(ranked[i]):0),color:BLUE},
+        ]}));
+      advance(16);
     }
     printSetup(wsC,'portrait','Financial Charts');
+    wsC.pageSetup.fitToHeight=1;
 
-    /* ---------- download ---------- */
-    const buf=await wb.xlsx.writeBuffer();
-    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    /* ---------- write, then inject native charts ---------- */
+    let out=await wb.xlsx.writeBuffer();
+    let chartsOk=true;
+    try{
+      const JSZip=await _loadJSZip();
+      const zip=await JSZip.loadAsync(out);
+      const rd=p=>zip.file(p).async('string');
+      const wbXml=await rd('xl/workbook.xml');
+      const rid=(wbXml.match(/<sheet [^>]*name="Charts"[^>]*\/>/)||[''])[0].match(/r:id="([^"]+)"/)[1];
+      const wbRels=await rd('xl/_rels/workbook.xml.rels');
+      const sheetTarget=wbRels.match(new RegExp('<Relationship [^>]*Id="'+rid+'"[^>]*>'))[0].match(/Target="([^"]+)"/)[1];
+      const sheetPath='xl/'+sheetTarget.replace(/^\/?xl\//,'');
+      const sheetRelsPath=sheetPath.replace(/worksheets\/(sheet\d+\.xml)$/,'worksheets/_rels/$1.rels');
+      const sheetRels=await rd(sheetRelsPath);
+      const drawTarget=sheetRels.match(/<Relationship [^>]*Type="[^"]*\/drawing"[^>]*>/)[0].match(/Target="([^"]+)"/)[1];
+      const drawPath='xl/'+drawTarget.replace(/^(\.\.\/)+/,'').replace(/^\/?xl\//,'');
+      const drawRelsPath=drawPath.replace(/drawings\/(drawing\d+\.xml)$/,'drawings/_rels/$1.rels');
+      let drawXml=await rd(drawPath);
+      let drawRels=zip.file(drawRelsPath)?await rd(drawRelsPath):'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+      let ctypes=await rd('[Content_Types].xml');
+      const existing=Object.keys(zip.files).filter(f=>/^xl\/charts\/chart\d+\.xml$/.test(f)).length;
+      let anchors='',rels='',overrides='';
+      chartSpecs.forEach((c,i)=>{
+        const n=existing+i+1,id='rIdFinChart'+n;
+        zip.file('xl/charts/chart'+n+'.xml',c.xml);
+        rels+='<Relationship Id="'+id+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart'+n+'.xml"/>';
+        overrides+='<Override PartName="/xl/charts/chart'+n+'.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>';
+        anchors+='<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>'+c.from.col+'</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>'+c.from.row+'</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>'+c.to.col+'</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>'+c.to.row+'</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'
+          +'<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="'+(200+i)+'" name="Chart '+(i+1)+'"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>'
+          +'<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="'+id+'"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>';
+      });
+      if(!/xmlns:a=/.test(drawXml.slice(0,600)))drawXml=drawXml.replace('<xdr:wsDr ','<xdr:wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ');
+      zip.file(drawPath,drawXml.replace('</xdr:wsDr>',anchors+'</xdr:wsDr>'));
+      zip.file(drawRelsPath,drawRels.replace('</Relationships>',rels+'</Relationships>'));
+      zip.file('[Content_Types].xml',ctypes.replace('</Types>',overrides+'</Types>'));
+      out=await zip.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
+    }catch(err){console.warn('Chart injection skipped:',err);chartsOk=false;}
+
+    const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);const a=document.createElement('a');
     a.href=url;a.download=dd+'-'+mm+'-'+yyyy+' - Financial Overview.xlsx';
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-    toast('Financial Overview downloaded.','success');
+    toast(chartsOk?'Financial Overview downloaded.':'Financial Overview downloaded without charts (chart library could not load).',chartsOk?'success':'warning');
   }catch(e){console.error('Financial overview export error:',e);toast('Export failed: '+(e.message||'Unknown error'),'error');}
-  finally{if(host)host.remove();if(btn){btn.disabled=false;btn.innerHTML=origHtml;}}
+  finally{if(btn){btn.disabled=false;btn.innerHTML=origHtml;}}
 };
 
 function renderTabRisk(p,id){
