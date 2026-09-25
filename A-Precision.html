@@ -4807,12 +4807,12 @@ window.exportFinancialOverview=async function(){
     /* ---- key metrics ---- */
     sectionTitle(wsF,r,FNC,'Key Metrics');r+=2;
     const nPipe=cntSt(PIPE_ST),nWon=cntSt(WON_ST),nLost=cntSt(['lost']),nSub=cntSt(['submitted']),nAll=cntSt(ALL_ST);
-    tileRow(wsF,r,[
+    const winRateAddr=tileRow(wsF,r,[
       ['Total Pipeline Value',F(sumSt(rK,PIPE_ST),sumOf(piped,ev)),NUM,capF(nPipe,piped.length,'open tender','open tenders')],
       ['Total Awarded Value',F(sumSt(rN,WON_ST),awardedVal),NUM,capF(nWon,won.length,'job won','jobs won',', incl. in progress & completed')],
       ['Total Submitted Value',F(sumSt(rK,['submitted']),sumOf(submitted,ev)),NUM,capF(nSub,submitted.length,'tender submitted','tenders submitted')],
       ['Win Rate',F('IFERROR('+nWon+'/('+nWon+'+'+nLost+'),0)',winRate),WR,F(nWon+'&" won, "&'+nLost+'&" lost"',won.length+' won, '+lost.length+' lost')],
-    ]);r+=4;
+    ])[3].address;r+=4;
     tileRow(wsF,r,[
       ['Avg. Tender Value',F('IFERROR('+sumSt(rK,ALL_ST)+'/'+nAll+',0)',projects.length?sumOf(projects,ev)/projects.length:0),NUM,capF(nAll,projects.length,'active project','active projects','')],
       ['Average Margin',F('IFERROR('+sumSt(rM,ALL_ST)+'/'+nAll+',0)',avgMargin/100),PCT1,'BOQ margin, 15% where not set'],
@@ -5012,8 +5012,8 @@ window.exportFinancialOverview=async function(){
     const dLbls=(fmt,pos)=>'<c:dLbls><c:numFmt formatCode="'+X(fmt)+'" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>'+txPr(900,'1F2937',false)+(pos?'<c:dLblPos val="'+pos+'"/>':'')+'<c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>';
     const catAx=(pos,o)=>'<c:catAx><c:axId val="111"/><c:scaling><c:orientation val="'+(o.reverse?'maxMin':'minMax')+'"/></c:scaling><c:delete val="0"/><c:axPos val="'+pos+'"/>'+(o.fmt?'<c:numFmt formatCode="'+X(o.fmt)+'" sourceLinked="0"/>':'')+'<c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln w="9525">'+solid('CBD3DE')+'</a:ln></c:spPr>'+txPr(900,'374151',false)+'<c:crossAx val="222"/><c:crosses val="autoZero"/><c:auto val="0"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>';
     const valAx=(pos,o)=>'<c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="'+(o.del?1:0)+'"/><c:axPos val="'+pos+'"/>'+(o.grid?'<c:majorGridlines><c:spPr><a:ln w="6350">'+solid('E5E9EF')+'</a:ln></c:spPr></c:majorGridlines>':'')+'<c:numFmt formatCode="'+X(o.fmt||'General')+'" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr>'+txPr(900,'6B7280',false)+'<c:crossAx val="111"/><c:crosses val="'+(o.crossMax?'max':'autoZero')+'"/><c:crossBetween val="between"/>'+(o.major?'<c:majorUnit val="'+o.major+'"/>':'')+'</c:valAx>';
-    const legendXml='<c:legend><c:legendPos val="t"/><c:overlay val="0"/>'+txPr(900,'374151',false)+'</c:legend>';
-    const space=(plot,axes,legend)=>'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-AU"/><c:roundedCorners val="0"/><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/>'+plot+axes+'<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>'+(legend?legendXml:'')+'<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr>'+solid('FFFFFF')+'<a:ln w="9525">'+solid('DCE2EA')+'</a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:latin typeface="Calibri"/></a:defRPr></a:pPr><a:endParaRPr lang="en-AU"/></a:p></c:txPr></c:chartSpace>';
+    const legendXml=pos=>'<c:legend><c:legendPos val="'+(pos||'t')+'"/><c:overlay val="0"/>'+txPr(900,'374151',false)+'</c:legend>';
+    const space=(plot,axes,legend)=>'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:date1904 val="0"/><c:lang val="en-AU"/><c:roundedCorners val="0"/><c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/>'+plot+axes+'<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>'+(legend?legendXml(typeof legend==='string'?legend:'t'):'')+'<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr>'+solid('FFFFFF')+'<a:ln w="9525">'+solid('DCE2EA')+'</a:ln></c:spPr><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:latin typeface="Calibri"/></a:defRPr></a:pPr><a:endParaRPr lang="en-AU"/></a:p></c:txPr></c:chartSpace>';
     function barXml(o){
       const horiz=o.dir==='bar';
       const ser=o.series.map((s,i)=>'<c:ser><c:idx val="'+i+'"/><c:order val="'+i+'"/><c:tx><c:v>'+X(s.name)+'</c:v></c:tx><c:spPr>'+solid(s.color)+'<a:ln><a:noFill/></a:ln></c:spPr><c:invertIfNegative val="0"/>'+(o.labels?dLbls(o.labelFmt||'General',o.grouping==='clustered'?'outEnd':null):'')+'<c:cat>'+o.cat+'</c:cat><c:val>'+numRef(s.ref,s.vals,s.fmt)+'</c:val></c:ser>').join('');
@@ -5026,7 +5026,15 @@ window.exportFinancialOverview=async function(){
       const plot='<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>'+ser+'<c:marker val="1"/><c:axId val="111"/><c:axId val="222"/></c:lineChart>';
       return space(plot,catAx('b',{fmt:o.catFmt})+valAx('l',{grid:true,fmt:o.valFmt}),true);
     }
+    function doughnutXml(o){
+      const white='<a:ln w="19050">'+solid('FFFFFF')+'</a:ln>';
+      const pts=o.colors.map((c,i)=>'<c:dPt><c:idx val="'+i+'"/><c:bubble3D val="0"/><c:spPr>'+solid(c)+white+'</c:spPr></c:dPt>').join('');
+      const lbls='<c:dLbls><c:numFmt formatCode="'+X('0;;;')+'" sourceLinked="0"/><c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>'+txPr(1000,'FFFFFF',true)+'<c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/><c:showLeaderLines val="0"/></c:dLbls>';
+      const plot='<c:doughnutChart><c:varyColors val="1"/><c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>'+X(o.name)+'</c:v></c:tx><c:spPr>'+white+'</c:spPr>'+pts+lbls+'<c:cat>'+o.cat+'</c:cat><c:val>'+numRef(o.ref,o.vals)+'</c:val></c:ser><c:firstSliceAng val="0"/><c:holeSize val="58"/></c:doughnutChart>';
+      return space(plot,'','r');
+    }
     const NAVY='0B1F3A',BLUE='2563D4',LBLUE='9DB6E8',TEAL='12B886',GREY='B8C0CC',LOSS='C96A6A';
+    const STATUS_HEX={estimating:'2563D4',submitted:'7C3AED',awaiting_decision:'E3A63B',awarded:'12B886',lost:'C96A6A',on_hold:'B8C0CC',in_progress:'0E9FB5',completed:'0B7A5A',not_submitted:'DDE2E8'};
 
     /* 1. performance (full) */
     {
@@ -5048,10 +5056,9 @@ window.exportFinancialOverview=async function(){
           {name:'Weighted pipeline',ref:fref('D',s,e),vals:SCEN.map(x=>weightedAt(x[1])),color:BLUE},
         ]}));
       const st=ref.status;
-      slot(RIGHT,'Tender Outcomes','Number of projects in each status',14,
-        barXml({dir:'bar',grouping:'clustered',gap:60,hideVal:true,labels:true,labelFmt:'0;-0;;',cat:strRef(fref('A',st.s,st.e),ALL_STATUSES.map(x=>x.label)),series:[
-          {name:'Projects',ref:fref('B',st.s,st.e),vals:ALL_STATUSES.map(x=>by([x.key]).length),color:NAVY},
-        ]}));
+      slot(RIGHT,'Tender Outcomes',F('"Projects by status  |  Win rate "&TEXT(Financial!'+winRateAddr+',"0%")','Projects by status  |  Win rate '+Math.round(winRate*100)+'%'),14,
+        doughnutXml({name:'Projects',ref:fref('B',st.s,st.e),vals:ALL_STATUSES.map(x=>by([x.key]).length),
+          cat:strRef(fref('A',st.s,st.e),ALL_STATUSES.map(x=>x.label)),colors:ALL_STATUSES.map(x=>STATUS_HEX[x.key]||'B8C0CC')}));
       advance(14);
     }
     /* 4. type | 5. margin */
