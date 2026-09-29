@@ -9257,45 +9257,47 @@ function renderRisks(){
 }
 
 /* ================================================================
-   FINANCIAL TAB PASSWORD
+   APP PASSWORD (session lock)
 ================================================================ */
-let _financialUnlocked=false;
+let _appUnlocked=false;
+let _appPwTarget=null;
+const _OPEN_PAGES=new Set(['risks','compliance','site-photos','settings']);
 
 async function _hashPw(pw){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-function _showFinancialPwGate(){
+function _showAppPwGate(page){
+  _appPwTarget=page;
   const content=`
-  <div class="page-header"><div><div class="page-title">Financial</div><div class="page-sub">Pipeline analytics &amp; reporting</div></div></div>
-  <div style="display:flex;align-items:center;justify-content:center;min-height:55vh">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:70vh">
     <div class="card" style="max-width:400px;width:100%;text-align:center">
       <div style="width:56px;height:56px;border-radius:14px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 16px">🔒</div>
-      <div style="font-weight:700;font-size:1.1rem;margin-bottom:4px">Financial Tab Locked</div>
-      <div style="font-size:.82rem;color:var(--muted);margin-bottom:20px">Enter the password to access financial data</div>
+      <div style="font-weight:700;font-size:1.1rem;margin-bottom:4px">Password Required</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:20px">Enter the password to continue</div>
       <div class="form-group" style="text-align:left;margin-bottom:12px">
-        <input class="form-input" type="password" id="fin-pw-input" placeholder="Password" onkeydown="if(event.key==='Enter')_unlockFinancial()">
+        <input class="form-input" type="password" id="app-pw-input" placeholder="Password" onkeydown="if(event.key==='Enter')_unlockApp()">
       </div>
-      <button class="btn btn-blue" style="width:100%" onclick="_unlockFinancial()">Unlock</button>
-      <div id="fin-pw-err" style="font-size:.78rem;color:var(--red);margin-top:8px"></div>
+      <button class="btn btn-blue" style="width:100%" onclick="_unlockApp()">Unlock</button>
+      <div id="app-pw-err" style="font-size:.78rem;color:var(--red);margin-top:8px"></div>
     </div>
   </div>`;
-  renderShell(content,'financial');
-  setTimeout(()=>{const el=document.getElementById('fin-pw-input');if(el)el.focus();},50);
+  renderShell(content,page);
+  setTimeout(()=>{const el=document.getElementById('app-pw-input');if(el)el.focus();},50);
 }
 
-window._unlockFinancial=async function(){
-  const pw=(document.getElementById('fin-pw-input')?.value||'').trim();
-  const errEl=document.getElementById('fin-pw-err');
+window._unlockApp=async function(){
+  const pw=(document.getElementById('app-pw-input')?.value||'').trim();
+  const errEl=document.getElementById('app-pw-err');
   if(!pw){if(errEl)errEl.textContent='Please enter the password.';return;}
   const hash=await _hashPw(pw);
   if(hash===_c.settings.financial_pw_hash){
-    _financialUnlocked=true;
-    renderFinancial();
+    _appUnlocked=true;
+    navigate(_appPwTarget||'dashboard');
   } else {
     if(errEl)errEl.textContent='Incorrect password.';
-    const inp=document.getElementById('fin-pw-input');
+    const inp=document.getElementById('app-pw-input');
     if(inp){inp.value='';inp.focus();}
   }
 };
@@ -9366,8 +9368,8 @@ function renderSettings(){
         <button class="btn btn-blue btn-sm" data-action="save-ai-key">Save API Key</button><div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Models in use</div><div style="display:flex;flex-direction:column;gap:5px;font-size:.83rem"><div>AI Package Analyser &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-opus-4-5</code></div><div>Quote Analysis &amp; Email Drafter &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-sonnet-4-5</code></div><div>Supplier Rate Extraction &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-haiku-4-5</code></div></div></div>
       </div>
       <div class="card mb-4">
-        <div class="card-title">Financial Tab Password</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Require a password to access the Financial tab each session</div>
+        <div class="card-title">App Password</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Require a password each session to access protected tabs</div>
         ${s.financial_pw_hash?`
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
           <span class="badge badge-green">Active</span>
@@ -10956,8 +10958,8 @@ function renderPage(page,params){
     calendar:renderCalendar,
     settings:renderSettings,
   };
+  if(!_appUnlocked&&_c.settings.financial_pw_hash&&!_OPEN_PAGES.has(page)){_showAppPwGate(page);return;}
   if(page==='project'&&params[0]){renderProjectDetail(params[0],params[1]||'summary');return;}
-  if(page==='financial'&&_c.settings.financial_pw_hash&&!_financialUnlocked){_showFinancialPwGate();return;}
   if(dispatch[page]){dispatch[page]();}
   else renderDashboard();
 }
@@ -13696,7 +13698,7 @@ if(action==='save-contact'){
         if(!pw){if(errEl)errEl.textContent='Please enter a new password.';return;}
         if(pw.length<4){if(errEl)errEl.textContent='New password must be at least 4 characters.';return;}
         if(pw!==cfm){if(errEl)errEl.textContent='Passwords do not match.';return;}
-        _hashPw(pw).then(h2=>{DB.saveSettings({financial_pw_hash:h2});_financialUnlocked=true;toast('Financial password updated.','success');renderSettings();});
+        _hashPw(pw).then(h2=>{DB.saveSettings({financial_pw_hash:h2});_appUnlocked=true;toast('Password updated.','success');renderSettings();});
       });
       return;
     }
@@ -13707,8 +13709,8 @@ if(action==='save-contact'){
     if(pw!==confirm){if(errEl)errEl.textContent='Passwords do not match.';return;}
     _hashPw(pw).then(hash=>{
       DB.saveSettings({financial_pw_hash:hash});
-      _financialUnlocked=true;
-      toast('Financial password saved.','success');
+      _appUnlocked=true;
+      toast('Password saved.','success');
       renderSettings();
     });
     return;
@@ -13720,8 +13722,8 @@ if(action==='save-contact'){
     _hashPw(cur).then(hash=>{
       if(hash!==_c.settings.financial_pw_hash){if(errEl)errEl.textContent='Current password is incorrect.';return;}
       DB.saveSettings({financial_pw_hash:''});
-      _financialUnlocked=false;
-      toast('Financial password removed.','success');
+      _appUnlocked=false;
+      toast('Password removed.','success');
       renderSettings();
     });
     return;
