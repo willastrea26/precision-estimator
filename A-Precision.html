@@ -9373,10 +9373,12 @@ function renderSettings(){
           <span class="badge badge-green">Active</span>
           <span style="font-size:.78rem;color:var(--muted)">Password is set</span>
         </div>
-        <div class="form-group"><label class="form-label">New Password</label><input class="form-input" type="password" id="s-finpw-new" placeholder="Enter new password"></div>
+        <div class="form-group"><label class="form-label">Current Password</label><input class="form-input" type="password" id="s-finpw-current" placeholder="Enter current password"></div>
+        <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+        <div class="form-group"><label class="form-label">New Password <span style="font-size:.73rem;color:var(--muted);font-weight:400">(leave blank to remove)</span></label><input class="form-input" type="password" id="s-finpw-new" placeholder="Enter new password"></div>
         <div class="form-group"><label class="form-label">Confirm New Password</label><input class="form-input" type="password" id="s-finpw-confirm" placeholder="Confirm new password"></div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-blue btn-sm" data-action="set-fin-pw">Change Password</button>
+          <button class="btn btn-blue btn-sm" data-action="set-fin-pw">Update Password</button>
           <button class="btn btn-outline btn-sm" data-action="remove-fin-pw" style="color:var(--red);border-color:var(--red)">Remove</button>
         </div>`:`
         <div class="form-group"><label class="form-label">Password</label><input class="form-input" type="password" id="s-finpw-new" placeholder="Choose a password"></div>
@@ -13682,9 +13684,24 @@ if(action==='save-contact'){
 
   /* ---- FINANCIAL PASSWORD ---- */
   if(action==='set-fin-pw'){
+    const errEl=document.getElementById('fin-pw-settings-err');
+    const hasExisting=!!_c.settings.financial_pw_hash;
+    if(hasExisting){
+      const cur=(document.getElementById('s-finpw-current')?.value||'').trim();
+      if(!cur){if(errEl)errEl.textContent='Please enter your current password.';return;}
+      _hashPw(cur).then(hash=>{
+        if(hash!==_c.settings.financial_pw_hash){if(errEl)errEl.textContent='Current password is incorrect.';return;}
+        const pw=(document.getElementById('s-finpw-new')?.value||'').trim();
+        const cfm=(document.getElementById('s-finpw-confirm')?.value||'').trim();
+        if(!pw){if(errEl)errEl.textContent='Please enter a new password.';return;}
+        if(pw.length<4){if(errEl)errEl.textContent='New password must be at least 4 characters.';return;}
+        if(pw!==cfm){if(errEl)errEl.textContent='Passwords do not match.';return;}
+        _hashPw(pw).then(h2=>{DB.saveSettings({financial_pw_hash:h2});_financialUnlocked=true;toast('Financial password updated.','success');renderSettings();});
+      });
+      return;
+    }
     const pw=(document.getElementById('s-finpw-new')?.value||'').trim();
     const confirm=(document.getElementById('s-finpw-confirm')?.value||'').trim();
-    const errEl=document.getElementById('fin-pw-settings-err');
     if(!pw){if(errEl)errEl.textContent='Please enter a password.';return;}
     if(pw.length<4){if(errEl)errEl.textContent='Password must be at least 4 characters.';return;}
     if(pw!==confirm){if(errEl)errEl.textContent='Passwords do not match.';return;}
@@ -13697,10 +13714,16 @@ if(action==='save-contact'){
     return;
   }
   if(action==='remove-fin-pw'){
-    DB.saveSettings({financial_pw_hash:''});
-    _financialUnlocked=false;
-    toast('Financial password removed.','success');
-    renderSettings();
+    const errEl=document.getElementById('fin-pw-settings-err');
+    const cur=(document.getElementById('s-finpw-current')?.value||'').trim();
+    if(!cur){if(errEl)errEl.textContent='Please enter your current password to remove it.';return;}
+    _hashPw(cur).then(hash=>{
+      if(hash!==_c.settings.financial_pw_hash){if(errEl)errEl.textContent='Current password is incorrect.';return;}
+      DB.saveSettings({financial_pw_hash:''});
+      _financialUnlocked=false;
+      toast('Financial password removed.','success');
+      renderSettings();
+    });
     return;
   }
 
