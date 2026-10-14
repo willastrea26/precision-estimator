@@ -496,15 +496,50 @@ table tbody tr[onclick]:not(:has(.tbl-actions)):not(:has(td>button)):hover td:la
 .vol-stat{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:13px 14px}
 .vol-stat-val{font-size:1.15rem;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1;margin-bottom:3px}
 .vol-stat-lbl{font-size:.62rem;color:var(--muted2);text-transform:uppercase;letter-spacing:.09em}
-.vol-tbl{width:100%;border-collapse:collapse}
-.vol-tbl th{font-size:.63rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:8px 8px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right}
-.vol-tbl th:first-child,.vol-tbl th:nth-child(2){text-align:left}
-.vol-tbl td{padding:6px 8px;font-size:.79rem;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;text-align:right;color:var(--text)}
-.vol-tbl td:nth-child(2){text-align:left}
-.vol-tbl .vg-hdr td{background:rgba(59,130,246,.06);font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;padding:5px 8px}
-.vol-tbl .vg-sub td{background:var(--s2);font-weight:700;font-size:.77rem}
-.vol-cell-input{background:var(--s3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 5px;font-size:.77rem;outline:none;width:72px;text-align:right}
-.vol-cell-input:focus{border-color:var(--blue)}
+/* TRENCH CALCULATOR */
+.tr-wrap{display:grid;grid-template-columns:304px minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:1080px){.tr-wrap{grid-template-columns:minmax(0,1fr)}}
+.tr-panel{background:var(--s2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 17px}
+.tr-panel+.tr-panel{margin-top:12px}
+.tr-ptitle{font-size:.62rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.13em;margin-bottom:13px}
+.tr-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.tr-row:last-child{margin-bottom:0}
+.tr-lbl{font-size:.78rem;color:var(--muted);flex:1;min-width:0}
+.tr-lbl i{font-style:normal;font-size:.63rem;color:var(--muted2);margin-left:4px;letter-spacing:.03em}
+.tr-in{width:106px;flex-shrink:0;background:var(--s3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 9px;font-size:.8rem;outline:none;text-align:right;transition:border-color .15s;font-variant-numeric:tabular-nums}
+.tr-in:focus{border-color:var(--blue)}
+.tr-in::-webkit-outer-spin-button,.tr-in::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+select.tr-in{text-align:left;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA3BF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;background-size:11px;padding-right:23px}
+.tr-pipe{background:var(--s3);border:1px solid var(--border);border-radius:9px;padding:11px 12px 12px;margin-bottom:9px}
+.tr-pipe-h{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+.tr-tag{font-size:.6rem;font-weight:700;background:var(--blue-d);color:var(--blue);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:2px 6px;letter-spacing:.04em;flex-shrink:0}
+.tr-pipe-nm{flex:1;font-size:.78rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-x{background:none;border:none;color:var(--muted2);cursor:pointer;padding:2px 5px;border-radius:4px;font-size:.82rem;line-height:1;transition:all .15s;flex-shrink:0}
+.tr-x:hover{color:var(--red);background:var(--red-d)}
+.tr-note{font-size:.67rem;color:var(--muted2);line-height:1.55;margin-top:11px}
+.tr-alert{display:flex;align-items:flex-start;gap:9px;padding:10px 14px;border-radius:9px;font-size:.78rem;margin-bottom:13px;line-height:1.55}
+.tr-alert b{font-weight:600}
+.tr-ok{background:var(--green-d);border:1px solid rgba(16,185,129,.25);color:#6EE7B7}
+.tr-warn{background:var(--amber-d);border:1px solid rgba(245,158,11,.28);color:#FCD34D}
+.tr-bad{background:var(--red-d);border:1px solid rgba(239,68,68,.28);color:#FCA5A5}
+.tr-runs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:13px}
+.tr-run{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;font-size:.78rem;cursor:pointer;border:1px solid var(--border);background:var(--s2);color:var(--muted);transition:all .15s;white-space:nowrap}
+.tr-run:hover{border-color:var(--bh);color:var(--text)}
+.tr-run.on{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.45);color:var(--text);font-weight:600}
+.tr-run-v{font-size:.68rem;color:var(--muted2);font-variant-numeric:tabular-nums}
+.tr-run.on .tr-run-v{color:var(--blue)}
+.tr-name{background:transparent;border:1px solid transparent;border-radius:6px;color:var(--text);font-size:.95rem;font-weight:700;padding:4px 8px;outline:none;width:100%;transition:all .15s;letter-spacing:-.01em}
+.tr-name:hover{border-color:var(--border)}
+.tr-name:focus{border-color:var(--blue);background:var(--s3)}
+.tr-qty{width:100%;border-collapse:collapse;font-size:.81rem}
+.tr-qty th{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted2);padding:0 10px 9px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+.tr-qty th:first-child{text-align:left}
+.tr-qty td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.tr-qty td:first-child{text-align:left}
+.tr-sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:9px;vertical-align:middle}
+.tr-qty .tr-dim td{color:var(--muted2)}
+.tr-qty .tr-tot td{font-weight:700;border-top:1px solid var(--border);border-bottom:none}
+.tr-svg{width:100%;height:auto;display:block;overflow:visible}
 .mat-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .mat-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .mat-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;background:rgba(255,255,255,.05);flex-shrink:0}
@@ -1659,7 +1694,7 @@ function renderProjectDetail(id,tab){
   const p=DB.getProject(id);
   if(!p){renderShell(`<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Project not found</div></div>`,'projects');return;}
   const tabs=['summary','suppliers','geotech','volumes','productivity','boq','risk','variations','diary','departures','program','documents'];
-  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Volumes','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
+  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Trenching','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
   const curTab=tabs.includes(tab)?tab:'summary';
   const boqTotal=(p.boq_items||[]).reduce((s,b)=>s+(b.quantity||0)*(b.rate||0),0);
   const openRisks=(p.risks||[]).filter(r=>r.status==='open').length;
@@ -3090,113 +3125,303 @@ function renderTabGeotech(p,id){
   </div>`;
 }
 
-function renderTabVolumes(p,id){
-  const vf=p.volumes_fields||{};
-  const items=p.volume_items||[];
-  const groups={excavation:[],backfill:[],import:[],disposal:[]};
-  items.forEach(vi=>{(groups[vi.group_type||'excavation']||groups.excavation).push(vi);});
+/* ================================================================
+   TRENCH BEDDING CALCULATOR  (Volumes tab)
+================================================================ */
+const TRENCH_MATS={
+  concrete:{label:'Concrete RCP',od:{300:375,375:450,450:560,525:650,600:738,675:815,750:900,825:990,900:1080,1050:1260,1200:1440,1350:1620,1500:1800,1650:1980,1800:2160}},
+  upvc:{label:'uPVC',od:{100:110,150:160,225:225,250:250,300:315,375:400,450:500,525:560,600:630}},
+  hdpe:{label:'HDPE PE100',od:{110:110,125:125,160:160,180:180,200:200,225:225,250:250,280:280,315:315,355:355,400:400,450:450,500:500,560:560,630:630,710:710,800:800}},
+  dicl:{label:'DICL',od:{100:122,150:177,200:232,225:259,250:286,300:345,375:426,450:507,500:560,600:667,700:774,750:826,800:878,900:984}},
+  steel:{label:'Steel',od:{100:114,150:168,200:219,250:273,300:324,350:356,400:406,450:457,500:508,600:610,750:762,900:914}},
+};
+const TR_COL={bedding:'rgba(59,130,246,.45)',haunch:'rgba(59,130,246,.30)',overlay:'rgba(59,130,246,.17)',backfill:'rgba(143,163,191,.11)'};
+const _trN=(n,d)=>Number(n||0).toLocaleString('en-AU',{minimumFractionDigits:d,maximumFractionDigits:d});
+let _trActive={};
+let _trSaveTimer=null;
 
-  const sumAdj=arr=>arr.reduce((s,vi)=>s+(vi.adj_volume||vi.volume||0),0);
-  const totalExc=sumAdj(groups.excavation);
-  const totalBf=sumAdj(groups.backfill);
-  const totalDisp=sumAdj(groups.disposal);
-  const totalImp=sumAdj(groups.import);
-  const net=totalExc-totalBf-totalImp;
-
-  const vRow=vi=>`<tr>
-    <td style="padding:4px 6px;width:28px">
-      <button style="background:none;border:none;color:var(--muted2);cursor:pointer;padding:2px 4px;border-radius:3px" data-action="del-vol-item" data-id="${id}" data-vid="${vi.id}" title="Remove">✕</button>
-    </td>
-    <td style="text-align:left;min-width:200px;padding:4px 6px">
-      <input class="vol-cell-input" style="width:100%;text-align:left" value="${esc(vi.description||'')}" onchange="saveVolCell('${id}','${vi.id}','description',this.value)" placeholder="Description">
-      <input class="vol-cell-input" style="width:100%;text-align:left;font-size:.72rem;color:var(--muted);margin-top:2px;font-style:italic" value="${esc(vi.notes||'')}" onchange="saveVolCell('${id}','${vi.id}','notes',this.value)" placeholder="Notes…">
-    </td>
-    <td><input type="number" class="vol-cell-input" style="width:68px" value="${vi.length??''}" onchange="saveVolCell('${id}','${vi.id}','length',this.value)" placeholder="—" step="any"></td>
-    <td><input type="number" class="vol-cell-input" style="width:68px" value="${vi.width??''}" onchange="saveVolCell('${id}','${vi.id}','width',this.value)" placeholder="—" step="any"></td>
-    <td><input type="number" class="vol-cell-input" style="width:68px" value="${vi.depth??''}" onchange="saveVolCell('${id}','${vi.id}','depth',this.value)" placeholder="—" step="any"></td>
-    <td style="color:var(--muted);text-align:right;padding:4px 8px">${vi.area!=null?vi.area.toFixed(2):'—'}</td>
-    <td style="font-weight:600;text-align:right;padding:4px 8px">${vi.volume!=null?vi.volume.toFixed(3):'—'}</td>
-    <td><input type="number" class="vol-cell-input" style="width:52px" value="${vi.bulking_factor??1.25}" onchange="saveVolCell('${id}','${vi.id}','bulking_factor',this.value)" step="0.05"></td>
-    <td style="font-weight:700;color:var(--blue);text-align:right;padding:4px 8px">${vi.adj_volume!=null?vi.adj_volume.toFixed(3):'—'}</td>
-  </tr>`;
-
-  const grp=(type,label,color,arr)=>`
-    <tr class="vg-hdr"><td colspan="9" style="color:${color}">${label}</td></tr>
-    ${arr.length?arr.map(vi=>vRow(vi)).join(''):`<tr><td colspan="9" style="text-align:center;padding:10px;color:var(--muted2);font-size:.76rem">No items. Click "+ ${label}" below to add.</td></tr>`}
-    ${arr.length?`<tr class="vg-sub">
-      <td colspan="6" style="color:var(--muted);padding:5px 8px;text-align:left">Subtotal — ${label}</td>
-      <td style="padding:5px 8px;text-align:right">${arr.reduce((s,vi)=>s+(vi.volume||0),0).toFixed(3)}</td>
-      <td></td>
-      <td style="color:var(--blue);padding:5px 8px;text-align:right">${sumAdj(arr).toFixed(3)}</td>
-    </tr>`:''}`;
-
-  const existingNotes=Object.entries({
-    'Excavation Volumes':'excavation_volumes','Trench Volumes':'trench_volumes',
-    'Backfill Volumes':'backfill_volumes','Spoil Export':'spoil_export_volumes',
-    'Material Import':'material_import_volumes','Measurement Assumptions':'measurement_assumptions'
-  }).filter(([,k])=>vf[k]).map(([l,k])=>`
-    <div class="geo-field-section">
-      <div class="geo-field-section-label">
-        <span>${l}</span>
-        <button class="btn btn-ghost btn-xs" data-action="edit-simple-field" data-id="${id}" data-group="volumes_fields" data-field="${k}">${icon('edit')}</button>
-      </div>
-      <div id="spv-volumes_fields-${k}" style="font-size:.8rem;color:var(--muted);white-space:pre-wrap">${esc(vf[k])}</div>
-      <div id="spe-volumes_fields-${k}" style="display:none">
-        <textarea class="form-input" id="spta-volumes_fields-${k}" rows="3">${esc(vf[k]||'')}</textarea>
-        <div style="display:flex;gap:6px;margin-top:6px">
-          <button class="btn btn-blue btn-sm" data-action="save-simple-field" data-id="${id}" data-group="volumes_fields" data-field="${k}">Save</button>
-          <button class="btn btn-ghost btn-sm" data-action="cancel-simple-field" data-group="volumes_fields" data-field="${k}">Cancel</button>
-        </div>
-      </div>
-    </div>`).join('');
-
-  return`
-  <div class="vol-summary-strip">
-    <div class="vol-stat"><div class="vol-stat-val">${totalExc.toFixed(1)} m³</div><div class="vol-stat-lbl">Total Excavation</div></div>
-    <div class="vol-stat"><div class="vol-stat-val">${totalBf.toFixed(1)} m³</div><div class="vol-stat-lbl">Total Backfill</div></div>
-    <div class="vol-stat"><div class="vol-stat-val">${totalDisp.toFixed(1)} m³</div><div class="vol-stat-lbl">Total Spoil</div></div>
-    <div class="vol-stat" style="${net>0?'border-color:rgba(245,158,11,.3)':''}">
-      <div class="vol-stat-val" style="${net>0?'color:var(--amber)':''}">${Math.abs(net).toFixed(1)} m³</div>
-      <div class="vol-stat-lbl">${net>=0?'Net Export':'Net Import'}</div>
-    </div>
-  </div>
-
-  <div class="card mb-3">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div class="card-title" style="margin:0">Volume Calculations</div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="addVolItem('${id}','excavation')">+ Excavation</button>
-        <button class="btn btn-outline btn-sm" onclick="addVolItem('${id}','backfill')">+ Backfill</button>
-        <button class="btn btn-outline btn-sm" onclick="addVolItem('${id}','import')">+ Import</button>
-        <button class="btn btn-outline btn-sm" onclick="addVolItem('${id}','disposal')">+ Disposal</button>
-      </div>
-    </div>
-    <div style="font-size:.68rem;color:var(--muted2);margin-bottom:10px">Volume = L×W×D · Adjusted Volume = Volume × Bulking Factor (default 1.25) · Edit cells directly</div>
-    <div class="tbl-wrap">
-      <table class="vol-tbl">
-        <thead><tr>
-          <th style="width:28px"></th>
-          <th style="text-align:left;min-width:200px">Description / Notes</th>
-          <th style="width:76px">L (m)</th>
-          <th style="width:76px">W (m)</th>
-          <th style="width:76px">D (m)</th>
-          <th style="width:80px;text-align:right">Area (m²)</th>
-          <th style="width:90px;text-align:right">Vol (m³)</th>
-          <th style="width:62px">Bulk ×</th>
-          <th style="width:95px;text-align:right">Adj Vol (m³)</th>
-        </tr></thead>
-        <tbody>
-          ${grp('excavation','Excavation','var(--blue)',groups.excavation)}
-          ${grp('backfill','Backfill','var(--green)',groups.backfill)}
-          ${grp('import','Material Import','var(--cyan)',groups.import)}
-          ${grp('disposal','Disposal / Spoil','var(--amber)',groups.disposal)}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  ${existingNotes?`<div class="card"><div class="card-title">Volume Notes</div><div class="grid-2">${existingNotes}</div></div>`:``}`;
+function _trNewRun(n){
+  return{id:uid(),name:n||'Trench run',depth_mm:1500,base_width_mm:750,side_profile:'vertical',batter:0.25,length_m:50,
+    bedding_mm:100,overlay_mm:150,side_clearance_mm:150,
+    pipes:[{id:uid(),material:'upvc',dn:225,od_mm:225,offset_mm:0}]};
 }
+
+function _trCalc(r){
+  const depth=Math.max(0,+r.depth_mm||0),base=Math.max(0,+r.base_width_mm||0),len=Math.max(0,+r.length_m||0);
+  const bed=Math.max(0,+r.bedding_mm||0),ovl=Math.max(0,+r.overlay_mm||0),clr=Math.max(0,+r.side_clearance_mm||0);
+  const k=r.side_profile==='battered'?Math.max(0,+r.batter||0):0;
+  const pipes=(r.pipes||[]).filter(x=>+x.od_mm>0);
+  const maxOD=pipes.length?Math.max.apply(null,pipes.map(x=>+x.od_mm)):0;
+  const widthAt=h=>base+2*k*Math.max(0,h);
+  const band=(h1,h2)=>h2<=h1?0:(base*(h2-h1)+k*(h2*h2-h1*h1))/1e6;
+  const hBed=bed,hPipe=bed+maxOD,hOvl=bed+maxOD+ovl;
+  const pipeArea=pipes.reduce((s,x)=>s+Math.PI/4*Math.pow(+x.od_mm,2),0)/1e6;
+  const zones=[
+    {key:'bedding',label:'Bedding',thick:bed,h1:0,h2:hBed,area:band(0,hBed)},
+    {key:'haunch',label:'Haunch',thick:maxOD,h1:hBed,h2:hPipe,area:Math.max(0,band(hBed,hPipe)-pipeArea)},
+    {key:'overlay',label:'Overlay',thick:ovl,h1:hPipe,h2:hOvl,area:band(hPipe,hOvl)},
+    {key:'backfill',label:'Backfill',thick:Math.max(0,depth-hOvl),h1:hOvl,h2:Math.max(hOvl,depth),area:band(hOvl,Math.max(hOvl,depth))},
+  ];
+  zones.forEach(z=>{z.vol=z.area*len;});
+  const totalArea=band(0,depth),cover=depth-hPipe;
+
+  const issues=[];
+  if(!pipes.length)issues.push({t:'warn',m:'Add a pipe to calculate bedding and haunch quantities.'});
+  if(depth<=0||base<=0)issues.push({t:'bad',m:'Enter a trench depth and base width.'});
+  if(pipes.length&&depth>0&&depth<hOvl)issues.push({t:'bad',m:'Trench is too shallow — bedding, pipe and overlay need '+_trN(hOvl,0)+' mm but the trench is only '+_trN(depth,0)+' mm deep.'});
+  if(pipes.length&&base>0){
+    const sorted=pipes.slice().sort((a,b)=>(+a.offset_mm||0)-(+b.offset_mm||0));
+    sorted.forEach(x=>{
+      const od=+x.od_mm,off=+x.offset_mm||0,half=widthAt(bed+od/2)/2;
+      const l=off-od/2+half,rr=half-(off+od/2);
+      const tight=Math.min(l,rr);
+      if(tight<0)issues.push({t:'bad',m:_trLabel(x)+' does not fit — it is wider than the trench at pipe level.'});
+      else if(tight<clr)issues.push({t:'warn',m:_trLabel(x)+' has only '+_trN(tight,0)+' mm side clearance (min '+_trN(clr,0)+' mm). Widen the base to '+_trN(base+2*(clr-tight),0)+' mm.'});
+    });
+    for(let i=1;i<sorted.length;i++){
+      const a=sorted[i-1],b=sorted[i];
+      const gap=((+b.offset_mm||0)-(+b.od_mm)/2)-((+a.offset_mm||0)+(+a.od_mm)/2);
+      if(gap<0)issues.push({t:'bad',m:_trLabel(a)+' and '+_trLabel(b)+' overlap. Increase the offset between them.'});
+      else if(gap<clr)issues.push({t:'warn',m:'Only '+_trN(gap,0)+' mm between '+_trLabel(a)+' and '+_trLabel(b)+' (min '+_trN(clr,0)+' mm).'});
+    }
+  }
+  if(pipes.length&&cover>0&&cover<600)issues.push({t:'warn',m:'Cover to top of pipe is '+_trN(cover,0)+' mm. Most authorities require 600 mm minimum under trafficable areas.'});
+  return{depth:depth,base:base,len:len,bed:bed,ovl:ovl,clr:clr,k:k,pipes:pipes,maxOD:maxOD,widthAt:widthAt,
+    topWidth:widthAt(depth),zones:zones,pipeArea:pipeArea,pipeVol:pipeArea*len,totalArea:totalArea,totalVol:totalArea*len,cover:cover,issues:issues};
+}
+
+function _trLabel(x){
+  const m=TRENCH_MATS[x.material];
+  return (m?m.label:'Pipe')+' DN'+(x.dn||'?');
+}
+
+function _trSVG(c){
+  const W=900,H=540,mT=50,mB=68,mL=88,mR=250;
+  if(c.depth<=0||c.base<=0)return'<div style="padding:70px 20px;text-align:center;color:var(--muted2);font-size:.82rem">Enter a trench depth and base width to see the section.</div>';
+  const availH=H-mT-mB,availW=(W-mL-mR)*0.56;
+  const sc=Math.min(availH/c.depth,availW/Math.max(c.topWidth,1));
+  const gx0=mL,gx1=W-mR,cx=(gx0+gx1)/2;
+  const yTop=mT,yBase=mT+c.depth*sc;
+  const xL=h=>cx-c.widthAt(h)*sc/2,xR=h=>cx+c.widthAt(h)*sc/2,yAt=h=>yBase-h*sc;
+  const P=(...pts)=>pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  let s='';
+
+  s+='<defs><marker id="trAr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse"><path d="M0.5,0.5 L7.5,4 L0.5,7.5 z" fill="#8FA3BF"/></marker>'
+   +'<pattern id="trGnd" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="rgba(143,163,191,.055)"/><line x1="0" y1="0" x2="0" y2="7" stroke="rgba(143,163,191,.13)" stroke-width="1.1"/></pattern>'
+   +'<clipPath id="trClip"><rect x="'+gx0+'" y="'+(yTop-6)+'" width="'+(gx1-gx0)+'" height="'+(yBase-yTop+12).toFixed(1)+'"/></clipPath></defs>';
+
+  s+='<g clip-path="url(#trClip)">';
+  const gL=P([gx0,yTop],[xL(c.depth),yTop],[xL(0),yBase],[gx0,yBase]);
+  const gR=P([xR(c.depth),yTop],[gx1,yTop],[gx1,yBase],[xR(0),yBase]);
+  s+='<polygon points="'+gL+'" fill="url(#trGnd)"/><polygon points="'+gR+'" fill="url(#trGnd)"/>';
+
+  c.zones.forEach(z=>{
+    if(z.thick<=0)return;
+    s+='<polygon points="'+P([xL(z.h1),yAt(z.h1)],[xR(z.h1),yAt(z.h1)],[xR(z.h2),yAt(z.h2)],[xL(z.h2),yAt(z.h2)])+'" fill="'+TR_COL[z.key]+'"/>';
+  });
+
+  s+='<line x1="'+gx0+'" y1="'+yTop+'" x2="'+gx1+'" y2="'+yTop+'" stroke="#3B82F6" stroke-width="1.6" opacity=".75"/>';
+  s+='<polygon points="'+P([xL(c.depth),yTop],[xR(c.depth),yTop],[xR(0),yBase],[xL(0),yBase])+'" fill="none" stroke="#3B82F6" stroke-width="1.7" opacity=".85"/>';
+
+  c.pipes.forEach((x,i)=>{
+    const od=+x.od_mm,r=od/2*sc,pcx=cx+(+x.offset_mm||0)*sc,pcy=yAt(c.bed+od/2);
+    s+='<circle cx="'+pcx.toFixed(1)+'" cy="'+pcy.toFixed(1)+'" r="'+r.toFixed(1)+'" fill="#121D32" stroke="#3B82F6" stroke-width="2"/>';
+    if(r>13)s+='<circle cx="'+pcx.toFixed(1)+'" cy="'+pcy.toFixed(1)+'" r="'+(r*0.74).toFixed(1)+'" fill="none" stroke="rgba(59,130,246,.35)" stroke-width="1"/>';
+    const ah=Math.min(7,Math.max(3,r*0.3));
+    s+='<path d="M'+(pcx-ah).toFixed(1)+' '+pcy.toFixed(1)+' H'+(pcx+ah).toFixed(1)+' M'+pcx.toFixed(1)+' '+(pcy-ah).toFixed(1)+' V'+(pcy+ah).toFixed(1)+'" stroke="#3B82F6" stroke-width="1.3" opacity=".8"/>';
+    if(r>19)s+='<text x="'+pcx.toFixed(1)+'" y="'+(pcy-r-7).toFixed(1)+'" text-anchor="middle" font-size="10.5" font-weight="600" fill="#8FA3BF" letter-spacing=".04em">DN'+esc(String(x.dn||''))+'</text>';
+  });
+  s+='</g>';
+
+  const labX=gx1+30,lab=c.zones.filter(z=>z.thick>0).map(z=>({z:z,a:yAt((z.h1+z.h2)/2),y:yAt((z.h1+z.h2)/2)}));
+  lab.sort((p,q)=>p.y-q.y);
+  for(let i=1;i<lab.length;i++)if(lab[i].y-lab[i-1].y<48)lab[i].y=lab[i-1].y+48;
+  if(lab.length){
+    const over=lab[lab.length-1].y-(H-mB+14);if(over>0)lab.forEach(l=>l.y-=over);
+    const under=(yTop+8)-lab[0].y;if(under>0)lab.forEach(l=>l.y+=under);
+  }
+  lab.forEach(l=>{
+    s+='<path d="M'+xR((l.z.h1+l.z.h2)/2).toFixed(1)+' '+l.a.toFixed(1)+' L'+(labX-13)+' '+l.y.toFixed(1)+'" stroke="rgba(143,163,191,.3)" stroke-width="1" stroke-dasharray="3 3" fill="none"/>';
+    s+='<rect x="'+labX+'" y="'+(l.y-13).toFixed(1)+'" width="9" height="9" rx="2" fill="'+TR_COL[l.z.key].replace(/[\d.]+\)$/,'.95)')+'"/>';
+    s+='<text x="'+(labX+15)+'" y="'+(l.y-4.5).toFixed(1)+'" font-size="12.5" font-weight="600" fill="#F1F5F9">'+l.z.label+'</text>';
+    s+='<text x="'+labX+'" y="'+(l.y+11).toFixed(1)+'" font-size="11" fill="#4E6180">'+_trN(l.z.thick,0)+' mm · '+_trN(l.z.vol,1)+' m³</text>';
+  });
+
+  const dimX=Math.max(26,xL(c.depth)-32);
+  s+='<line x1="'+dimX+'" y1="'+yTop+'" x2="'+dimX+'" y2="'+yBase.toFixed(1)+'" stroke="#8FA3BF" stroke-width="1" marker-start="url(#trAr)" marker-end="url(#trAr)" opacity=".8"/>';
+  s+='<text transform="translate('+(dimX-8)+','+((yTop+yBase)/2).toFixed(1)+') rotate(-90)" text-anchor="middle" font-size="10.5" fill="#8FA3BF" letter-spacing=".07em">DEPTH '+_trN(c.depth,0)+'</text>';
+  const yDim=yBase+30;
+  s+='<line x1="'+xL(0).toFixed(1)+'" y1="'+yDim.toFixed(1)+'" x2="'+xR(0).toFixed(1)+'" y2="'+yDim.toFixed(1)+'" stroke="#8FA3BF" stroke-width="1" marker-start="url(#trAr)" marker-end="url(#trAr)" opacity=".8"/>';
+  s+='<text x="'+cx.toFixed(1)+'" y="'+(yDim+17).toFixed(1)+'" text-anchor="middle" font-size="10.5" fill="#8FA3BF" letter-spacing=".07em">BASE WIDTH '+_trN(c.base,0)+'</text>';
+  if(c.k>0)s+='<text x="'+cx.toFixed(1)+'" y="'+(yTop-28).toFixed(1)+'" text-anchor="middle" font-size="10.5" fill="#4E6180" letter-spacing=".07em">TOP WIDTH '+_trN(c.topWidth,0)+'</text>';
+
+  s+='<text x="'+gx0+'" y="'+(yTop-11)+'" font-size="10.5" fill="#8FA3BF" letter-spacing=".11em">SURFACE</text>';
+  if(c.pipes.length&&c.cover>=0)s+='<text x="'+gx1+'" y="'+(yTop-11)+'" text-anchor="end" font-size="10.5" fill="'+(c.cover<600?'#F59E0B':'#8FA3BF')+'" letter-spacing=".11em">COVER '+_trN(c.cover,0)+' mm</text>';
+
+  return'<svg class="tr-svg" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,system-ui,sans-serif">'+s+'</svg>';
+}
+
+function _trViewHTML(c){
+  const worst=c.issues.some(i=>i.t==='bad')?'bad':c.issues.some(i=>i.t==='warn')?'warn':'ok';
+  const alert=c.issues.length
+    ? '<div class="tr-alert tr-'+worst+'"><span>'+(worst==='bad'?'⚠':'⚠')+'</span><div>'+c.issues.map(i=>esc(i.m)).join('<br>')+'</div></div>'
+    : '<div class="tr-alert tr-ok"><span>✓</span><div>Geometry and clearances check out.</div></div>';
+  const rows=c.zones.filter(z=>z.thick>0).map(z=>
+    '<tr><td><span class="tr-sw" style="background:'+TR_COL[z.key].replace(/[\d.]+\)$/,'.95)')+'"></span>'+z.label+'</td>'
+    +'<td>'+_trN(z.thick,0)+' mm</td><td>'+_trN(z.area,3)+'</td><td>'+_trN(z.vol,2)+'</td></tr>').join('');
+  const pipeRow=c.pipes.length?'<tr class="tr-dim"><td style="padding-left:28px">Pipe displacement</td><td>–</td><td>'+_trN(c.pipeArea,3)+'</td><td>'+_trN(c.pipeVol,2)+'</td></tr>':'';
+  return alert
+    +'<div class="card mb-3" style="padding:18px 20px 10px">'+_trSVG(c)+'</div>'
+    +'<div class="card"><div class="card-title">Quantities</div><table class="tr-qty">'
+    +'<thead><tr><th>Zone</th><th>Thickness</th><th>Area m²/m</th><th>Volume m³</th></tr></thead><tbody>'
+    +rows+pipeRow
+    +'<tr class="tr-tot"><td>Total excavation</td><td>'+_trN(c.depth,0)+' mm</td><td>'+_trN(c.totalArea,3)+'</td><td>'+_trN(c.totalVol,2)+'</td></tr>'
+    +'</tbody></table></div>';
+}
+
+function renderTabVolumes(p,id){
+  if(!p.trench_runs||!p.trench_runs.length){p.trench_runs=[_trNewRun('Trench run 1')];DB.saveProject(p);}
+  const runs=p.trench_runs;
+  let act=runs.find(r=>r.id===_trActive[id])||runs[0];
+  _trActive[id]=act.id;
+  const c=_trCalc(act);
+  const S=(f,v)=>"_trSet('"+id+"','"+act.id+"','"+f+"',this.value)";
+  const num=(f,v,step)=>'<input type="number" class="tr-in" value="'+(v==null?'':v)+'" step="'+(step||'any')+'" min="0" oninput="'+S(f)+'">';
+
+  const runTabs=runs.map(r=>{
+    const rc=_trCalc(r);
+    return'<div class="tr-run'+(r.id===act.id?' on':'')+'" onclick="_trPick(\''+id+'\',\''+r.id+'\')">'
+      +esc(r.name||'Untitled')+'<span class="tr-run-v">'+_trN(rc.totalVol,0)+' m³</span></div>';
+  }).join('');
+
+  const pipes=(act.pipes||[]).map((x,i)=>{
+    const mat=TRENCH_MATS[x.material]||TRENCH_MATS.upvc;
+    const sizes=Object.keys(mat.od).map(Number).sort((a,b)=>a-b);
+    const PS=(f)=>"_trPipe('"+id+"','"+act.id+"','"+x.id+"','"+f+"',this.value)";
+    return'<div class="tr-pipe">'
+      +'<div class="tr-pipe-h"><span class="tr-tag">P'+(i+1)+'</span><span class="tr-pipe-nm">'+esc(_trLabel(x))+'</span>'
+      +((act.pipes||[]).length>1?'<button class="tr-x" onclick="_trDelPipe(\''+id+'\',\''+act.id+'\',\''+x.id+'\')" title="Remove pipe">✕</button>':'')+'</div>'
+      +'<div class="tr-row"><span class="tr-lbl">Type</span><select class="tr-in" onchange="'+PS('material')+'">'
+        +Object.keys(TRENCH_MATS).map(k=>'<option value="'+k+'"'+(k===x.material?' selected':'')+'>'+TRENCH_MATS[k].label+'</option>').join('')+'</select></div>'
+      +'<div class="tr-row"><span class="tr-lbl">Size</span><select class="tr-in" onchange="'+PS('dn')+'">'
+        +sizes.map(d=>'<option value="'+d+'"'+(d===+x.dn?' selected':'')+'>DN'+d+'</option>').join('')+'</select></div>'
+      +'<div class="tr-row"><span class="tr-lbl">Outside dia.<i>mm</i></span><input type="number" class="tr-in" value="'+(x.od_mm==null?'':x.od_mm)+'" step="any" min="0" oninput="'+PS('od_mm')+'"></div>'
+      +'<div class="tr-row"><span class="tr-lbl">Offset from centre<i>mm</i></span><input type="number" class="tr-in" value="'+(x.offset_mm||0)+'" step="any" oninput="'+PS('offset_mm')+'"></div>'
+      +'</div>';
+  }).join('');
+
+  return'<div class="tr-runs">'+runTabs
+    +'<div class="tr-run" onclick="_trAddRun(\''+id+'\')" style="color:var(--blue);border-color:rgba(59,130,246,.3)">+ Add run</div>'
+    +(runs.length>1?'<div style="flex:1"></div><button class="btn btn-outline btn-sm" onclick="_trDelRun(\''+id+'\',\''+act.id+'\')" style="color:var(--red);border-color:rgba(239,68,68,.3)">Delete run</button>':'')
+    +'</div>'
+    +'<div class="tr-wrap"><div>'
+      +'<div class="tr-panel" style="padding-bottom:13px"><input class="tr-name" value="'+esc(act.name||'')+'" placeholder="Run name" oninput="_trSet(\''+id+'\',\''+act.id+'\',\'name\',this.value)"></div>'
+      +'<div class="tr-panel"><div class="tr-ptitle">Trench</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Depth<i>mm</i></span>'+num('depth_mm',act.depth_mm)+'</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Width at base<i>mm</i></span>'+num('base_width_mm',act.base_width_mm)+'</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Side profile</span><select class="tr-in" onchange="_trSet(\''+id+'\',\''+act.id+'\',\'side_profile\',this.value)">'
+          +'<option value="vertical"'+(act.side_profile!=='battered'?' selected':'')+'>Vertical</option>'
+          +'<option value="battered"'+(act.side_profile==='battered'?' selected':'')+'>Battered</option></select></div>'
+        +(act.side_profile==='battered'?'<div class="tr-row"><span class="tr-lbl">Batter<i>H per 1 V</i></span>'+num('batter',act.batter,'0.05')+'</div>':'')
+        +'<div class="tr-row"><span class="tr-lbl">Length of run<i>m</i></span>'+num('length_m',act.length_m)+'</div>'
+      +'</div>'
+      +'<div class="tr-panel"><div class="tr-ptitle">Bedding &amp; overlay</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Bedding under pipe<i>mm</i></span>'+num('bedding_mm',act.bedding_mm)+'</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Overlay above pipe<i>mm</i></span>'+num('overlay_mm',act.overlay_mm)+'</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Min. side clearance<i>mm</i></span>'+num('side_clearance_mm',act.side_clearance_mm)+'</div>'
+      +'</div>'
+      +'<div class="tr-panel"><div class="tr-ptitle">Pipes</div>'+pipes
+        +'<button class="btn btn-blue btn-sm" style="width:100%;justify-content:center" onclick="_trAddPipe(\''+id+'\',\''+act.id+'\')">+ Add pipe</button>'
+        +'<div class="tr-note">Pipe OD values are indicative — confirm against the approved supplier before pricing.</div>'
+      +'</div>'
+    +'</div><div id="tr-view">'+_trViewHTML(c)+'</div></div>';
+}
+
+function _trRun(projId,runId){
+  const p=DB.getProject(projId);if(!p)return null;
+  return(p.trench_runs||[]).find(r=>r.id===runId)||null;
+}
+function _trSync(projId){
+  if(_trSaveTimer)clearTimeout(_trSaveTimer);
+  _trSaveTimer=setTimeout(()=>{const p=DB.getProject(projId);if(p)DB.saveProject(p);_trSaveTimer=null;},700);
+}
+function _trPaint(r){
+  const el=document.getElementById('tr-view');if(el)el.innerHTML=_trViewHTML(_trCalc(r));
+  const tab=document.querySelector('.tr-run.on .tr-run-v');
+  if(tab)tab.textContent=_trN(_trCalc(r).totalVol,0)+' m³';
+}
+
+window._trSet=function(projId,runId,field,val){
+  const r=_trRun(projId,runId);if(!r)return;
+  if(field==='name'){
+    r.name=val;_trSync(projId);
+    const tab=document.querySelector('.tr-run.on');if(tab)tab.firstChild.nodeValue=val||'Untitled';
+    return;
+  }
+  if(field==='side_profile'){r.side_profile=val;_trSync(projId);navigate('project/'+projId+'/volumes');return;}
+  r[field]=val===''?null:parseFloat(val);
+  _trSync(projId);_trPaint(r);
+};
+window._trPipe=function(projId,runId,pipeId,field,val){
+  const r=_trRun(projId,runId);if(!r)return;
+  const x=(r.pipes||[]).find(q=>q.id===pipeId);if(!x)return;
+  if(field==='material'){
+    x.material=val;
+    const tbl=TRENCH_MATS[val].od;
+    if(!tbl[x.dn]){
+      const want=+x.od_mm||0;
+      x.dn=Object.keys(tbl).map(Number).sort((a,b)=>Math.abs(tbl[a]-want)-Math.abs(tbl[b]-want))[0];
+    }
+    x.od_mm=tbl[x.dn];
+    _trSync(projId);navigate('project/'+projId+'/volumes');return;
+  }
+  if(field==='dn'){
+    x.dn=parseFloat(val);
+    const od=TRENCH_MATS[x.material]&&TRENCH_MATS[x.material].od[x.dn];
+    if(od)x.od_mm=od;
+    _trSync(projId);navigate('project/'+projId+'/volumes');return;
+  }
+  x[field]=val===''?null:parseFloat(val);
+  _trSync(projId);_trPaint(r);
+};
+window._trAddPipe=function(projId,runId){
+  const r=_trRun(projId,runId);if(!r)return;
+  if(!r.pipes)r.pipes=[];
+  const od=225,gap=Math.max(0,+r.side_clearance_mm||0);
+  const right=r.pipes.reduce((m,x)=>Math.max(m,(+x.offset_mm||0)+(+x.od_mm||0)/2),null);
+  r.pipes.push({id:uid(),material:'upvc',dn:225,od_mm:od,offset_mm:right==null?0:Math.round(right+gap+od/2)});
+  const lo=Math.min.apply(null,r.pipes.map(x=>(+x.offset_mm||0)-(+x.od_mm||0)/2));
+  const hi=Math.max.apply(null,r.pipes.map(x=>(+x.offset_mm||0)+(+x.od_mm||0)/2));
+  const shift=(lo+hi)/2;
+  r.pipes.forEach(x=>{x.offset_mm=Math.round((+x.offset_mm||0)-shift);});
+  DB.saveProject(DB.getProject(projId));navigate('project/'+projId+'/volumes');
+};
+window._trDelPipe=function(projId,runId,pipeId){
+  const r=_trRun(projId,runId);if(!r)return;
+  r.pipes=(r.pipes||[]).filter(x=>x.id!==pipeId);
+  DB.saveProject(DB.getProject(projId));navigate('project/'+projId+'/volumes');
+};
+window._trAddRun=function(projId){
+  const p=DB.getProject(projId);if(!p)return;
+  if(!p.trench_runs)p.trench_runs=[];
+  const r=_trNewRun('Trench run '+(p.trench_runs.length+1));
+  p.trench_runs.push(r);_trActive[projId]=r.id;
+  DB.saveProject(p);navigate('project/'+projId+'/volumes');
+};
+window._trDelRun=function(projId,runId){
+  const p=DB.getProject(projId);if(!p)return;
+  const r=(p.trench_runs||[]).find(x=>x.id===runId);
+  showModal({title:'Delete trench run',body:'<div style="font-size:.86rem;color:var(--muted);line-height:1.6">Delete <b style="color:var(--text)">'+esc(r?r.name:'this run')+'</b>? This cannot be undone.</div>',
+    actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-red" onclick="_trDelRunGo(\''+projId+'\',\''+runId+'\')">Delete</button>'});
+};
+window._trDelRunGo=function(projId,runId){
+  const p=DB.getProject(projId);if(!p)return;
+  p.trench_runs=(p.trench_runs||[]).filter(x=>x.id!==runId);
+  if(!p.trench_runs.length)p.trench_runs=[_trNewRun('Trench run 1')];
+  _trActive[projId]=p.trench_runs[0].id;
+  DB.saveProject(p);closeModal();navigate('project/'+projId+'/volumes');
+};
+window._trPick=function(projId,runId){_trActive[projId]=runId;navigate('project/'+projId+'/volumes');};
 
 function renderTabMaterials(p,id){
   const items=p.materials_items||[];
@@ -3747,34 +3972,6 @@ window.boqAddGroup=function(projId,wpId){
 window.editBOQCell=function(el,projId,boqId,field,cur){
   boqCell(el,projId,boqId,field,cur);
 };
-/* Volume item CRUD */
-window.addVolItem=function(projId,groupType){
-  const p=DB.getProject(projId);if(!p)return;
-  if(!p.volume_items)p.volume_items=[];
-  p.volume_items.push({id:uid(),description:'',group_type:groupType||'excavation',length:null,width:null,depth:null,area:null,volume:null,bulking_factor:1.25,adj_volume:null,notes:''});
-  DB.saveProject(p);navigate(`project/${projId}/volumes`);
-};
-window.saveVolCell=function(projId,itemId,field,rawVal){
-  const p=DB.getProject(projId);if(!p)return;
-  const vi=(p.volume_items||[]).find(x=>x.id===itemId);if(!vi)return;
-  vi[field]=(field==='description'||field==='notes')?String(rawVal):(parseFloat(rawVal)||null);
-  if(field!=='description'&&field!=='notes'){
-    if(vi.length!=null&&vi.width!=null){vi.area=+(vi.length*vi.width).toFixed(4);}
-    if(vi.length!=null&&vi.width!=null&&vi.depth!=null){vi.volume=+(vi.length*vi.width*vi.depth).toFixed(4);}
-    if(vi.volume!=null){vi.adj_volume=+(vi.volume*(vi.bulking_factor||1.25)).toFixed(4);}else vi.adj_volume=null;
-  }
-  DB.saveProject(p);
-  // Update computed cells in-place without full re-render
-  const btn=document.querySelector(`[data-action="del-vol-item"][data-vid="${itemId}"]`);
-  const row=btn?.closest('tr');
-  if(row){
-    const tds=row.querySelectorAll('td');
-    if(tds[5])tds[5].textContent=vi.area!=null?vi.area.toFixed(2):'—';
-    if(tds[6])tds[6].textContent=vi.volume!=null?vi.volume.toFixed(3):'—';
-    if(tds[8])tds[8].textContent=vi.adj_volume!=null?vi.adj_volume.toFixed(3):'—';
-  }
-};
-
 window.updateMargin=function(id,val){
   const v=Math.max(0,Math.min(40,parseFloat(val)||0));
   const p=DB.getProject(id);if(!p)return;
@@ -12413,12 +12610,6 @@ document.addEventListener('click',async function(e){
     closeModal();closeSheet();toast(`${old.document_name} renewed successfully!`,'success');navigate('compliance');return;
   }
 
-  if(action==='del-vol-item'){
-    const id=el.dataset.id,vid=el.dataset.vid;
-    const p=DB.getProject(id);if(!p)return;
-    if(!confirm('Remove this volume item?'))return;
-    p.volume_items=(p.volume_items||[]).filter(x=>x.id!==vid);DB.saveProject(p);navigate(`project/${id}/volumes`);return;
-  }
   if(action==='del-boq'){
     const id=el.dataset.id,bid=el.dataset.bid;
     const p=DB.getProject(id);if(!p)return;
