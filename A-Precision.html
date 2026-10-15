@@ -3423,12 +3423,12 @@ function _trViewHTML(c,run){
     +'<td>'+_trN(z.thick,0)+' mm</td><td>'+_trN(z.area,3)+'</td><td>'+_trN(z.vol,2)+'</td></tr>').join('');
   const pipeRow=c.pipes.length?'<tr class="tr-dim"><td style="padding-left:28px">Pipe displacement</td><td>–</td><td>'+_trN(c.pipeArea,3)+'</td><td>'+_trN(c.pipeVol,2)+'</td></tr>':'';
   return alert
-    +'<div class="card mb-3" style="padding:0;overflow:hidden">'+_trToolbar(run)+'<div id="tr-canvas" class="tr-canvas">'+_trSVG(c,run)+'</div></div>'
-    +'<div class="card"><div class="card-title">Quantities</div><table class="tr-qty">'
+    +'<div class="card mb-3"><div class="card-title">Quantities</div><table class="tr-qty">'
     +'<thead><tr><th>Zone</th><th>Thickness</th><th>Area m²/m</th><th>Volume m³</th></tr></thead><tbody>'
     +rows+pipeRow
     +'<tr class="tr-tot"><td>Total excavation</td><td>'+_trN(c.depth,0)+' mm</td><td>'+_trN(c.totalArea,3)+'</td><td>'+_trN(c.totalVol,2)+'</td></tr>'
-    +'</tbody></table></div>';
+    +'</tbody></table></div>'
+    +'<div class="card" style="padding:0;overflow:hidden">'+_trToolbar(run)+'<div id="tr-canvas" class="tr-canvas">'+_trSVG(c,run)+'</div></div>';
 }
 
 function renderTabVolumes(p,id){
