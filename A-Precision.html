@@ -3482,8 +3482,11 @@ function renderTabVolumes(p,id){
         +'<div class="tr-row"><span class="tr-lbl">Min. pipe spacing<i>mm</i></span>'+num('pipe_spacing_mm',act.pipe_spacing_mm!=null?act.pipe_spacing_mm:act.side_clearance_mm)+'</div>'
       +'</div>'
       +'<div class="tr-panel"><div class="tr-ptitle">Pipes</div>'+pipes
-        +'<button class="btn btn-blue btn-sm" style="width:100%;justify-content:center" onclick="_trAddPipe(\''+id+'\',\''+act.id+'\')">+ Add pipe</button>'
-        +'<div class="tr-note">Pipe OD values are indicative — confirm against the approved supplier before pricing.</div>'
+        +'<div style="display:flex;gap:7px">'
+          +'<button class="btn btn-blue btn-sm" style="flex:1;justify-content:center" onclick="_trAddPipe(\''+id+'\',\''+act.id+'\')">+ Add pipe</button>'
+          +'<button class="btn btn-outline btn-sm" style="flex:1;justify-content:center" onclick="_trAutoArrange(\''+id+'\',\''+act.id+'\')" title="Sit every pipe on the bedding and space them evenly within your clearances">Auto-arrange</button>'
+        +'</div>'
+        +'<div class="tr-note">Pipe OD values are indicative — confirm against the approved supplier before pricing. Auto-arrange uses the clearances above, not published standards.</div>'
       +'</div>'
     +'</div><div id="tr-view">'+_trViewHTML(c,act)+'</div></div>';
 }
@@ -3712,6 +3715,30 @@ window._trDelPipe=function(projId,runId,pipeId){
   const r=_trRun(projId,runId);if(!r)return;
   r.pipes=(r.pipes||[]).filter(x=>x.id!==pipeId);
   DB.saveProject(DB.getProject(projId));navigate('project/'+projId+'/volumes');
+};
+window._trAutoArrange=function(projId,runId){
+  const r=_trRun(projId,runId);if(!r)return;
+  const pipes=(r.pipes||[]).filter(x=>+x.od_mm>0);
+  if(!pipes.length){toast('Add a pipe first.','warning');return;}
+  const c=_trCalc(r);
+  if(c.depth<=0||c.base<=0){toast('Enter a trench depth and base width first.','warning');return;}
+  pipes.forEach(x=>{x.rise_mm=0;});
+  // Battered walls widen with height, so use the narrowest springline — guarantees the layout fits.
+  const effW=Math.min.apply(null,pipes.map(x=>c.widthAt(c.bed+(+x.od_mm)/2)));
+  const ordered=pipes.slice().sort((a,b)=>(+a.offset_mm||0)-(+b.offset_mm||0));
+  const n=ordered.length,sumOD=ordered.reduce((s,x)=>s+(+x.od_mm),0);
+  const free=effW-sumOD,need=2*c.clr+(n-1)*c.pclr;
+  const pipeGap=n<2?0:(free>=need?c.pclr+(free-need)/(n+1):c.pclr*(need>0?Math.max(0,free)/need:0));
+  const groupW=sumOD+(n-1)*pipeGap;
+  let cur=-groupW/2;
+  ordered.forEach(x=>{const od=+x.od_mm;x.offset_mm=Math.round(cur+od/2);cur+=od+pipeGap;});
+  DB.saveProject(DB.getProject(projId));
+  const wallGap=(effW-groupW)/2;
+  toast(free<need
+    ? 'Arranged '+n+' pipe'+(n>1?'s':'')+' — trench is '+_trN(need-free,0)+' mm too narrow to meet your clearances.'
+    : 'Arranged '+n+' pipe'+(n>1?'s':'')+' — '+_trN(wallGap,0)+' mm to each wall'+(n>1?', '+_trN(pipeGap,0)+' mm between pipes.':'.'),
+    free<need?'warning':'success');
+  navigate('project/'+projId+'/volumes');
 };
 window._trAddRun=function(projId){
   const p=DB.getProject(projId);if(!p)return;
