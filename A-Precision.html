@@ -3722,22 +3722,57 @@ window._trAutoArrange=function(projId,runId){
   if(!pipes.length){toast('Add a pipe first.','warning');return;}
   const c=_trCalc(r);
   if(c.depth<=0||c.base<=0){toast('Enter a trench depth and base width first.','warning');return;}
-  pipes.forEach(x=>{x.rise_mm=0;});
-  // Battered walls widen with height, so use the narrowest springline — guarantees the layout fits.
-  const effW=Math.min.apply(null,pipes.map(x=>c.widthAt(c.bed+(+x.od_mm)/2)));
-  const ordered=pipes.slice().sort((a,b)=>(+a.offset_mm||0)-(+b.offset_mm||0));
-  const n=ordered.length,sumOD=ordered.reduce((s,x)=>s+(+x.od_mm),0);
-  const free=effW-sumOD,need=2*c.clr+(n-1)*c.pclr;
-  const pipeGap=n<2?0:(free>=need?c.pclr+(free-need)/(n+1):c.pclr*(need>0?Math.max(0,free)/need:0));
-  const groupW=sumOD+(n-1)*pipeGap;
-  let cur=-groupW/2;
-  ordered.forEach(x=>{const od=+x.od_mm;x.offset_mm=Math.round(cur+od/2);cur+=od+pipeGap;});
+  const clr=c.clr,pclr=c.pclr;
+  // Width only grows with height on a battered trench, so the narrowest point any pipe
+  // will ever sit at is the top of the bedding — safe to use for every row.
+  const effW=c.widthAt(c.bed);
+
+  const rowWidth=arr=>arr.reduce((s,x)=>s+(+x.od_mm),0)+(arr.length>1?(arr.length-1)*pclr:0)+2*clr;
+
+  // First-fit-decreasing into at most 2 rows — largest pipes placed first.
+  const bySize=pipes.slice().sort((a,b)=>(+b.od_mm)-(+a.od_mm));
+  const rows=[[]];
+  bySize.forEach(p=>{
+    const fit=rows.find(row=>rowWidth(row.concat([p]))<=effW);
+    if(fit)fit.push(p);
+    else if(rows.length<2)rows.push([p]);
+    else rows.sort((a,b)=>rowWidth(a)-rowWidth(b))[0].push(p);
+  });
+
+  function layoutRow(row,baseline){
+    const ordered=row.slice().sort((a,b)=>(+a.offset_mm||0)-(+b.offset_mm||0));
+    const n=ordered.length,sumOD=ordered.reduce((s,x)=>s+(+x.od_mm),0);
+    const free=effW-sumOD,need=2*clr+(n-1)*pclr;
+    const gap=n<2?0:(free>=need?pclr+(free-need)/(n+1):pclr*(need>0?Math.max(0,free)/need:0));
+    const groupW=sumOD+(n-1)*gap;
+    let cur=-groupW/2,maxOD=0;
+    ordered.forEach(x=>{
+      const od=+x.od_mm;x.offset_mm=Math.round(cur+od/2);x.rise_mm=Math.round(baseline);
+      cur+=od+gap;if(od>maxOD)maxOD=od;
+    });
+    return{shortfall:Math.max(0,need-free),wallGap:(effW-groupW)/2,gap:gap,maxOD:maxOD,n:n};
+  }
+
+  let baseline=0,shortfall=0;const rowInfo=[];
+  rows.filter(row=>row.length).forEach(row=>{
+    const res=layoutRow(row,baseline);
+    rowInfo.push(res);shortfall+=res.shortfall;
+    baseline+=res.maxOD+pclr; // next row sits at least Min. pipe spacing above this one's crown
+  });
+
   DB.saveProject(DB.getProject(projId));
-  const wallGap=(effW-groupW)/2;
-  toast(free<need
-    ? 'Arranged '+n+' pipe'+(n>1?'s':'')+' — trench is '+_trN(need-free,0)+' mm too narrow to meet your clearances.'
-    : 'Arranged '+n+' pipe'+(n>1?'s':'')+' — '+_trN(wallGap,0)+' mm to each wall'+(n>1?', '+_trN(pipeGap,0)+' mm between pipes.':'.'),
-    free<need?'warning':'success');
+  const n=pipes.length;
+  let msg;
+  if(rowInfo.length<2){
+    const s0=rowInfo[0];
+    msg=shortfall>0
+      ?'Arranged '+n+' pipe'+(n>1?'s':'')+' — trench is '+_trN(shortfall,0)+' mm too narrow to meet your clearances.'
+      :'Arranged '+n+' pipe'+(n>1?'s':'')+' — '+_trN(s0.wallGap,0)+' mm to each wall'+(n>1?', '+_trN(s0.gap,0)+' mm between pipes.':'.');
+  } else {
+    msg='Arranged '+n+' pipes across 2 rows ('+rowInfo.map(ri=>ri.n).join('+')+')'
+      +(shortfall>0?' — still '+_trN(shortfall,0)+' mm short of your clearances.':'.');
+  }
+  toast(msg,shortfall>0?'warning':'success');
   navigate('project/'+projId+'/volumes');
 };
 window._trAddRun=function(projId){
