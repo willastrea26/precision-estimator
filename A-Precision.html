@@ -549,6 +549,10 @@ select.tr-in{text-align:left;cursor:pointer;-webkit-appearance:none;appearance:n
 .tr-sep{width:1px;height:18px;background:var(--border);margin:0 4px}
 .tr-hint{font-size:.69rem;color:var(--muted2);margin-left:auto;padding-left:10px}
 @media(max-width:620px){.tr-hint{display:none}}
+.tr-meas-click{cursor:pointer}
+.tr-meas-click:hover .tr-meas-line{stroke:#F87171}
+.tr-meas-click:hover .tr-meas-box{stroke:rgba(248,113,113,.7)}
+.tr-meas-click:hover .tr-meas-txt{fill:#FCA5A5}
 .mat-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .mat-cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .mat-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;background:rgba(255,255,255,.05);flex-shrink:0}
@@ -3298,12 +3302,14 @@ function _trSVG(c,run){
     if(a.type==='measure'){
       const x1=X(a.x1),y1=Y(a.h1),x2=X(a.x2),y2=Y(a.h2);
       const d=Math.hypot(a.x2-a.x1,a.h2-a.h1);
-      s+='<g class="tr-ann" data-ann="'+a.id+'">';
-      s+='<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="#06B6D4" stroke-width="1.3" marker-start="url(#trTk)" marker-end="url(#trTk)"/>';
+      const clickable=_trV.mode==='select';
+      s+='<g class="tr-ann tr-meas'+(clickable?' tr-meas-click':'')+'" data-ann="'+a.id+'">';
+      s+='<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="transparent" stroke-width="14"/>';
+      s+='<line class="tr-meas-line" x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="#06B6D4" stroke-width="1.3" marker-start="url(#trTk)" marker-end="url(#trTk)"/>';
       const mx=(x1+x2)/2,my=(y1+y2)/2;
       const tw=_trN(d,0).length*6.2+22;
-      s+='<rect x="'+(mx-tw/2).toFixed(1)+'" y="'+(my-9).toFixed(1)+'" width="'+tw.toFixed(1)+'" height="16" rx="4" fill="#0D1525" stroke="rgba(6,182,212,.45)" stroke-width="1"/>';
-      s+=T(mx,my+3,_trN(d,0)+' mm',{a:'middle',s:10,w:'600',f:'#67E8F9'});
+      s+='<rect class="tr-meas-box" x="'+(mx-tw/2).toFixed(1)+'" y="'+(my-9).toFixed(1)+'" width="'+tw.toFixed(1)+'" height="16" rx="4" fill="#0D1525" stroke="rgba(6,182,212,.45)" stroke-width="1"/>';
+      s+='<text class="tr-meas-txt" x="'+mx.toFixed(1)+'" y="'+(my+3).toFixed(1)+'" text-anchor="middle" font-size="10" font-weight="600" fill="#67E8F9">'+_trN(d,0)+' mm</text>';
       s+='</g>';
     } else {
       const tx=X(a.x),ty=Y(a.h);
@@ -3359,7 +3365,7 @@ function _trToolbar(run){
   const nAnn=(run.annotations||[]).length;
   const hint=_trV.mode==='measure'?'Click two points — snaps to pipe edges, invert, obvert and trench corners.'
     :_trV.mode==='text'?'Click where you want the note.'
-    :'Drag pipes to position them. Scroll to zoom, drag the background to pan.';
+    :'Drag pipes to position them, click a measurement to remove it. Scroll to zoom, drag the background to pan.';
   return'<div class="tr-tools">'
     +btn('select','↖','Select — drag pipes and notes')
     +btn('measure','⇔','Measure between two points')
@@ -3533,6 +3539,10 @@ window._trDown=function(e){
     if(a&&a.type==='text'){
       if(e.detail>1){_trTextModal(_trV.ctx.projId,r.id,a.id);return;}
       _trV.drag={kind:'ann',id:a.id,dx:xm-a.x,dh:hm-a.h};_trBindDrag();return;
+    }
+    if(a&&a.type==='measure'){
+      r.annotations=(r.annotations||[]).filter(q=>q.id!==a.id);
+      _trSync(_trV.ctx.projId);_trPaint(r);return;
     }
   }
   _trV.drag={kind:'pan',sx:e.clientX,sy:e.clientY,px:_trV.px,py:_trV.py};
