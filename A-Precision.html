@@ -3163,13 +3163,14 @@ const TR_W=900,TR_H=540;
 
 function _trNewRun(n){
   return{id:uid(),name:n||'Trench run',depth_mm:1500,base_width_mm:750,side_profile:'vertical',batter:0.25,length_m:50,
-    bedding_mm:100,overlay_mm:150,side_clearance_mm:150,
+    bedding_mm:100,overlay_mm:150,side_clearance_mm:150,pipe_spacing_mm:150,
     pipes:[{id:uid(),material:'upvc',dn:225,od_mm:225,offset_mm:0,rise_mm:0}],annotations:[]};
 }
 
 function _trCalc(r){
   const depth=Math.max(0,+r.depth_mm||0),base=Math.max(0,+r.base_width_mm||0),len=Math.max(0,+r.length_m||0);
   const bed=Math.max(0,+r.bedding_mm||0),ovl=Math.max(0,+r.overlay_mm||0),clr=Math.max(0,+r.side_clearance_mm||0);
+  const pclr=r.pipe_spacing_mm!=null?Math.max(0,+r.pipe_spacing_mm):clr;
   const k=r.side_profile==='battered'?Math.max(0,+r.batter||0):0;
   const pipes=(r.pipes||[]).filter(x=>+x.od_mm>0);
   const topOf=x=>Math.max(0,+x.rise_mm||0)+(+x.od_mm||0);
@@ -3206,11 +3207,11 @@ function _trCalc(r){
       const need=((+a.od_mm)+(+b.od_mm))/2;
       const sep=Math.sqrt(dx*dx+dy*dy)-need;
       if(sep<0)issues.push({t:'bad',m:_trLabel(a)+' and '+_trLabel(b)+' overlap. Move one of them.'});
-      else if(sep<clr)issues.push({t:'warn',m:'Only '+_trN(sep,0)+' mm between '+_trLabel(a)+' and '+_trLabel(b)+' (min '+_trN(clr,0)+' mm).'});
+      else if(sep<pclr)issues.push({t:'warn',m:'Only '+_trN(sep,0)+' mm between '+_trLabel(a)+' and '+_trLabel(b)+' (min '+_trN(pclr,0)+' mm).'});
     }
   }
   if(pipes.length&&cover>0&&cover<600)issues.push({t:'warn',m:'Cover to top of pipe is '+_trN(cover,0)+' mm. Most authorities require 600 mm minimum under trafficable areas.'});
-  return{depth:depth,base:base,len:len,bed:bed,ovl:ovl,clr:clr,k:k,pipes:pipes,maxTop:maxTop,widthAt:widthAt,
+  return{depth:depth,base:base,len:len,bed:bed,ovl:ovl,clr:clr,pclr:pclr,k:k,pipes:pipes,maxTop:maxTop,widthAt:widthAt,
     topWidth:widthAt(depth),zones:zones,pipeArea:pipeArea,pipeVol:pipeArea*len,totalArea:totalArea,totalVol:totalArea*len,cover:cover,issues:issues};
 }
 
@@ -3446,6 +3447,7 @@ function renderTabVolumes(p,id){
         +'<div class="tr-row"><span class="tr-lbl">Bedding under pipe<i>mm</i></span>'+num('bedding_mm',act.bedding_mm)+'</div>'
         +'<div class="tr-row"><span class="tr-lbl">Overlay above pipe<i>mm</i></span>'+num('overlay_mm',act.overlay_mm)+'</div>'
         +'<div class="tr-row"><span class="tr-lbl">Min. side clearance<i>mm</i></span>'+num('side_clearance_mm',act.side_clearance_mm)+'</div>'
+        +'<div class="tr-row"><span class="tr-lbl">Min. pipe spacing<i>mm</i></span>'+num('pipe_spacing_mm',act.pipe_spacing_mm!=null?act.pipe_spacing_mm:act.side_clearance_mm)+'</div>'
       +'</div>'
       +'<div class="tr-panel"><div class="tr-ptitle">Pipes</div>'+pipes
         +'<button class="btn btn-blue btn-sm" style="width:100%;justify-content:center" onclick="_trAddPipe(\''+id+'\',\''+act.id+'\')">+ Add pipe</button>'
@@ -3665,7 +3667,7 @@ window._trPipe=function(projId,runId,pipeId,field,val){
 window._trAddPipe=function(projId,runId){
   const r=_trRun(projId,runId);if(!r)return;
   if(!r.pipes)r.pipes=[];
-  const od=225,gap=Math.max(0,+r.side_clearance_mm||0);
+  const od=225,gap=r.pipe_spacing_mm!=null?Math.max(0,+r.pipe_spacing_mm):Math.max(0,+r.side_clearance_mm||0);
   const right=r.pipes.reduce((m,x)=>Math.max(m,(+x.offset_mm||0)+(+x.od_mm||0)/2),null);
   r.pipes.push({id:uid(),material:'upvc',dn:225,od_mm:od,offset_mm:right==null?0:Math.round(right+gap+od/2),rise_mm:0});
   const lo=Math.min.apply(null,r.pipes.map(x=>(+x.offset_mm||0)-(+x.od_mm||0)/2));
