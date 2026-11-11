@@ -552,6 +552,31 @@ select.tr-in{text-align:left;cursor:pointer;-webkit-appearance:none;appearance:n
 .tr-sep{width:1px;height:18px;background:var(--border);margin:0 4px}
 .tr-hint{font-size:.69rem;color:var(--muted2);margin-left:auto;padding-left:10px}
 @media(max-width:620px){.tr-hint{display:none}}
+.civ-top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.civ-title{font-size:1.02rem;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+.civ-sub{font-size:.74rem;color:var(--muted2);margin-top:2px}
+.civ-switch{display:inline-flex;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px}
+.civ-switch button{background:none;border:none;color:var(--muted);font-size:.79rem;font-weight:600;padding:7px 18px;border-radius:7px;cursor:pointer;transition:all .15s}
+.civ-switch button:hover{color:var(--text)}
+.civ-switch button.on{background:rgba(59,130,246,.18);color:#93C5FD;box-shadow:inset 0 0 0 1px rgba(59,130,246,.45)}
+.tr-qty th.l,.tr-qty td.l{text-align:left}
+.pt-reo{border:1px solid var(--border);background:var(--s3);border-radius:9px;padding:10px 12px 11px;margin-bottom:9px}
+.pt-reo-h{font-size:.73rem;font-weight:700;color:var(--text);margin-bottom:9px}
+.pt-seg{display:inline-flex;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:2px;gap:2px;flex-shrink:0}
+.pt-seg button{background:none;border:none;color:var(--muted);font-size:.72rem;font-weight:600;padding:4px 10px;border-radius:4px;cursor:pointer;transition:all .15s}
+.pt-seg button:hover{color:var(--text)}
+.pt-seg button.on{background:rgba(59,130,246,.18);color:#93C5FD}
+.pt-3d{position:relative;height:520px;background:radial-gradient(ellipse 70% 65% at 50% 40%,rgba(59,130,246,.07),transparent 70%),var(--surface);border-top:1px solid var(--border);overflow:hidden;touch-action:none;cursor:grab;user-select:none}
+.pt-3d:active{cursor:grabbing}
+.pt-3d canvas{display:block;width:100%;height:100%}
+.pt-lbls{position:absolute;inset:0;pointer-events:none}
+.pt-lbl{position:absolute;transform:translate(-50%,-50%);font-size:.68rem;font-weight:600;color:#CBD5E1;background:rgba(13,21,37,.85);border:1px solid rgba(143,163,191,.25);border-radius:5px;padding:2px 7px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pt-legend{position:absolute;left:12px;top:10px;display:flex;flex-wrap:wrap;gap:12px;font-size:.66rem;color:var(--muted);pointer-events:none}
+.pt-legend span{display:inline-flex;align-items:center;gap:5px}
+.pt-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.pt-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:.8rem;text-align:center;padding:20px}
+.pt-scroll{overflow-x:auto}
+.pt-sched td,.pt-sched th{white-space:nowrap}
 .tr-meas-click{cursor:pointer}
 .tr-meas-click:hover .tr-meas-line{stroke:#F87171}
 .tr-meas-click:hover .tr-meas-box{stroke:rgba(248,113,113,.7)}
@@ -1710,7 +1735,7 @@ function renderProjectDetail(id,tab){
   const p=DB.getProject(id);
   if(!p){renderShell(`<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Project not found</div></div>`,'projects');return;}
   const tabs=['summary','suppliers','geotech','volumes','productivity','boq','risk','variations','diary','departures','program','documents'];
-  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Trenching','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
+  const tabLabels={'summary':'Summary','suppliers':'Key Suppliers','geotech':'Geotech','volumes':'Civil Calculator','productivity':'Productivity','boq':'Draft Estimate','risk':'Risk','variations':'Variations','diary':'Site Diary','departures':'Departures','program':'Program','documents':'Documents'};
   const curTab=tabs.includes(tab)?tab:'summary';
   const boqTotal=(p.boq_items||[]).reduce((s,b)=>s+(b.quantity||0)*(b.rate||0),0);
   const openRisks=(p.risks||[]).filter(r=>r.status==='open').length;
@@ -3459,7 +3484,7 @@ function _trViewHTML(c,run){
     +'<div class="card" style="padding:0;overflow:hidden">'+_trToolbar(run)+'<div id="tr-canvas" class="tr-canvas">'+_trSVG(c,run)+'</div></div>';
 }
 
-function renderTabVolumes(p,id){
+function _trRenderTrench(p,id){
   if(!p.trench_runs||!p.trench_runs.length){p.trench_runs=[_trNewRun('Trench run 1')];DB.saveProject(p);}
   const runs=p.trench_runs;
   let act=runs.find(r=>r.id===_trActive[id])||runs[0];
@@ -3837,6 +3862,905 @@ window._trDelRunGo=function(projId,runId){
   DB.saveProject(p);closeModal();navigate('project/'+projId+'/volumes');
 };
 window._trPick=function(projId,runId){_trActive[projId]=runId;navigate('project/'+projId+'/volumes');};
+/* ================================================================
+   CIVIL CALCULATOR  (Volumes tab — Trench / Pit)
+================================================================ */
+let _civMode={};
+function _civGet(id){
+  if(_civMode[id])return _civMode[id];
+  try{const v=localStorage.getItem('ap-civ-'+id);if(v==='pit'||v==='trench')return v;}catch(e){}
+  return'trench';
+}
+function renderTabVolumes(p,id){
+  const mode=_civGet(id);
+  const head='<div class="civ-top"><div><div class="civ-title">Civil Calculator</div>'
+    +'<div class="civ-sub">'+(mode==='pit'?'Cast in-situ pit · concrete and reinforcement':'Trench · bedding zones and pipe layout')+'</div></div>'
+    +'<div class="civ-switch">'
+      +'<button class="'+(mode==='trench'?'on':'')+'" onclick="_civSet(\''+id+'\',\'trench\')">Trench</button>'
+      +'<button class="'+(mode==='pit'?'on':'')+'" onclick="_civSet(\''+id+'\',\'pit\')">Pit</button>'
+    +'</div></div>';
+  return head+(mode==='pit'?_ptRender(p,id):_trRenderTrench(p,id));
+}
+window._civSet=function(id,mode){
+  _civMode[id]=mode;try{localStorage.setItem('ap-civ-'+id,mode);}catch(e){}
+  navigate('project/'+id+'/volumes');
+};
+
+/* ================================================================
+   CAST IN-SITU PIT CALCULATOR
+================================================================ */
+const PT_BARS={N10:{d:10,m:0.617},N12:{d:12,m:0.888},N16:{d:16,m:1.578},N20:{d:20,m:2.466},N24:{d:24,m:3.551}};
+const PT_MESH={SL62:6.0,SL72:6.75,SL82:7.6,SL92:8.6,SL102:9.5};
+const PT_MESH_KG=k=>10*7850*Math.PI/4*Math.pow((PT_MESH[k]||7.6)/1000,2);
+// AS 3600 Table 4.10.3.2 — cover (mm), standard formwork and compaction. A missing f'c means not permitted.
+const PT_COVER={A1:{20:20,25:20,32:20,40:20,50:20},A2:{20:50,25:30,32:25,40:20,50:20},B1:{25:60,32:40,40:30,50:25},B2:{32:65,40:45,50:35},C1:{40:70,50:50},C2:{50:65}};
+const PT_FC=[20,25,32,40,50],PT_EXPO=['A1','A2','B1','B2','C1','C2'];
+const PT_ELN={base:'Base slab',walls:'Walls',lid:'Lid'};
+const PT_STOCK=12000;
+let _ptActive={},_ptSaveTimer=null,_ptBuildTimer=null;
+const _pn=v=>Math.max(0,+v||0);
+
+function _ptNewReo(){return{type:'bar',bar:'N12',spacing:200,mesh:'SL82',layers:2,cover:null};}
+function _ptNew(n){
+  return{id:uid(),name:n||'Pit',shape:'rect',int_l:900,int_w:900,int_dia:1050,int_d:1200,wall_t:200,base_t:200,
+    lid:true,lid_t:200,open_l:600,open_w:600,open_dia:600,fc:32,exposure:'B1',ground:'direct',
+    lap_factor:40,wastage:5,mesh_lap:15,reo:{base:_ptNewReo(),walls:_ptNewReo(),lid:_ptNewReo()},pens:[]};
+}
+function _ptReqCover(r,el){
+  const v=(PT_COVER[r.exposure]||{})[r.fc];
+  if(v==null)return null;
+  return v+(el==='base'?(r.ground==='membrane'?10:20):0);
+}
+function _ptCover(r,el){
+  const e=(r.reo&&r.reo[el])||{};
+  if(e.cover!=null&&e.cover!=='')return +e.cover;
+  const q=_ptReqCover(r,el);return q!=null?q:50;
+}
+function _ptCut(a,b,blocks,min){
+  const lim=min==null?100:min;let pcs=[[a,b]];
+  blocks.forEach(([lo,hi])=>{const nx=[];pcs.forEach(([s,e])=>{if(hi<=s||lo>=e){nx.push([s,e]);return;}if(lo>s)nx.push([s,lo]);if(hi<e)nx.push([hi,e]);});pcs=nx;});
+  return pcs.filter(([s,e])=>e-s>=lim);
+}
+function _ptPushLen(arr,len,lap){
+  if(len<=PT_STOCK){arr.push(len);return;}
+  const n=Math.ceil((len-lap)/(PT_STOCK-lap)),each=(len+(n-1)*lap)/n;
+  for(let i=0;i<n;i++)arr.push(each);
+}
+
+function _ptCalc(r){
+  const circ=r.shape==='circ',hasLid=!!r.lid;
+  const t=_pn(r.wall_t),tb=_pn(r.base_t),H=_pn(r.int_d),tl=hasLid?_pn(r.lid_t):0;
+  const L=_pn(r.int_l),W=_pn(r.int_w),D=_pn(r.int_dia),R=D/2,Re=R+t,Le=L+2*t,We=W+2*t;
+  const ol=Math.min(_pn(r.open_l),L),ow=Math.min(_pn(r.open_w),W),ro=Math.min(_pn(r.open_dia),D)/2;
+  const valid=(circ?D>0:(L>0&&W>0))&&H>0&&t>0&&tb>0&&(!hasLid||tl>0);
+  const pens=(r.pens||[]).map((p,i)=>({id:p.id,i:i,wall:p.wall||'N',bearing:(((+p.bearing||0)%360)+360)%360,
+    offset:+p.offset||0,invert:+p.invert||0,dia:_pn(p.dia)})).filter(p=>p.dia>0);
+  const issues=[],sched=[],meshRows=[],geo={segs:[],rings:[]};
+  const TAU=Math.PI*2;
+  const lapOf=d=>Math.ceil((+r.lap_factor||40)*d/10)*10;
+  const reoOf=el=>{
+    const e=(r.reo&&r.reo[el])||_ptNewReo(),mesh=e.type==='mesh',bar=PT_BARS[e.bar]||PT_BARS.N12;
+    return{e:e,mesh:mesh,d:mesh?(PT_MESH[e.mesh]||7.6):bar.d,s:mesh?200:Math.max(50,+e.spacing||200),
+      layers:+e.layers===1?1:2,c:_ptCover(r,el),bar:mesh?null:(PT_BARS[e.bar]?e.bar:'N12'),kgm:mesh?0:bar.m,
+      trim:mesh?{name:'N12',d:12,kgm:PT_BARS.N12.m}:{name:PT_BARS[e.bar]?e.bar:'N12',d:bar.d,kgm:bar.m}};
+  };
+  const addRow=(el,name,d,kgm,where,lens)=>{if(lens.length)sched.push({el:el,bar:name,d:d,kgm:kgm,where:where,lens:lens});};
+  const seg=(a,b,d,kind)=>geo.segs.push({a:a,b:b,d:d,kind:kind});
+
+  let vB=0,vW=0,vL=0,vP=0;
+  if(valid){
+    if(circ){vB=Math.PI*Re*Re*tb;vW=Math.PI*(Re*Re-R*R)*H;vL=hasLid?Math.PI*(Re*Re-ro*ro)*tl:0;}
+    else{vB=Le*We*tb;vW=(Le*We-L*W)*H;vL=hasLid?(Le*We-ol*ow)*tl:0;}
+    pens.forEach(p=>{vP+=Math.PI/4*p.dia*p.dia*t;});
+  }
+  const conc={base:vB/1e9,walls:Math.max(0,vW-vP)/1e9,lid:vL/1e9,pen:vP/1e9};
+  conc.total=conc.base+conc.walls+conc.lid;
+
+  function slab(el,y0,y1,open){
+    const o=reoOf(el),c=o.c,d=o.d,s=o.s,lp=lapOf(d),kind=o.mesh?'mesh':'bar';
+    const lys=o.layers===2?[{n:'Bottom',y:y0+c+d/2,dir:1},{n:'Top',y:y1-c-d/2,dir:-1}]:[{n:'',y:y0+c+d/2,dir:1}];
+    let meshArea=0;
+    lys.forEach(ly=>{
+      [0,1].forEach(axis=>{
+        const yy=ly.y+ly.dir*axis*d,span=circ?Re:(axis===0?We/2:Le/2),run=circ?Re:(axis===0?Le/2:We/2);
+        const n=Math.max(1,Math.floor((2*(span-c))/s)+1),lens=[];
+        for(let i=0;i<n;i++){
+          const q=-(n-1)*s/2+i*s;let a,b;
+          if(circ){const rr=Re-c;if(Math.abs(q)>=rr)continue;const h=Math.sqrt(rr*rr-q*q);a=-h;b=h;}
+          else{a=-(run-c);b=run-c;}
+          const blocks=[];
+          if(open){
+            if(circ){const rr=open.r+c;if(open.r>0&&Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q);blocks.push([-h,h]);}}
+            else if(open.l>0&&open.w>0){const half=axis===0?open.w/2:open.l/2,along=axis===0?open.l/2:open.w/2;if(Math.abs(q)<half+c)blocks.push([-along-c,along+c]);}
+          }
+          _ptCut(a,b,blocks).forEach(([u,v])=>{
+            if(axis===0)seg([u,yy,q],[v,yy,q],d,kind);else seg([q,yy,u],[q,yy,v],d,kind);
+            _ptPushLen(lens,v-u,lp);
+          });
+        }
+        if(!o.mesh)addRow(el,o.bar,d,o.kgm,(ly.n?ly.n+' · ':'')+(circ?(axis===0?'E–W':'N–S'):(axis===0?'along length':'along width')),lens);
+      });
+      if(o.mesh){
+        let a=circ?Math.PI*Math.pow(Re-c,2):(Le-2*c)*(We-2*c);
+        if(open)a-=circ?(open.r>0?Math.PI*Math.pow(open.r+c,2):0):((open.l>0&&open.w>0)?(open.l+2*c)*(open.w+2*c):0);
+        meshArea+=Math.max(0,a);
+      }
+    });
+    if(o.mesh)meshRows.push({el:el,mesh:o.e.mesh,layers:o.layers,area:meshArea/1e6});
+    const hasOpen=open&&(circ?open.r>0:(open.l>0&&open.w>0));
+    if(hasOpen){
+      const tr=o.trim,tlp=lapOf(tr.d),lens=[],hl=circ?open.r:open.l/2,hw=circ?open.r:open.w/2,rr2=Math.pow(Re-c,2);
+      lys.forEach(ly=>{
+        const yy=ly.y+ly.dir*2*d;
+        [0,1].forEach(k=>{
+          const off=c+40+k*60;
+          [-1,1].forEach(sg=>{
+            const z=sg*(hw+off);let len=Math.min(2*hl+2*tlp,circ?2*Math.sqrt(Math.max(0,rr2-z*z)):Le-2*c);
+            if(len>100){seg([-len/2,yy,z],[len/2,yy,z],tr.d,'trim');lens.push(len);}
+            const x=sg*(hl+off);let len2=Math.min(2*hw+2*tlp,circ?2*Math.sqrt(Math.max(0,rr2-x*x)):We-2*c);
+            if(len2>100){seg([x,yy,-len2/2],[x,yy,len2/2],tr.d,'trim');lens.push(len2);}
+          });
+        });
+      });
+      addRow(el,tr.name,tr.d,tr.kgm,'Trimmers · lid opening',lens);
+    }
+  }
+
+  function penTrimmers(o,layers){
+    if(!pens.length)return;
+    const c=o.c,tr=o.trim,tlp=lapOf(tr.d),lens=[];
+    pens.forEach(p=>{
+      const rr=p.dia/2+c+40,yc=p.invert+p.dia/2,len=p.dia+2*tlp;
+      const y1=Math.max(25,yc-len/2),y2=Math.min(H-25,yc+len/2);
+      layers.forEach(ly=>{
+        if(circ){
+          const Rl=ly.Rh,b=p.bearing*Math.PI/180,dt=(len/2)/Rl;
+          [-1,1].forEach(sg=>{
+            const th=b+sg*rr/Rl;
+            if(y2-y1>100){seg([Rl*Math.sin(th),y1,-Rl*Math.cos(th)],[Rl*Math.sin(th),y2,-Rl*Math.cos(th)],tr.d,'trim');lens.push(y2-y1);}
+            const y=yc+sg*rr;
+            if(y>25&&y<H-25){geo.rings.push({y:y,R:Rl,d:tr.d,a0:b-dt,a1:b+dt,kind:'trim'});lens.push(len);}
+          });
+        }else{
+          const half=(p.wall==='N'||p.wall==='S')?ly.hx:ly.hz;
+          const w2=sv=>p.wall==='N'?[sv,-ly.hz]:p.wall==='S'?[sv,ly.hz]:p.wall==='E'?[ly.hx,sv]:[-ly.hx,sv];
+          [-1,1].forEach(sg=>{
+            const sv=p.offset+sg*rr;
+            if(Math.abs(sv)<half&&y2-y1>100){const q=w2(sv);seg([q[0],y1,q[1]],[q[0],y2,q[1]],tr.d,'trim');lens.push(y2-y1);}
+            const y=yc+sg*rr,s1=Math.max(-half,p.offset-len/2),s2=Math.min(half,p.offset+len/2);
+            if(y>25&&y<H-25&&s2-s1>100){const a=w2(s1),b=w2(s2);seg([a[0],y,a[1]],[b[0],y,b[1]],tr.d,'trim');lens.push(s2-s1);}
+          });
+        }
+      });
+    });
+    addRow('walls',tr.name,tr.d,tr.kgm,'Trimmers · penetrations',lens);
+  }
+
+  const wallYs=o=>{
+    const cB=_ptCover(r,'base'),cL=hasLid?_ptCover(r,'lid'):o.c;
+    return o.mesh?[25,H-25]:[-tb+cB+o.d,hasLid?H+tl-cL-o.d:H-o.c];
+  };
+  const ringHeights=s=>{const nh=Math.max(1,Math.ceil(H/s)),hs=[];for(let k=0;k<nh;k++)hs.push((k+0.5)*H/nh);return hs;};
+
+  function wallsRect(){
+    const o=reoOf('walls'),c=o.c,d=o.d,s=o.s,lp=lapOf(d),kind=o.mesh?'mesh':'bar',[yB,yT]=wallYs(o);
+    const mk=(n,hx,hz,sg)=>({n:n,hx:hx,hz:hz,vx:hx+sg*d,vz:hz+sg*d});
+    const layers=o.layers===2
+      ?[mk('Outer face',Le/2-c-d/2,We/2-c-d/2,-1),mk('Inner face',L/2+c+d/2,W/2+c+d/2,1)]
+      :[mk('',L/2+t/2+d/2,W/2+t/2+d/2,-1)];
+    const sides=(ax,az)=>[
+      {w:'N',len:2*ax,pt:u=>[-ax+u,-az],s:u=>-ax+u,rev:false},
+      {w:'E',len:2*az,pt:u=>[ax,-az+u],s:u=>-az+u,rev:false},
+      {w:'S',len:2*ax,pt:u=>[ax-u,az],s:u=>ax-u,rev:true},
+      {w:'W',len:2*az,pt:u=>[-ax,az-u],s:u=>az-u,rev:true}];
+    let meshArea=0;
+    layers.forEach(ly=>{
+      const vl=[],hl=[],sv=sides(ly.vx,ly.vz),sh=sides(ly.hx,ly.hz);
+      const P=4*(ly.vx+ly.vz),nv=Math.max(4,Math.ceil(P/s)),sp=P/nv;
+      for(let k=0;k<nv;k++){
+        let u=k*sp,si=0;
+        while(si<3&&u>=sv[si].len-1e-6){u-=sv[si].len;si++;}
+        const side=sv[si],pt=side.pt(u),sc=side.s(u),blocks=[];
+        pens.forEach(p=>{if(p.wall!==side.w)return;const rr=p.dia/2+c,q=sc-p.offset;
+          if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),yc=p.invert+p.dia/2;blocks.push([yc-h,yc+h]);}});
+        _ptCut(yB,yT,blocks).forEach(([a,b],pi)=>{seg([pt[0],a,pt[1]],[pt[0],b,pt[1]],d,kind);_ptPushLen(vl,(b-a)+(pi===0&&!o.mesh?lp:0),lp);});
+      }
+      ringHeights(s).forEach(y=>{
+        sh.forEach(side=>{
+          const blocks=[],s0=side.s(0);
+          pens.forEach(p=>{if(p.wall!==side.w)return;const rr=p.dia/2+c,q=y-(p.invert+p.dia/2);
+            if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),s1=p.offset-h,s2=p.offset+h;
+              blocks.push(side.rev?[s0-s2,s0-s1]:[s1-s0,s2-s0]);}});
+          _ptCut(0,side.len,blocks).forEach(([a,b])=>{
+            const p1=side.pt(a),p2=side.pt(b);seg([p1[0],y,p1[1]],[p2[0],y,p2[1]],d,kind);
+            _ptPushLen(hl,(b-a)+(Math.abs(b-side.len)<1?lp:0),lp);
+          });
+        });
+      });
+      if(!o.mesh){
+        const pre=ly.n?ly.n+' · ':'';
+        addRow('walls',o.bar,d,o.kgm,pre+'vertical (incl. starter lap)',vl);
+        addRow('walls',o.bar,d,o.kgm,pre+'horizontal (corner laps)',hl);
+      }else meshArea+=4*(ly.hx+ly.hz)*H-pens.reduce((a,p)=>a+Math.PI/4*p.dia*p.dia,0);
+    });
+    if(o.mesh)meshRows.push({el:'walls',mesh:o.e.mesh,layers:o.layers,area:Math.max(0,meshArea)/1e6});
+    penTrimmers(o,layers);
+  }
+
+  function wallsCirc(){
+    const o=reoOf('walls'),c=o.c,d=o.d,s=o.s,lp=lapOf(d),kind=o.mesh?'mesh':'bar',[yB,yT]=wallYs(o);
+    const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
+    const layers=o.layers===2
+      ?[{n:'Outer face',Rh:Re-c-d/2,Rv:Re-c-1.5*d},{n:'Inner face',Rh:R+c+d/2,Rv:R+c+1.5*d}]
+      :[{n:'',Rh:R+t/2+d/2,Rv:R+t/2-d/2}];
+    let meshArea=0;
+    layers.forEach(ly=>{
+      const vl=[],hl=[],Rv=ly.Rv,Rh=ly.Rh,nv=Math.max(8,Math.ceil(TAU*Rv/s));
+      for(let k=0;k<nv;k++){
+        const th=k*TAU/nv,x=Rv*Math.sin(th),z=-Rv*Math.cos(th),blocks=[];
+        pens.forEach(p=>{const rr=p.dia/2+c,q=Rv*wrap(th-p.bearing*Math.PI/180);
+          if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),yc=p.invert+p.dia/2;blocks.push([yc-h,yc+h]);}});
+        _ptCut(yB,yT,blocks).forEach(([a,b],pi)=>{seg([x,a,z],[x,b,z],d,kind);_ptPushLen(vl,(b-a)+(pi===0&&!o.mesh?lp:0),lp);});
+      }
+      ringHeights(s).forEach(y=>{
+        const nb=[];
+        pens.forEach(p=>{const rr=p.dia/2+c,q=y-(p.invert+p.dia/2);
+          if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),b=p.bearing*Math.PI/180,dt=h/Rh;
+            let a0=b-dt,a1=b+dt;const k=Math.floor(a0/TAU);a0-=k*TAU;a1-=k*TAU;
+            if(a1>TAU){nb.push([a0,TAU]);nb.push([0,a1-TAU]);}else nb.push([a0,a1]);}});
+        let pcs=_ptCut(0,TAU,nb,100/Rh);
+        if(pcs.length>1&&pcs[0][0]<1e-9&&pcs[pcs.length-1][1]>TAU-1e-9){const f=pcs.shift();pcs[pcs.length-1]=[pcs[pcs.length-1][0],TAU+f[1]];}
+        if(pcs.length===1&&pcs[0][0]<1e-9&&pcs[0][1]>TAU-1e-9){
+          geo.rings.push({y:y,R:Rh,d:d,a0:0,a1:TAU,kind:kind});
+          const Lr=TAU*Rh,n=Math.max(1,Math.ceil(Lr/(PT_STOCK-lp)));
+          for(let i=0;i<n;i++)hl.push((Lr+n*lp)/n);
+        }else pcs.forEach(([a,b])=>{geo.rings.push({y:y,R:Rh,d:d,a0:a,a1:b,kind:kind});_ptPushLen(hl,(b-a)*Rh,lp);});
+      });
+      if(!o.mesh){
+        const pre=ly.n?ly.n+' · ':'';
+        addRow('walls',o.bar,d,o.kgm,pre+'vertical (incl. starter lap)',vl);
+        addRow('walls',o.bar,d,o.kgm,pre+'hoops (incl. laps)',hl);
+      }else meshArea+=TAU*Rh*H-pens.reduce((a,p)=>a+Math.PI/4*p.dia*p.dia,0);
+    });
+    if(o.mesh)meshRows.push({el:'walls',mesh:o.e.mesh,layers:o.layers,area:Math.max(0,meshArea)/1e6});
+    penTrimmers(o,layers);
+  }
+
+  if(valid){
+    slab('base',-tb,0,null);
+    if(circ)wallsCirc();else wallsRect();
+    if(hasLid)slab('lid',H,H+tl,circ?{r:ro}:{l:ol,w:ow});
+  }
+
+  const wf=1+_pn(r.wastage)/100,mf=1+_pn(r.mesh_lap)/100;
+  const steel={base:0,walls:0,lid:0};
+  sched.forEach(row=>{row.total=row.lens.reduce((a,b)=>a+b,0);row.kg=row.total/1000*row.kgm;steel[row.el]+=row.kg*wf;});
+  meshRows.forEach(m=>{m.kgm2=PT_MESH_KG(m.mesh);m.areaL=m.area*mf;m.kg=m.areaL*m.kgm2;m.sheets=Math.ceil(m.areaL/14.4);steel[m.el]+=m.kg;});
+  steel.total=steel.base+steel.walls+steel.lid;
+
+  // ---- detailing checks ----
+  const P=(k,m)=>issues.push({t:k,m:m});
+  if(!valid)P('bad','Enter the pit dimensions, wall and base thickness'+(hasLid?' and lid thickness':'')+' to calculate quantities.');
+  const expoRow=PT_COVER[r.exposure]||{};
+  if(expoRow[r.fc]==null){
+    const mins=Object.keys(expoRow).map(Number);
+    P('bad',r.exposure+' exposure needs at least '+(mins.length?Math.min.apply(null,mins):50)+' MPa concrete — '+r.fc+' MPa is not permitted (AS 3600 Table 4.10.3.2).');
+  }
+  const thick={base:tb,walls:t,lid:tl};
+  if(valid)['base','walls','lid'].forEach(el=>{
+    if(el==='lid'&&!hasLid)return;
+    const o=reoOf(el),th=thick[el],nm=PT_ELN[el],req=_ptReqCover(r,el),what=o.mesh?o.e.mesh:o.bar;
+    if(req!=null&&o.c<req)P('bad',nm+' cover '+_trN(o.c,0)+' mm is below the '+req+' mm required for '+r.exposure+' at '+r.fc+' MPa'+(el==='base'?(r.ground==='membrane'?' on a membrane':' cast against ground'):'')+'.');
+    const need=2*o.c+o.layers*2*o.d;
+    const is=el==='walls'?' are ':' is ';
+    if(th<need)P('bad',nm+is+_trN(th,0)+' mm thick but need'+(el==='walls'?'':'s')+' '+_trN(need,0)+' mm to fit '+(o.layers===2?'two layers of ':'')+what+' with '+_trN(o.c,0)+' mm cover.');
+    else if(th<150)P('warn',nm+is+_trN(th,0)+' mm — below the 150 mm practical minimum for cast in-situ work.');
+    else if(o.layers===2&&th<200)P('warn',nm+' at '+_trN(th,0)+' mm '+(el==='walls'?'are':'is')+' tight for two layers — 200 mm is typical.');
+    if(!o.mesh){
+      const smax=Math.min(2*th,300),smin=Math.max(3*o.d,75);
+      if(o.s>smax)P('warn',nm+' bar spacing '+_trN(o.s,0)+' mm exceeds the '+_trN(smax,0)+' mm maximum (lesser of 2 × thickness and 300 mm).');
+      if(o.s<smin)P('warn',nm+' bar spacing '+_trN(o.s,0)+' mm is congested for '+o.bar+' — allow at least '+_trN(smin,0)+' mm.');
+    }
+    const ratio=th>0?o.layers*(Math.PI/4*o.d*o.d)*(1000/o.s)/(1000*th):0;
+    if(th>0&&ratio<0.0018)P('warn',nm+' steel ratio '+(ratio*100).toFixed(2)+'% each way is below the 0.18% typical minimum for shrinkage and temperature control.');
+  });
+  if(valid&&hasLid){
+    if(circ){if(_pn(r.open_dia)>=D)P('bad','Lid opening Ø'+_trN(r.open_dia,0)+' is as large as the pit — there is no lid slab left.');}
+    else if(_pn(r.open_l)>=L||_pn(r.open_w)>=W)P('bad','Lid opening '+_trN(r.open_l,0)+' × '+_trN(r.open_w,0)+' is as large as the pit internally — there is no lid slab left.');
+  }
+  const pname=p=>'P'+(p.i+1)+' (Ø'+_trN(p.dia,0)+(circ?' at '+_trN(p.bearing,0)+'°':', '+p.wall+' wall')+')';
+  if(valid)pens.forEach(p=>{
+    const top=p.invert+p.dia;
+    if(p.invert<0)P('bad',pname(p)+' is below the top of the base.');
+    else if(top>H)P('bad',pname(p)+' extends '+_trN(top-H,0)+' mm above the top of the wall.');
+    else if(hasLid&&H-top<150)P('warn',pname(p)+' is only '+_trN(H-top,0)+' mm below the lid soffit — 150 mm is recommended.');
+    if(!circ){
+      const half=(p.wall==='N'||p.wall==='S')?L/2:W/2,edge=half-(Math.abs(p.offset)+p.dia/2);
+      if(edge<0)P('bad',pname(p)+' runs into the corner — move it '+_trN(-edge,0)+' mm towards the centre.');
+      else if(edge<150)P('warn',pname(p)+' is only '+_trN(edge,0)+' mm from the internal corner — 150 mm is recommended.');
+    }
+  });
+  if(valid)for(let i=0;i<pens.length;i++)for(let j=i+1;j<pens.length;j++){
+    const a=pens[i],b=pens[j];let dx;
+    if(circ){const da=(b.bearing-a.bearing)*Math.PI/180;dx=Math.abs(Math.atan2(Math.sin(da),Math.cos(da)))*(R+t/2);}
+    else{if(a.wall!==b.wall)continue;dx=Math.abs(a.offset-b.offset);}
+    const dy=(a.invert+a.dia/2)-(b.invert+b.dia/2),gap=Math.sqrt(dx*dx+dy*dy)-(a.dia+b.dia)/2;
+    if(gap<0)P('bad',pname(a)+' and '+pname(b)+' overlap.');
+    else if(gap<150)P('warn','Only '+_trN(gap,0)+' mm of concrete between '+pname(a)+' and '+pname(b)+' — 150 mm is recommended.');
+  }
+  issues.sort((a,b)=>(a.t==='bad'?0:1)-(b.t==='bad'?0:1));
+
+  return{valid:valid,circ:circ,hasLid:hasLid,t:t,tb:tb,H:H,tl:tl,L:L,W:W,D:D,R:R,Re:Re,Le:Le,We:We,ol:ol,ow:ow,ro:ro,
+    pens:pens,conc:conc,steel:steel,sched:sched,meshRows:meshRows,geo:geo,issues:issues};
+}
+
+function _ptPenName(q,circ){
+  return'Ø'+_trN(_pn(q.dia),0)+' opening · '+(circ?_trN(+q.bearing||0,0)+'°':(q.wall||'N')+' wall');
+}
+
+function _ptSummaryHTML(c,r){
+  const worst=c.issues.some(i=>i.t==='bad')?'bad':c.issues.some(i=>i.t==='warn')?'warn':'ok';
+  const alert=c.issues.length
+    ?'<div class="tr-alert tr-'+worst+'"><span>⚠</span><div>'+c.issues.map(i=>esc(i.m)).join('<br>')+'</div></div>'
+    :'<div class="tr-alert tr-ok"><span>✓</span><div>Detailing checks pass — cover, spacing, thickness and minimum steel.</div></div>';
+  const desc=el=>{const e=(r.reo||{})[el]||_ptNewReo(),two=+e.layers!==1;return e.type==='mesh'?e.mesh+(two?' · 2 layers':''):e.bar+' @ '+_trN(e.spacing,0)+(two?' · 2 layers':'');};
+  const rows=['base','walls','lid'].filter(el=>el!=='lid'||c.hasLid).map(el=>
+    '<tr><td>'+PT_ELN[el]+'</td><td class="l" style="color:var(--muted)">'+desc(el)+'</td><td>'+_trN(c.conc[el],3)+'</td><td>'+_trN(c.steel[el],1)+'</td></tr>').join('');
+  const pen=c.conc.pen>0?'<tr class="tr-dim"><td style="padding-left:18px">Penetrations deducted</td><td></td><td>−'+_trN(c.conc.pen,3)+'</td><td></td></tr>':'';
+  const rate=c.conc.total>0?c.steel.total/c.conc.total:0;
+  return alert+'<div class="card mb-3"><div class="card-title">Quantities</div>'
+    +'<table class="tr-qty"><thead><tr><th>Element</th><th class="l">Reinforcement</th><th>Concrete m³</th><th>Steel kg</th></tr></thead><tbody>'
+    +rows+pen
+    +'<tr class="tr-tot"><td>Total</td><td class="l" style="font-weight:500;color:var(--muted)">'+_trN(c.steel.total/1000,2)+' t · '+_trN(rate,0)+' kg/m³</td><td>'+_trN(c.conc.total,3)+'</td><td>'+_trN(c.steel.total,1)+'</td></tr>'
+    +'</tbody></table>'
+    +'<div class="tr-note">Steel includes '+_trN(_pn(r.wastage),0)+'% bar wastage and '+_trN(_pn(r.mesh_lap),0)+'% mesh laps &amp; wastage. Concrete volumes are net, with no wastage allowance.</div></div>';
+}
+
+function _ptSchedHTML(c,r){
+  if(!c.sched.length&&!c.meshRows.length)return'';
+  let mk=0,kg=0,m=0;
+  const rows=c.sched.map(s=>{
+    mk++;kg+=s.kg;m+=s.total;
+    const mx=Math.max.apply(null,s.lens),mn=Math.min.apply(null,s.lens);
+    const cut=mx-mn<5?_trN(mx/1000,2):_trN(mn/1000,2)+'–'+_trN(mx/1000,2);
+    return'<tr><td class="l" style="color:var(--muted2)">B'+mk+'</td><td class="l">'+PT_ELN[s.el]+'</td><td class="l" style="color:var(--muted)">'+esc(s.where)+'</td><td class="l">'+s.bar+'</td>'
+      +'<td>'+s.lens.length+'</td><td>'+cut+'</td><td>'+_trN(s.total/1000,1)+'</td><td>'+_trN(s.kg,1)+'</td></tr>';
+  }).join('');
+  const bars=c.sched.length
+    ?'<div class="pt-scroll"><table class="tr-qty pt-sched"><thead><tr><th class="l">Mark</th><th class="l">Element</th><th class="l">Location</th><th class="l">Bar</th><th>No.</th><th>Cut length m</th><th>Total m</th><th>Mass kg</th></tr></thead><tbody>'
+      +rows+'<tr class="tr-tot"><td class="l" colspan="6">Bars before wastage</td><td>'+_trN(m/1000,1)+'</td><td>'+_trN(kg,1)+'</td></tr></tbody></table></div>':'';
+  const mesh=c.meshRows.length
+    ?'<div class="pt-scroll" style="margin-top:'+(c.sched.length?'18px':'0')+'"><table class="tr-qty pt-sched"><thead><tr><th class="l">Element</th><th class="l">Mesh</th><th>Layers</th><th>Net m²</th><th>Incl. laps m²</th><th>Sheets</th><th>Mass kg</th></tr></thead><tbody>'
+      +c.meshRows.map(x=>'<tr><td class="l">'+PT_ELN[x.el]+'</td><td class="l">'+x.mesh+'</td><td>'+x.layers+'</td><td>'+_trN(x.area,2)+'</td><td>'+_trN(x.areaL,2)+'</td><td>'+x.sheets+'</td><td>'+_trN(x.kg,1)+'</td></tr>').join('')
+      +'</tbody></table></div>':'';
+  return'<div class="card"><div class="card-title">Bar schedule</div>'+bars+mesh
+    +'<div class="tr-note">Laps are '+_trN(+r.lap_factor||40,0)+' × bar diameter. Wall verticals include one starter lap; rectangular wall horizontals lap at each corner; bars longer than '+PT_STOCK/1000+' m are split with laps. Trimmers: 1 bar each side of wall penetrations and 2 each side of the lid opening, per layer. Bar masses to AS/NZS 4671; mesh masses are nominal for 200 × 200 SL mesh in 6.0 × 2.4 m sheets.</div>'
+    +'<div class="tr-note"><b style="color:var(--text);font-weight:600">Detailing checks only.</b> Cover is checked against AS 3600 Table 4.10.3.2 (standard formwork and compaction) — verify against the current edition. Structural capacity for soil, traffic and groundwater loads is not checked; the pit must be designed by an engineer.</div></div>';
+}
+
+function _ptRender(p,id){
+  if(!p.pits||!p.pits.length)p.pits=[_ptNew('Pit 1')];
+  const pits=p.pits;
+  const act=pits.find(x=>x.id===_ptActive[id])||pits[0];
+  if(_ptActive[id]!==act.id){_ptActive[id]=act.id;_p3.reset=true;}
+  if(!act.reo)act.reo={};['base','walls','lid'].forEach(el=>{if(!act.reo[el])act.reo[el]=_ptNewReo();});
+  const c=_ptCalc(act),circ=act.shape==='circ';
+  const A="'"+id+"','"+act.id+"'";
+  const num=(f,v,step)=>'<input type="number" class="tr-in" value="'+(v==null?'':v)+'" step="'+(step||'any')+'" min="0" oninput="_ptSet('+A+',\''+f+'\',this.value)">';
+  const sel=(f,v,opts)=>'<select class="tr-in" onchange="_ptSet('+A+',\''+f+'\',this.value,1)">'+opts.map(o=>'<option value="'+o[0]+'"'+(String(o[0])===String(v)?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+  const row=(lbl,unit,ctrl)=>'<div class="tr-row"><span class="tr-lbl">'+lbl+(unit?'<i>'+unit+'</i>':'')+'</span>'+ctrl+'</div>';
+
+  const chips=pits.map(x=>'<div class="tr-run'+(x.id===act.id?' on':'')+'" onclick="_ptPick(\''+id+'\',\''+x.id+'\')">'
+    +esc(x.name||'Untitled')+'<span class="tr-run-v">'+_trN(_ptCalc(x).conc.total,2)+' m³</span></div>').join('');
+
+  const reoBlock=el=>{
+    if(el==='lid'&&!act.lid)return'';
+    const e=act.reo[el],req=_ptReqCover(act,el),cov=e.cover!=null?e.cover:req;
+    const R2="'"+id+"','"+act.id+"','"+el+"'";
+    const seg=(f,opts)=>'<div class="pt-seg">'+opts.map(o=>'<button class="'+(String(e[f])===String(o[0])?'on':'')+'" onclick="_ptReo('+R2+',\''+f+'\',\''+o[0]+'\',1)">'+o[1]+'</button>').join('')+'</div>';
+    return'<div class="pt-reo"><div class="pt-reo-h">'+PT_ELN[el]+'</div>'
+      +row('Type','',seg('type',[['bar','Bar'],['mesh','Mesh']]))
+      +(e.type==='mesh'
+        ?row('Mesh','200 × 200','<select class="tr-in" onchange="_ptReo('+R2+',\'mesh\',this.value)">'+Object.keys(PT_MESH).map(k=>'<option'+(k===e.mesh?' selected':'')+'>'+k+'</option>').join('')+'</select>')
+        :row('Bar','','<select class="tr-in" onchange="_ptReo('+R2+',\'bar\',this.value)">'+Object.keys(PT_BARS).map(k=>'<option'+(k===e.bar?' selected':'')+'>'+k+'</option>').join('')+'</select>')
+         +row('Spacing','mm','<input type="number" class="tr-in" value="'+(e.spacing==null?'':e.spacing)+'" step="25" min="50" oninput="_ptReo('+R2+',\'spacing\',this.value)">'))
+      +row('Layers','',seg('layers',[[1,'Single'],[2,'Double']]))
+      +row('Cover','mm'+(req!=null?' · min '+req:''),'<input type="number" class="tr-in" value="'+(cov==null?'':cov)+'" step="5" min="0" oninput="_ptReo('+R2+',\'cover\',this.value)">')
+      +'</div>';
+  };
+
+  const pens=(act.pens||[]).map((q,i)=>{
+    const P3="'"+id+"','"+act.id+"','"+q.id+"'";
+    const pin=(f,v,step,min)=>'<input type="number" class="tr-in" value="'+(v==null?'':v)+'" step="'+(step||'any')+'"'+(min!=null?' min="'+min+'"':'')+' oninput="_ptPen('+P3+',\''+f+'\',this.value)">';
+    return'<div class="tr-pipe"><div class="tr-pipe-h"><span class="tr-tag">P'+(i+1)+'</span><span class="tr-pipe-nm" id="pt-pn-'+q.id+'">'+esc(_ptPenName(q,circ))+'</span>'
+      +'<button class="tr-x" onclick="_ptDelPen('+P3+')" title="Remove penetration">✕</button></div>'
+      +(circ?row('Bearing','° from N',pin('bearing',q.bearing||0,5))
+        :row('Wall','','<select class="tr-in" onchange="_ptPen('+P3+',\'wall\',this.value,1)">'+['N','E','S','W'].map(w=>'<option'+(w===q.wall?' selected':'')+'>'+w+'</option>').join('')+'</select>'))
+      +row('Opening dia.','mm',pin('dia',q.dia,5,0))
+      +(circ?'':row('Offset along wall','mm',pin('offset',q.offset||0,5)))
+      +row('Invert above base','mm',pin('invert',q.invert||0,5,0))
+      +'</div>';
+  }).join('');
+
+  const left='<div>'
+    +'<div class="tr-panel" style="padding-bottom:13px"><input class="tr-name" value="'+esc(act.name||'')+'" placeholder="Pit name" oninput="_ptSet('+A+',\'name\',this.value)"></div>'
+    +'<div class="tr-panel"><div class="tr-ptitle">Pit</div>'
+      +row('Shape','',sel('shape',act.shape,[['rect','Rectangular'],['circ','Circular']]))
+      +(circ?row('Internal diameter','mm',num('int_dia',act.int_dia)):row('Internal length','mm',num('int_l',act.int_l))+row('Internal width','mm',num('int_w',act.int_w)))
+      +row('Internal depth','mm',num('int_d',act.int_d))
+      +row('Wall thickness','mm',num('wall_t',act.wall_t))
+      +row('Base thickness','mm',num('base_t',act.base_t))
+    +'</div>'
+    +'<div class="tr-panel"><div class="tr-ptitle">Lid</div>'
+      +row('Cast lid','',sel('lid',act.lid?'1':'0',[['1','Yes'],['0','No']]))
+      +(act.lid?row('Lid thickness','mm',num('lid_t',act.lid_t))
+        +(circ?row('Opening diameter','mm',num('open_dia',act.open_dia)):row('Opening length','mm',num('open_l',act.open_l))+row('Opening width','mm',num('open_w',act.open_w))):'')
+    +'</div>'
+    +'<div class="tr-panel"><div class="tr-ptitle">Concrete &amp; exposure</div>'
+      +row('Strength f′c','',sel('fc',act.fc,PT_FC.map(f=>[f,f+' MPa'])))
+      +row('Exposure class','AS 3600',sel('exposure',act.exposure,PT_EXPO.map(x=>[x,x])))
+      +row('Base on ground','',sel('ground',act.ground,[['direct','Direct +20'],['membrane','Membrane +10']]))
+    +'</div>'
+    +'<div class="tr-panel"><div class="tr-ptitle">Reinforcement</div>'+reoBlock('base')+reoBlock('walls')+reoBlock('lid')
+      +row('Lap length','× bar dia',num('lap_factor',act.lap_factor,5))
+      +row('Bar wastage','%',num('wastage',act.wastage,1))
+      +row('Mesh laps &amp; wastage','%',num('mesh_lap',act.mesh_lap,1))
+    +'</div>'
+    +'<div class="tr-panel"><div class="tr-ptitle">Pipe penetrations</div>'+pens
+      +'<button class="btn btn-outline btn-sm" style="width:100%;justify-content:center" onclick="_ptAddPen('+A+')">+ Add penetration</button>'
+      +'<div class="tr-note">'+(circ?'Bearing is clockwise from North (0°).':'Offset is from the wall centreline — east is + on N/S walls, south is + on E/W walls.')+' Invert is the bottom of the opening above the top of the base.</div>'
+    +'</div>'
+  +'</div>';
+
+  const right='<div><div id="pt-summary">'+_ptSummaryHTML(c,act)+'</div>'
+    +'<div class="card mb-3" style="padding:0;overflow:hidden">'+_p3Toolbar()+'<div id="pt-3d" class="pt-3d"><div class="pt-msg">Loading 3D view…</div></div></div>'
+    +'<div id="pt-sched">'+_ptSchedHTML(c,act)+'</div></div>';
+
+  setTimeout(()=>_p3Mount(id,act.id),0);
+  return'<div class="tr-runs">'+chips
+    +'<div class="tr-run" onclick="_ptAdd(\''+id+'\')" style="color:var(--blue);border-color:rgba(59,130,246,.3)">+ Add pit</div>'
+    +(pits.length>1?'<div style="flex:1"></div><button class="btn btn-outline btn-sm" onclick="_ptDel('+A+')" style="color:var(--red);border-color:rgba(239,68,68,.3)">Delete pit</button>':'')
+    +'</div><div class="tr-wrap">'+left+right+'</div>';
+}
+
+function _ptRun(projId,pitId){
+  const p=DB.getProject(projId);if(!p)return null;
+  return(p.pits||[]).find(x=>x.id===pitId)||null;
+}
+function _ptSync(projId){
+  if(_ptSaveTimer)clearTimeout(_ptSaveTimer);
+  _ptSaveTimer=setTimeout(()=>{const p=DB.getProject(projId);if(p)DB.saveProject(p);_ptSaveTimer=null;},700);
+}
+function _ptRefresh(r){
+  const c=_ptCalc(r);
+  const s=document.getElementById('pt-summary');if(s)s.innerHTML=_ptSummaryHTML(c,r);
+  const sc=document.getElementById('pt-sched');if(sc)sc.innerHTML=_ptSchedHTML(c,r);
+  const chip=document.querySelector('.tr-run.on .tr-run-v');if(chip)chip.textContent=_trN(c.conc.total,2)+' m³';
+  if(_ptBuildTimer)clearTimeout(_ptBuildTimer);
+  _ptBuildTimer=setTimeout(()=>{_ptBuildTimer=null;if(_p3.mountedPit===r.id)_p3Build(_ptCalc(r),r,false);},70);
+}
+window._ptSet=function(projId,pitId,f,v,nav){
+  const r=_ptRun(projId,pitId);if(!r)return;
+  if(f==='name'){r.name=v;_ptSync(projId);const ch=document.querySelector('.tr-run.on');if(ch)ch.firstChild.nodeValue=v||'Untitled';return;}
+  if(f==='shape'||f==='exposure'||f==='ground')r[f]=v;
+  else if(f==='lid')r.lid=v==='1';
+  else if(f==='fc')r.fc=+v;
+  else r[f]=v===''?null:parseFloat(v);
+  _ptSync(projId);
+  if(nav){if(f==='shape')_p3.reset=true;navigate('project/'+projId+'/volumes');}else _ptRefresh(r);
+};
+window._ptReo=function(projId,pitId,el,f,v,nav){
+  const r=_ptRun(projId,pitId);if(!r)return;
+  if(!r.reo)r.reo={};if(!r.reo[el])r.reo[el]=_ptNewReo();
+  const e=r.reo[el];
+  if(f==='type'||f==='bar'||f==='mesh')e[f]=v;
+  else if(f==='layers')e.layers=+v===1?1:2;
+  else e[f]=v===''?null:parseFloat(v);
+  _ptSync(projId);
+  if(nav)navigate('project/'+projId+'/volumes');else _ptRefresh(r);
+};
+window._ptPen=function(projId,pitId,penId,f,v,nav){
+  const r=_ptRun(projId,pitId);if(!r)return;
+  const q=(r.pens||[]).find(x=>x.id===penId);if(!q)return;
+  if(f==='wall')q.wall=v;else q[f]=v===''?null:parseFloat(v);
+  _ptSync(projId);
+  if(nav){navigate('project/'+projId+'/volumes');return;}
+  const nm=document.getElementById('pt-pn-'+penId);if(nm)nm.textContent=_ptPenName(q,r.shape==='circ');
+  _ptRefresh(r);
+};
+window._ptAddPen=function(projId,pitId){
+  const r=_ptRun(projId,pitId);if(!r)return;
+  if(!r.pens)r.pens=[];
+  const n=r.pens.length;
+  r.pens.push({id:uid(),wall:['W','E','N','S'][n%4],bearing:[270,90,0,180][n%4],dia:375,offset:0,invert:150});
+  _ptSync(projId);navigate('project/'+projId+'/volumes');
+};
+window._ptDelPen=function(projId,pitId,penId){
+  const r=_ptRun(projId,pitId);if(!r)return;
+  r.pens=(r.pens||[]).filter(x=>x.id!==penId);
+  _ptSync(projId);navigate('project/'+projId+'/volumes');
+};
+window._ptAdd=function(projId){
+  const p=DB.getProject(projId);if(!p)return;
+  if(!p.pits)p.pits=[];
+  const r=_ptNew('Pit '+(p.pits.length+1));
+  p.pits.push(r);_ptActive[projId]=r.id;_p3.reset=true;
+  DB.saveProject(p);navigate('project/'+projId+'/volumes');
+};
+window._ptDel=function(projId,pitId){
+  const r=_ptRun(projId,pitId);
+  showModal({title:'Delete pit',body:'<div style="font-size:.86rem;color:var(--muted);line-height:1.6">Delete <b style="color:var(--text)">'+esc(r?r.name:'this pit')+'</b>? This cannot be undone.</div>',
+    actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button><button class="btn btn-red" onclick="_ptDelGo(\''+projId+'\',\''+pitId+'\')">Delete</button>'});
+};
+window._ptDelGo=function(projId,pitId){
+  const p=DB.getProject(projId);if(!p)return;
+  p.pits=(p.pits||[]).filter(x=>x.id!==pitId);
+  if(!p.pits.length)p.pits=[_ptNew('Pit 1')];
+  _ptActive[projId]=p.pits[0].id;_p3.reset=true;
+  DB.saveProject(p);closeModal();navigate('project/'+projId+'/volumes');
+};
+window._ptPick=function(projId,pitId){_ptActive[projId]=pitId;_p3.reset=true;navigate('project/'+projId+'/volumes');};
+
+/* ================================================================
+   PIT 3D VIEW  (three.js, loaded on first use)
+================================================================ */
+const _p3={T:null,r:null,scene:null,cam:null,root:null,ground:null,key:null,raf:0,th:0.72,ph:1.02,dist:5,tgt:null,
+  vth:0,vph:0,drag:null,ptrs:{},xray:true,section:false,labels:true,reset:true,ro:null,host:null,labelsEl:null,
+  dims:[],fitR:2,lastPit:null,mountedPit:null,loading:null,unitCyl:null,hatch:null};
+
+function _p3Load(){
+  if(window.THREE)return Promise.resolve(window.THREE);
+  if(_p3.loading)return _p3.loading;
+  _p3.loading=new Promise((ok,bad)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
+    s.onload=()=>window.THREE?ok(window.THREE):bad(new Error('three.js missing'));
+    s.onerror=()=>{_p3.loading=null;bad(new Error('Could not load the 3D library'));};
+    document.head.appendChild(s);
+  });
+  return _p3.loading;
+}
+function _p3Toolbar(){
+  const b=(k,l,t)=>'<button class="tr-tool tr-wide'+(_p3[k]?' on':'')+'" id="p3b-'+k+'" onclick="_p3Toggle(\''+k+'\')" title="'+t+'">'+l+'</button>';
+  return'<div class="tr-tools">'+b('xray','X-ray','See the reinforcement through the concrete')+b('section','Section','Cut the pit in half along the N–S line')+b('labels','Dimensions','Show overall dimensions')
+    +'<span class="tr-sep"></span><button class="tr-tool tr-wide" onclick="_p3Reset()" title="Reset the view (or double-click)">Reset view</button>'
+    +'<span class="tr-hint">Drag to rotate · right-drag or shift-drag to pan · scroll to zoom</span></div>';
+}
+window._p3Toggle=function(k){
+  _p3[k]=!_p3[k];
+  const el=document.getElementById('p3b-'+k);if(el)el.classList.toggle('on',_p3[k]);
+  if(_p3.lastPit)_p3Build(_ptCalc(_p3.lastPit),_p3.lastPit,false);
+};
+window._p3Reset=function(){_p3.reset=true;if(_p3.lastPit)_p3Build(_ptCalc(_p3.lastPit),_p3.lastPit,true);};
+
+async function _p3Mount(projId,pitId){
+  const host=document.getElementById('pt-3d');if(!host)return;
+  _p3.mountedPit=pitId;
+  if(_ptBuildTimer){clearTimeout(_ptBuildTimer);_ptBuildTimer=null;}
+  try{await _p3Load();}
+  catch(e){host.innerHTML='<div class="pt-msg">3D view unavailable — the graphics library could not be loaded. Check your internet connection.</div>';return;}
+  if(document.getElementById('pt-3d')!==host||_p3.mountedPit!==pitId)return;
+  if(!_p3.r){
+    try{_p3Init(window.THREE);}
+    catch(e){host.innerHTML='<div class="pt-msg">3D view unavailable — WebGL is not supported on this device.</div>';return;}
+  }
+  host.innerHTML='';
+  host.appendChild(_p3.r.domElement);
+  _p3.labelsEl=document.createElement('div');_p3.labelsEl.className='pt-lbls';host.appendChild(_p3.labelsEl);
+  const lg=document.createElement('div');lg.className='pt-legend';
+  lg.innerHTML='<span><i style="background:#A9B2BF"></i>Concrete</span><span><i style="background:#A4501F"></i>Bars</span><span><i style="background:#C9782C"></i>Mesh</span><span><i style="background:#E0A21E"></i>Trimmers</span><span><i style="background:#3B4A63"></i>Pipe</span>';
+  host.appendChild(lg);
+  _p3.host=host;
+  if(_p3.ro)_p3.ro.disconnect();
+  _p3.ro=new ResizeObserver(()=>_p3Size());_p3.ro.observe(host);
+  _p3Size();
+  const r=_ptRun(projId,pitId);if(!r)return;
+  _p3Build(_ptCalc(r),r,_p3.reset);
+}
+
+function _p3Init(T){
+  // r149 treats hex colours as linear unless told otherwise, which washes every colour out under sRGB output.
+  if(T.ColorManagement&&'legacyMode' in T.ColorManagement)T.ColorManagement.legacyMode=false;
+  const R=new T.WebGLRenderer({antialias:true,alpha:true});
+  R.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  R.outputEncoding=T.sRGBEncoding;R.toneMapping=T.ACESFilmicToneMapping;R.toneMappingExposure=1.1;
+  R.shadowMap.enabled=true;R.shadowMap.type=T.PCFSoftShadowMap;R.localClippingEnabled=true;R.setClearColor(0x000000,0);
+  const scene=new T.Scene(),cam=new T.PerspectiveCamera(36,1,0.01,300);
+  scene.add(new T.HemisphereLight(0xdbe4f0,0x1a2236,0.9));
+  const key=new T.DirectionalLight(0xffffff,1.35);
+  key.castShadow=true;key.shadow.mapSize.set(2048,2048);key.shadow.bias=-0.0004;key.shadow.normalBias=0.02;
+  scene.add(key);scene.add(key.target);
+  const fill=new T.DirectionalLight(0x93c5fd,0.35);fill.position.set(-6,3,-4);scene.add(fill);
+  const rim=new T.DirectionalLight(0xffffff,0.25);rim.position.set(-2,4,8);scene.add(rim);
+  _p3.ground=new T.Group();scene.add(_p3.ground);
+  _p3.root=new T.Group();scene.add(_p3.root);
+  Object.assign(_p3,{T:T,r:R,scene:scene,cam:cam,key:key,tgt:new T.Vector3(),unitCyl:new T.CylinderGeometry(1,1,1,10,1,false),hatch:_p3Hatch(T)});
+  _p3Bind(R.domElement);
+}
+function _p3Hatch(T){
+  const cv=document.createElement('canvas');cv.width=cv.height=64;const g=cv.getContext('2d');
+  g.fillStyle='#8C97A6';g.fillRect(0,0,64,64);
+  g.strokeStyle='#5F6A7A';g.lineWidth=2.2;
+  for(let i=-64;i<=128;i+=16){g.beginPath();g.moveTo(i,64);g.lineTo(i+64,0);g.stroke();}
+  let seed=7;const rnd=()=>{seed=(seed*9301+49297)%233280;return seed/233280;};
+  for(let i=0;i<36;i++){g.fillStyle='rgba(55,63,76,.38)';g.beginPath();g.arc(rnd()*64,rnd()*64,0.7+rnd()*1.3,0,7);g.fill();}
+  const t=new T.CanvasTexture(cv);t.wrapS=t.wrapT=T.RepeatWrapping;t.encoding=T.sRGBEncoding;t.anisotropy=4;
+  return t;
+}
+function _p3Clamp(v){return Math.min(_p3.fitR*10,Math.max(_p3.fitR*0.5,v));}
+function _p3Pinch(){const ps=Object.values(_p3.ptrs);return ps.length<2?0:Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y);}
+function _p3Bind(el){
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  el.addEventListener('pointerdown',e=>{
+    el.setPointerCapture(e.pointerId);_p3.ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+    const n=Object.keys(_p3.ptrs).length;
+    _p3.drag={mode:n>1?'pinch':((e.button===2||e.shiftKey)?'pan':'rot'),x:e.clientX,y:e.clientY,d0:n>1?_p3Pinch():0,dist0:_p3.dist};
+    _p3.vth=_p3.vph=0;
+  });
+  el.addEventListener('pointermove',e=>{
+    const d=_p3.drag;if(!d||!_p3.ptrs[e.pointerId])return;
+    _p3.ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+    if(d.mode==='pinch'){const pd=_p3Pinch();if(d.d0>0&&pd>0)_p3.dist=_p3Clamp(d.dist0*d.d0/pd);_p3Kick();return;}
+    const dx=e.clientX-d.x,dy=e.clientY-d.y;d.x=e.clientX;d.y=e.clientY;
+    if(d.mode==='rot'){
+      _p3.vth=-dx*0.0075;_p3.vph=-dy*0.0075;
+      _p3.th+=_p3.vth;_p3.ph=Math.min(2.75,Math.max(0.12,_p3.ph+_p3.vph));
+    }else{
+      const T=_p3.T,s=_p3.dist*0.0016;
+      const rt=new T.Vector3().setFromMatrixColumn(_p3.cam.matrix,0),up=new T.Vector3().setFromMatrixColumn(_p3.cam.matrix,1);
+      _p3.tgt.addScaledVector(rt,-dx*s).addScaledVector(up,dy*s);
+    }
+    _p3Kick();
+  });
+  const end=e=>{
+    delete _p3.ptrs[e.pointerId];
+    if(_p3.drag&&_p3.drag.mode!=='rot'){_p3.vth=_p3.vph=0;}
+    _p3.drag=null;_p3Kick();
+  };
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+  el.addEventListener('wheel',e=>{e.preventDefault();_p3.dist=_p3Clamp(_p3.dist*Math.exp(e.deltaY*0.0011));_p3Kick();},{passive:false});
+  el.addEventListener('dblclick',()=>_p3Reset());
+}
+function _p3Kick(){if(!_p3.raf)_p3.raf=requestAnimationFrame(_p3Loop);}
+function _p3Loop(){
+  _p3.raf=0;
+  const R=_p3.r;if(!R||!R.domElement.isConnected)return;
+  let moving=false;
+  if(!_p3.drag&&(Math.abs(_p3.vth)>1e-4||Math.abs(_p3.vph)>1e-4)){
+    _p3.th+=_p3.vth;_p3.ph=Math.min(2.75,Math.max(0.12,_p3.ph+_p3.vph));
+    _p3.vth*=0.9;_p3.vph*=0.9;moving=true;
+  }
+  const c=_p3.cam,t=_p3.tgt,d=_p3.dist,sp=Math.sin(_p3.ph);
+  c.position.set(t.x+d*sp*Math.sin(_p3.th),t.y+d*Math.cos(_p3.ph),t.z+d*sp*Math.cos(_p3.th));
+  c.lookAt(t);c.updateMatrixWorld();
+  R.render(_p3.scene,c);
+  _p3Labels();
+  if(moving)_p3Kick();
+}
+function _p3Size(){
+  const h=_p3.host,R=_p3.r;if(!h||!R)return;
+  const w=h.clientWidth,ht=h.clientHeight;if(!w||!ht)return;
+  R.setSize(w,ht,false);_p3.cam.aspect=w/ht;_p3.cam.updateProjectionMatrix();_p3Kick();
+}
+function _p3Labels(){
+  if(!_p3.host||!_p3.dims.length)return;
+  const w=_p3.host.clientWidth,h=_p3.host.clientHeight,v=new _p3.T.Vector3();
+  _p3.dims.forEach(d=>{
+    v.copy(d.p).project(_p3.cam);
+    d.el.style.display=v.z<1?'':'none';
+    d.el.style.left=((v.x+1)/2*w).toFixed(1)+'px';d.el.style.top=((1-v.y)/2*h).toFixed(1)+'px';
+  });
+}
+function _p3Clear(g){
+  g.traverse(o=>{
+    if(o.geometry&&o.geometry!==_p3.unitCyl)o.geometry.dispose();
+    if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());
+  });
+  while(g.children.length)g.remove(g.children[0]);
+}
+function _p3InArc(b,a0,a1){
+  if(a1-a0>=Math.PI*2-1e-6)return true;
+  const TAU=Math.PI*2,x=((b-a0)%TAU+TAU)%TAU;
+  return x<=a1-a0;
+}
+function _p3CapRects(c){
+  const out=[],ri=c.circ?c.R:c.W/2,re=c.circ?c.Re:c.We/2;
+  out.push([-re,re,-c.tb,0]);
+  [[-re,-ri,'N',0],[ri,re,'S',Math.PI]].forEach(([z1,z2,w,b])=>{
+    const gaps=[];
+    c.pens.forEach(p=>{
+      let q=null;
+      if(c.circ){const bb=p.bearing*Math.PI/180;q=c.R*Math.atan2(Math.sin(bb-b),Math.cos(bb-b));}
+      else if(p.wall===w)q=p.offset;
+      if(q==null)return;
+      const rr=p.dia/2;if(Math.abs(q)>=rr)return;
+      const h=Math.sqrt(rr*rr-q*q),yc=p.invert+rr;gaps.push([yc-h,yc+h]);
+    });
+    _ptCut(0,c.H,gaps,1).forEach(([y1,y2])=>out.push([z1,z2,y1,y2]));
+  });
+  if(c.hasLid){
+    const ho=c.circ?c.ro:((c.ol>0&&c.ow>0)?c.ow/2:0);
+    if(ho>0){out.push([-re,-ho,c.H,c.H+c.tl]);out.push([ho,re,c.H,c.H+c.tl]);}
+    else out.push([-re,re,c.H,c.H+c.tl]);
+  }
+  return out;
+}
+
+function _p3Build(c,r,reset){
+  _p3.lastPit=r;
+  const T=_p3.T;
+  if(!T||!_p3.r||!_p3.host||!_p3.r.domElement.isConnected)return;
+  const root=_p3.root;
+  _p3Clear(root);_p3Clear(_p3.ground);
+  _p3.dims=[];if(_p3.labelsEl)_p3.labelsEl.innerHTML='';
+  if(reset)_p3.reset=true;
+  if(!c.valid){_p3Kick();return;}
+  const M=v=>v/1000,xr=_p3.xray,clip=_p3.section?[new T.Plane(new T.Vector3(-1,0,0),0)]:[];
+  const conc=new T.MeshStandardMaterial({color:xr?0x8E9AAB:0xA9B2BF,roughness:0.92,metalness:0,transparent:xr,opacity:xr?0.13:1,depthWrite:!xr,side:T.DoubleSide,clippingPlanes:clip});
+  const edge=new T.LineBasicMaterial({color:xr?0x7DB3F5:0x1B2536,transparent:true,opacity:xr?0.55:0.6,clippingPlanes:clip});
+  const solid=(geom,pos,rx,ry)=>{
+    const m=new T.Mesh(geom,conc);
+    m.position.set(pos[0],pos[1],pos[2]);if(rx)m.rotation.x=rx;if(ry)m.rotation.y=ry;
+    m.castShadow=!xr;m.receiveShadow=true;m.renderOrder=xr?2:0;root.add(m);
+    const e=new T.LineSegments(new T.EdgesGeometry(geom,28),edge);
+    e.position.copy(m.position);e.rotation.copy(m.rotation);e.renderOrder=3;root.add(e);
+  };
+  const ex=dep=>({depth:dep,bevelEnabled:false,curveSegments:72});
+  const t=M(c.t),tb=M(c.tb),H=M(c.H),tl=M(c.tl);
+
+  if(c.circ){
+    const Re=M(c.Re),Ri=M(c.R),ro=M(c.ro);
+    solid(new T.CylinderGeometry(Re,Re,tb,128,1),[0,-tb/2,0]);
+    const ring=new T.Shape();ring.absarc(0,0,Re,0,Math.PI*2,false);
+    const hole=new T.Path();hole.absarc(0,0,Ri,0,Math.PI*2,true);ring.holes.push(hole);
+    solid(new T.ExtrudeGeometry(ring,ex(H)),[0,0,0],-Math.PI/2);
+    if(c.hasLid){
+      const s=new T.Shape();s.absarc(0,0,Re,0,Math.PI*2,false);
+      if(ro>0){const h=new T.Path();h.absarc(0,0,ro,0,Math.PI*2,true);s.holes.push(h);}
+      solid(new T.ExtrudeGeometry(s,ex(tl)),[0,H,0],-Math.PI/2);
+    }
+  }else{
+    const L=M(c.L),W=M(c.W),Le=M(c.Le),We=M(c.We);
+    solid(new T.BoxGeometry(Le,tb,We),[0,-tb/2,0]);
+    const wallShape=(span,list,flip)=>{
+      const s=new T.Shape();s.moveTo(-span/2,0);s.lineTo(span/2,0);s.lineTo(span/2,H);s.lineTo(-span/2,H);s.lineTo(-span/2,0);
+      list.forEach(p=>{
+        const u=(flip?-1:1)*M(p.offset),v=M(p.invert+p.dia/2),rr=M(p.dia/2);
+        if(Math.abs(u)+rr<span/2-0.005&&v-rr>0.005&&v+rr<H-0.005){const h=new T.Path();h.absarc(u,v,rr,0,Math.PI*2,true);s.holes.push(h);}
+      });
+      return s;
+    };
+    ['N','S'].forEach(w=>solid(new T.ExtrudeGeometry(wallShape(Le,c.pens.filter(p=>p.wall===w),false),ex(t)),[0,0,w==='N'?-We/2:W/2]));
+    ['E','W'].forEach(w=>solid(new T.ExtrudeGeometry(wallShape(W,c.pens.filter(p=>p.wall===w),true),ex(t)),[w==='E'?L/2:-Le/2,0,0],0,Math.PI/2));
+    if(c.hasLid){
+      const s=new T.Shape();s.moveTo(-Le/2,-We/2);s.lineTo(Le/2,-We/2);s.lineTo(Le/2,We/2);s.lineTo(-Le/2,We/2);s.lineTo(-Le/2,-We/2);
+      const ol=M(c.ol),ow=M(c.ow);
+      if(ol>0&&ow>0){const h=new T.Path();h.moveTo(-ol/2,-ow/2);h.lineTo(-ol/2,ow/2);h.lineTo(ol/2,ow/2);h.lineTo(ol/2,-ow/2);h.lineTo(-ol/2,-ow/2);s.holes.push(h);}
+      solid(new T.ExtrudeGeometry(s,ex(tl)),[0,H,0],-Math.PI/2);
+    }
+  }
+
+  // pipes through the penetrations
+  const pipeMat=new T.MeshStandardMaterial({color:0x3B4A63,roughness:0.5,metalness:0.15,side:T.DoubleSide,clippingPlanes:clip});
+  const yAxis=new T.Vector3(0,1,0);
+  c.pens.forEach(p=>{
+    const rr=M(p.dia/2)*0.86,yc=M(p.invert+p.dia/2),len=t+0.55;
+    let dir,pos;
+    if(c.circ){const b=p.bearing*Math.PI/180;dir=new T.Vector3(Math.sin(b),0,-Math.cos(b));pos=dir.clone().multiplyScalar(M(c.R)+t/2+0.2);pos.y=yc;}
+    else{
+      const o=M(p.offset),hx=M(c.L)/2+t/2+0.2,hz=M(c.W)/2+t/2+0.2;
+      if(p.wall==='N'){dir=new T.Vector3(0,0,-1);pos=new T.Vector3(o,yc,-hz);}
+      else if(p.wall==='S'){dir=new T.Vector3(0,0,1);pos=new T.Vector3(o,yc,hz);}
+      else if(p.wall==='E'){dir=new T.Vector3(1,0,0);pos=new T.Vector3(hx,yc,o);}
+      else{dir=new T.Vector3(-1,0,0);pos=new T.Vector3(-hx,yc,o);}
+    }
+    const m=new T.Mesh(new T.CylinderGeometry(rr,rr,len,48,1,true),pipeMat);
+    m.position.copy(pos);m.quaternion.setFromUnitVectors(yAxis,dir);m.castShadow=true;root.add(m);
+  });
+
+  // reinforcement
+  const steelMat=(col,clp)=>new T.MeshStandardMaterial({color:col,roughness:0.55,metalness:0.25,clippingPlanes:clp});
+  const bm={bar:steelMat(0xA4501F,clip),mesh:steelMat(0xC9782C,clip),trim:steelMat(0xE0A21E,clip)};
+  const groups={};
+  c.geo.segs.forEach(s=>{const k=s.kind+'|'+s.d;(groups[k]=groups[k]||[]).push(s);});
+  const mtx=new T.Matrix4(),q=new T.Quaternion(),scl=new T.Vector3(),pa=new T.Vector3(),pb=new T.Vector3(),mid=new T.Vector3(),dv=new T.Vector3();
+  Object.keys(groups).forEach(k=>{
+    const arr=groups[k],kind=k.split('|')[0],rad=M(arr[0].d/2);
+    const im=new T.InstancedMesh(_p3.unitCyl,bm[kind],arr.length);
+    let n=0;
+    arr.forEach(s=>{
+      pa.set(M(s.a[0]),M(s.a[1]),M(s.a[2]));pb.set(M(s.b[0]),M(s.b[1]),M(s.b[2]));
+      dv.subVectors(pb,pa);const len=dv.length();if(len<1e-6)return;
+      mid.addVectors(pa,pb).multiplyScalar(0.5);q.setFromUnitVectors(yAxis,dv.normalize());scl.set(rad,len,rad);
+      mtx.compose(mid,q,scl);im.setMatrixAt(n++,mtx);
+    });
+    im.count=n;im.instanceMatrix.needsUpdate=true;im.castShadow=true;im.renderOrder=1;root.add(im);
+  });
+  const tcache={};
+  c.geo.rings.forEach(rg=>{
+    const arc=rg.a1-rg.a0,key=rg.R+'|'+rg.d+'|'+arc.toFixed(4);
+    if(!tcache[key])tcache[key]=new T.TorusGeometry(M(rg.R),M(rg.d/2),6,Math.max(24,Math.round(128*arc/(Math.PI*2))),arc);
+    const m=new T.Mesh(tcache[key],bm[rg.kind]);
+    m.rotation.order='YXZ';m.rotation.x=-Math.PI/2;m.rotation.y=Math.PI/2-rg.a1;
+    m.position.y=M(rg.y);m.castShadow=true;m.renderOrder=1;root.add(m);
+  });
+
+  // section cap with hatching and cut bar ends
+  if(_p3.section){
+    const capMat=new T.MeshStandardMaterial({map:_p3.hatch,roughness:0.95,metalness:0,side:T.DoubleSide});
+    const pos=[],uv=[],idx=[],ln=[],kk=4;let v=0;const X=0.0008;
+    _p3CapRects(c).forEach(([z1,z2,y1,y2])=>{
+      const Z1=M(z1),Z2=M(z2),Y1=M(y1),Y2=M(y2);
+      pos.push(X,Y1,Z1, X,Y1,Z2, X,Y2,Z2, X,Y2,Z1);
+      uv.push(Z1*kk,Y1*kk, Z2*kk,Y1*kk, Z2*kk,Y2*kk, Z1*kk,Y2*kk);
+      idx.push(v,v+1,v+2, v,v+2,v+3);v+=4;
+      ln.push(X,Y1,Z1, X,Y1,Z2, X,Y1,Z2, X,Y2,Z2, X,Y2,Z2, X,Y2,Z1, X,Y2,Z1, X,Y1,Z1);
+    });
+    const g=new T.BufferGeometry();
+    g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));
+    g.setIndex(idx);g.computeVertexNormals();
+    const cap=new T.Mesh(g,capMat);cap.receiveShadow=true;root.add(cap);
+    const lg=new T.BufferGeometry();lg.setAttribute('position',new T.Float32BufferAttribute(ln,3));
+    root.add(new T.LineSegments(lg,new T.LineBasicMaterial({color:0x2A3446})));
+    const dots={};
+    c.geo.segs.forEach(s=>{
+      if(!((s.a[0]<0&&s.b[0]>0)||(s.b[0]<0&&s.a[0]>0)))return;
+      const f=(0-s.a[0])/(s.b[0]-s.a[0]);
+      (dots[s.kind+'|'+s.d]=dots[s.kind+'|'+s.d]||[]).push([s.a[1]+f*(s.b[1]-s.a[1]),s.a[2]+f*(s.b[2]-s.a[2])]);
+    });
+    c.geo.rings.forEach(rg=>[0,Math.PI].forEach(b=>{
+      if(_p3InArc(b,rg.a0,rg.a1))(dots[rg.kind+'|'+rg.d]=dots[rg.kind+'|'+rg.d]||[]).push([rg.y,b===0?-rg.R:rg.R]);
+    }));
+    const dq=new T.Quaternion().setFromAxisAngle(yAxis,Math.PI/2),one=new T.Vector3(1,1,1),dp=new T.Vector3();
+    Object.keys(dots).forEach(k=>{
+      const arr=dots[k],kind=k.split('|')[0],d=+k.split('|')[1];
+      const im=new T.InstancedMesh(new T.CircleGeometry(M(d/2)*1.08,18),steelMat(kind==='bar'?0xA4501F:kind==='mesh'?0xC9782C:0xE0A21E,[]),arr.length);
+      arr.forEach(([y,z],i)=>{dp.set(0.0016,M(y),M(z));mtx.compose(dp,dq,one);im.setMatrixAt(i,mtx);});
+      im.instanceMatrix.needsUpdate=true;root.add(im);
+    });
+  }
+
+  // ground, grid and shadow catcher
+  const ext=Math.max(1,c.circ?M(c.Re)*2:Math.max(M(c.Le),M(c.We))),ht=M(c.tb+c.H+c.tl),yG=-tb-0.002;
+  const sh=new T.Mesh(new T.PlaneGeometry(ext*8,ext*8),new T.ShadowMaterial({opacity:0.34}));
+  sh.rotation.x=-Math.PI/2;sh.position.y=yG;sh.receiveShadow=true;_p3.ground.add(sh);
+  const gsz=Math.ceil(ext*6),grid=new T.GridHelper(gsz,Math.max(8,Math.round(gsz/0.25)),0x3D5A8C,0x24385E);
+  grid.position.y=yG-0.001;grid.material.transparent=true;grid.material.opacity=0.6;_p3.ground.add(grid);
+  const kc=_p3.key.shadow.camera,se=ext*1.4+ht;
+  kc.left=-se;kc.right=se;kc.top=se;kc.bottom=-se;kc.near=0.1;kc.far=(ext+ht)*8;kc.updateProjectionMatrix();
+  _p3.key.position.set(ext*1.6,ht+ext*2.6,ext*2.0);_p3.key.target.position.set(0,0,0);_p3.key.target.updateMatrixWorld();
+
+  // dimensions
+  if(_p3.labels&&_p3.labelsEl){
+    const dm=new T.LineBasicMaterial({color:0x8FA3BF,transparent:true,opacity:0.9});
+    const dim=(a,b,tk,txt)=>{
+      const k=tk.clone().multiplyScalar(0.05);
+      root.add(new T.LineSegments(new T.BufferGeometry().setFromPoints([a,b,a.clone().add(k),a.clone().sub(k),b.clone().add(k),b.clone().sub(k)]),dm));
+      const el=document.createElement('div');el.className='pt-lbl';el.textContent=txt;_p3.labelsEl.appendChild(el);
+      _p3.dims.push({p:a.clone().add(b).multiplyScalar(0.5),el:el});
+    };
+    const V=(x,y,z)=>new T.Vector3(x,y,z),yb=-tb,top=H+tl,off=0.24,up=V(0,1,0),side=V(1,0,0);
+    if(c.circ){
+      const Re=M(c.Re);
+      dim(V(-Re,yb,Re+off),V(Re,yb,Re+off),up,'Ø '+_trN(c.D+2*c.t,0)+' ext · Ø '+_trN(c.D,0)+' int');
+      dim(V(Re+off,yb,0),V(Re+off,top,0),side,_trN(c.tb+c.H+c.tl,0)+' mm');
+    }else{
+      const Le=M(c.Le),We=M(c.We);
+      dim(V(-Le/2,yb,We/2+off),V(Le/2,yb,We/2+off),up,_trN(c.Le,0)+' mm');
+      dim(V(Le/2+off,yb,-We/2),V(Le/2+off,yb,We/2),up,_trN(c.We,0)+' mm');
+      dim(V(Le/2+off,yb,We/2+off),V(Le/2+off,top,We/2+off),side,_trN(c.tb+c.H+c.tl,0)+' mm');
+    }
+  }
+
+  _p3.fitR=Math.sqrt(ext*ext/2+ht*ht/4);
+  if(_p3.reset){
+    _p3.tgt.set(0,(-tb+H+tl)/2,0);
+    _p3.th=0.72;_p3.ph=1.02;_p3.vth=_p3.vph=0;
+    _p3.dist=_p3.fitR/Math.sin((_p3.cam.fov*Math.PI/180)/2)*1.5;
+    _p3.reset=false;
+  }
+  _p3Kick();
+}
 
 function renderTabMaterials(p,id){
   const items=p.materials_items||[];
