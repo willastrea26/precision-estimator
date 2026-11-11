@@ -1,4 +1,4 @@
-const CACHE = 'ap-cache-v5';
+const CACHE = 'ap-cache-v6';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

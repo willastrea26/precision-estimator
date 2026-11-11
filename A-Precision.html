@@ -4063,17 +4063,22 @@ function _ptCalc(r){
         const side=sv[si],pt=side.pt(u),sc=side.s(u),blocks=[];
         pens.forEach(p=>{if(p.wall!==side.w)return;const rr=p.dia/2+c,q=sc-p.offset;
           if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),yc=p.invert+p.dia/2;blocks.push([yc-h,yc+h]);}});
-        _ptCut(yB,yT,blocks).forEach(([a,b],pi)=>{seg([pt[0],a,pt[1]],[pt[0],b,pt[1]],d,kind);_ptPushLen(vl,(b-a)+(pi===0&&!o.mesh?lp:0),lp);});
+        _ptCut(yB,yT,blocks).forEach(([a,b],pi)=>{
+          if(pi===0&&!o.mesh&&a<0&&b>0){seg([pt[0],a,pt[1]],[pt[0],0,pt[1]],d,'lap');seg([pt[0],0,pt[1]],[pt[0],b,pt[1]],d,kind);}
+          else seg([pt[0],a,pt[1]],[pt[0],b,pt[1]],d,kind);
+          _ptPushLen(vl,(b-a)+(pi===0&&!o.mesh?lp:0),lp);});
       }
       ringHeights(s).forEach(y=>{
-        sh.forEach(side=>{
+        sh.forEach((side,si)=>{
           const blocks=[],s0=side.s(0);
           pens.forEach(p=>{if(p.wall!==side.w)return;const rr=p.dia/2+c,q=y-(p.invert+p.dia/2);
             if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),s1=p.offset-h,s2=p.offset+h;
               blocks.push(side.rev?[s0-s2,s0-s1]:[s1-s0,s2-s0]);}});
           _ptCut(0,side.len,blocks).forEach(([a,b])=>{
             const p1=side.pt(a),p2=side.pt(b);seg([p1[0],y,p1[1]],[p2[0],y,p2[1]],d,kind);
-            _ptPushLen(hl,(b-a)+(Math.abs(b-side.len)<1?lp:0),lp);
+            const atCorner=Math.abs(b-side.len)<1;
+            _ptPushLen(hl,(b-a)+(atCorner?lp:0),lp);
+            if(atCorner&&!o.mesh){const nx=sh[(si+1)%4],lEnd=Math.min(lp,nx.len/2),ep=nx.pt(lEnd);seg([p2[0],y,p2[1]],[ep[0],y,ep[1]],d,'lap');}
           });
         });
       });
@@ -4100,7 +4105,10 @@ function _ptCalc(r){
         const th=k*TAU/nv,x=Rv*Math.sin(th),z=-Rv*Math.cos(th),blocks=[];
         pens.forEach(p=>{const rr=p.dia/2+c,q=Rv*wrap(th-p.bearing*Math.PI/180);
           if(Math.abs(q)<rr){const h=Math.sqrt(rr*rr-q*q),yc=p.invert+p.dia/2;blocks.push([yc-h,yc+h]);}});
-        _ptCut(yB,yT,blocks).forEach(([a,b],pi)=>{seg([x,a,z],[x,b,z],d,kind);_ptPushLen(vl,(b-a)+(pi===0&&!o.mesh?lp:0),lp);});
+        _ptCut(yB,yT,blocks).forEach(([a,b],pi)=>{
+          if(pi===0&&!o.mesh&&a<0&&b>0){seg([x,a,z],[x,0,z],d,'lap');seg([x,0,z],[x,b,z],d,kind);}
+          else seg([x,a,z],[x,b,z],d,kind);
+          _ptPushLen(vl,(b-a)+(pi===0&&!o.mesh?lp:0),lp);});
       }
       ringHeights(s).forEach(y=>{
         const nb=[];
@@ -4111,9 +4119,11 @@ function _ptCalc(r){
         let pcs=_ptCut(0,TAU,nb,100/Rh);
         if(pcs.length>1&&pcs[0][0]<1e-9&&pcs[pcs.length-1][1]>TAU-1e-9){const f=pcs.shift();pcs[pcs.length-1]=[pcs[pcs.length-1][0],TAU+f[1]];}
         if(pcs.length===1&&pcs[0][0]<1e-9&&pcs[0][1]>TAU-1e-9){
-          geo.rings.push({y:y,R:Rh,d:d,a0:0,a1:TAU,kind:kind});
           const Lr=TAU*Rh,n=Math.max(1,Math.ceil(Lr/(PT_STOCK-lp)));
-          for(let i=0;i<n;i++)hl.push((Lr+n*lp)/n);
+          const la=lp/Rh;
+          for(let i=0;i<n;i++){const a0=i*TAU/n,a1=(i+1)*TAU/n;geo.rings.push({y:y,R:Rh,d:d,a0:a0,a1:a1,kind:kind});
+            if(!o.mesh&&n>1)geo.rings.push({y:y,R:Rh,d:d,a0:a1-la/2,a1:a1+la/2,kind:'lap'});
+            hl.push((Lr+n*lp)/n);}
         }else pcs.forEach(([a,b])=>{geo.rings.push({y:y,R:Rh,d:d,a0:a,a1:b,kind:kind});_ptPushLen(hl,(b-a)*Rh,lp);});
       });
       if(!o.mesh){
@@ -4448,7 +4458,7 @@ async function _p3Mount(projId,pitId){
   host.appendChild(_p3.r.domElement);
   _p3.labelsEl=document.createElement('div');_p3.labelsEl.className='pt-lbls';host.appendChild(_p3.labelsEl);
   const lg=document.createElement('div');lg.className='pt-legend';
-  lg.innerHTML='<span><i style="background:#A9B2BF"></i>Concrete</span><span><i style="background:#A4501F"></i>Bars</span><span><i style="background:#C9782C"></i>Mesh</span><span><i style="background:#E0A21E"></i>Trimmers</span><span><i style="background:#3B4A63"></i>Pipe</span>';
+  lg.innerHTML='<span><i style="background:#A9B2BF"></i>Concrete</span><span><i style="background:#A4501F"></i>Bars</span><span><i style="background:#22D3EE"></i>Laps</span><span><i style="background:#C9782C"></i>Mesh</span><span><i style="background:#E0A21E"></i>Trimmers</span><span><i style="background:#3B4A63"></i>Pipe</span>';
   host.appendChild(lg);
   _p3.host=host;
   if(_p3.ro)_p3.ro.disconnect();
@@ -4660,7 +4670,7 @@ function _p3Build(c,r,reset){
 
   // reinforcement
   const steelMat=(col,clp)=>new T.MeshStandardMaterial({color:col,roughness:0.55,metalness:0.25,clippingPlanes:clp});
-  const bm={bar:steelMat(0xA4501F,clip),mesh:steelMat(0xC9782C,clip),trim:steelMat(0xE0A21E,clip)};
+  const bm={bar:steelMat(0xA4501F,clip),mesh:steelMat(0xC9782C,clip),trim:steelMat(0xE0A21E,clip),lap:steelMat(0x22D3EE,clip)};
   const groups={};
   c.geo.segs.forEach(s=>{const k=s.kind+'|'+s.d;(groups[k]=groups[k]||[]).push(s);});
   const mtx=new T.Matrix4(),q=new T.Quaternion(),scl=new T.Vector3(),pa=new T.Vector3(),pb=new T.Vector3(),mid=new T.Vector3(),dv=new T.Vector3();
@@ -4714,7 +4724,7 @@ function _p3Build(c,r,reset){
     const dq=new T.Quaternion().setFromAxisAngle(yAxis,Math.PI/2),one=new T.Vector3(1,1,1),dp=new T.Vector3();
     Object.keys(dots).forEach(k=>{
       const arr=dots[k],kind=k.split('|')[0],d=+k.split('|')[1];
-      const im=new T.InstancedMesh(new T.CircleGeometry(M(d/2)*1.08,18),steelMat(kind==='bar'?0xA4501F:kind==='mesh'?0xC9782C:0xE0A21E,[]),arr.length);
+      const im=new T.InstancedMesh(new T.CircleGeometry(M(d/2)*1.08,18),steelMat(kind==='bar'?0xA4501F:kind==='lap'?0x22D3EE:kind==='mesh'?0xC9782C:0xE0A21E,[]),arr.length);
       arr.forEach(([y,z],i)=>{dp.set(0.0016,M(y),M(z));mtx.compose(dp,dq,one);im.setMatrixAt(i,mtx);});
       im.instanceMatrix.needsUpdate=true;root.add(im);
     });
