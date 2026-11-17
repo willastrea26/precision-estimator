@@ -1585,7 +1585,7 @@ function _projGroupActive(ps){
   other.sort(newest);
   return{active,estimating,other};
 }
-const PROJ_COLGROUP='<colgroup><col style="width:23%"><col style="width:15%"><col style="width:19%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:9%"><col style="width:8%"></colgroup>';
+const PROJ_COLGROUP='<colgroup><col style="width:21%"><col style="width:13%"><col style="width:16%"><col style="width:7%"><col style="width:10%"><col style="width:6%"><col style="width:9%"><col style="width:6%"><col style="width:6%"><col style="width:6%"></colgroup>';
 function _projSectionHTML(label,rows,tbodyId,lc,accent){
   if(!rows.length)return'';
   return`<div style="margin-top:10px">
@@ -1599,7 +1599,7 @@ function _projSectionHTML(label,rows,tbodyId,lc,accent){
         ${PROJ_COLGROUP}
         <thead><tr>
           <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
-          <th>Status</th><th>Risk</th><th>Due Date</th><th>Est. Value</th>
+          <th>Status</th><th>Risk</th><th>Due Date</th><th>LOW%</th><th>Est. Value</th><th>Projected</th>
         </tr></thead>
         <tbody id="${tbodyId}">${renderProjectRows(rows,lc,true)}</tbody>
       </table>
@@ -1613,7 +1613,7 @@ function _projListHTML(ps,lc){
         <thead><tr>
           <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
           ${lc==='all'?'<th>Lifecycle</th>':''}
-          <th>Status</th><th>Risk</th><th>Due Date</th><th>Est. Value</th>
+          <th>Status</th><th>Risk</th><th>Due Date</th><th>LOW%</th><th>Est. Value</th><th>Projected</th>
           ${lc!=='active'?'<th>Actions</th>':''}
         </tr></thead>
         <tbody id="proj-tbody">${renderProjectRows(ps,lc)}</tbody>
@@ -1704,7 +1704,9 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
         ${due?`<span class="${dueCls}">${fmtDate(due)}<br><span style="font-size:.7rem;font-weight:400">${relDays(due)}</span></span>${n!==null&&n<0?`<br><span class="badge badge-red" style="font-size:.58rem;margin-top:2px">OVERDUE</span>`:''}`:
         `<span style="font-size:.75rem;color:var(--muted2)">No date<br><span style="color:var(--blue);font-size:.7rem">Set date</span></span>`}
       </td>
+      <td class="aud" style="color:var(--muted)">${(p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15}%</td>
       <td class="aud">${fmtAUD(p.estimated_value)}</td>
+      <td class="aud" style="color:var(--green);font-weight:600">${fmtAUD(p.estimated_value!=null?p.estimated_value*((p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15)/100:null)}</td>
       ${lc!=='active'&&lc!=='all'?actionCell:''}
     </tr>`;
   }).join('');
