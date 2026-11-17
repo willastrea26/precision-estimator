@@ -5724,9 +5724,9 @@ window.exportSupplierRatesExcel=async function(){
     const wb=new ExcelJS.Workbook();
     wb.creator='A Civil Estimating Intelligence';wb.created=now;wb.calcProperties={fullCalcOnLoad:true};
     const ws=wb.addWorksheet('Supplier Rates');
-    ws.columns=[{width:44},{width:10},{width:17},{width:38}];
+    ws.columns=[{width:44},{width:10},{width:17},{width:17},{width:14},{width:34}];
 
-    const NCOLS=4;
+    const NCOLS=6;
     const C_NAVY='FF0D2137',C_BLUE='FF1D4ED8';
     const C_HDR_BG='FFD1E4F6',C_HDR_FG='FF0D2137';
     const C_ROW_ALT='FFF0F7FF',C_WHITE='FFFFFFFF';
@@ -5735,8 +5735,8 @@ window.exportSupplierRatesExcel=async function(){
     const rateFmt='_-$* #,##0.00_-;-$* #,##0.00_-;_-$* "-"??_-;_-@_-';
     const mkFill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
     const mkBdr=c=>({top:{style:'thin',color:{argb:c}},left:{style:'thin',color:{argb:c}},bottom:{style:'thin',color:{argb:c}},right:{style:'thin',color:{argb:c}}});
-    const COL_HDRS=['Description','Unit','Rate (ex GST)','Notes'];
-    const COL_AL=['left','center','right','left'];
+    const COL_HDRS=['Description','Unit','Rate (ex GST)','Quote Total','Date','Notes'];
+    const COL_AL=['left','center','right','right','center','left'];
 
     let row=1;
     ws.mergeCells(row,1,row,NCOLS);
@@ -5783,11 +5783,12 @@ window.exportSupplierRatesExcel=async function(){
       /* Item rows */
       items.forEach(function(it,ri){
         const bg=ri%2===1?C_ROW_ALT:C_WHITE;
-        const vals=[it.description||'',it.unit||'',parseFloat(it.rate)||0,it.notes||''];
+        const vals=[it.description||'',it.unit||'',parseFloat(it.rate)||0,it.quote_total?parseFloat(it.quote_total):null,it.quote_date||'',it.notes||''];
         vals.forEach(function(v,i){
           const cell=ws.getCell(row,i+1);cell.value=v;cell.font={name:'Arial',size:9};
           cell.border=mkBdr(C_BORDER);cell.alignment={horizontal:COL_AL[i],vertical:'middle'};
           if(i===2){cell.numFmt=rateFmt;cell.fill=mkFill(C_SELL_BG);cell.font={name:'Arial',size:9,bold:true,color:{argb:C_SELL_FG}};}
+          else if(i===3&&v!=null){cell.numFmt=rateFmt;cell.fill=mkFill(bg);}
           else{cell.fill=mkFill(bg);}
         });
         ws.getRow(row).height=16;row++;
@@ -10330,6 +10331,8 @@ window._srShowReview=function(parsed,companyHint){
   const catOpts='<option value=""'+(parsed.trade_category?'':' selected')+'>— Select —</option>'+tradeCats.map(function(tc){
     return'<option value="'+tc[0]+'"'+(parsed.trade_category===tc[0]?' selected':'')+'>'+tc[1]+'</option>';
   }).join('');
+  const _rvQt=parsed.quote_total!=null?parseFloat(parsed.quote_total):null;
+  const _rvQd=parsed.quote_date||'';
   const thead='<tr style="background:rgba(255,255,255,.02)">'
     +'<th style="padding:7px 10px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)">Description</th>'
     +'<th style="padding:7px 6px;text-align:left;font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);width:70px">Unit</th>'
@@ -10355,6 +10358,8 @@ window._srShowReview=function(parsed,companyHint){
     +'<div class="form-group" style="margin:0"><label class="form-label">Contact Email</label><input class="form-input" id="sr-rv-contact-email" value="'+esc(parsed.contact_email||'')+'" placeholder="Optional"></div>'
     +'<div class="form-group" style="margin:0"><label class="form-label">Contact Phone</label><input class="form-input" id="sr-rv-contact-phone" value="'+esc(parsed.contact_phone||'')+'" placeholder="Optional"></div>'
     +'<div class="form-group" style="margin:0"><label class="form-label">Trade Category</label><select class="form-input" id="sr-rv-trade-cat">'+catOpts+'</select></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Quote Total ($)</label><input class="form-input" type="number" id="sr-rv-quote-total" min="0" step="0.01" value="'+(_rvQt||'')+'" placeholder="Auto-detected or enter manually"></div>'
+    +'<div class="form-group" style="margin:0"><label class="form-label">Quote Date</label><input class="form-input" type="date" id="sr-rv-quote-date" value="'+esc(_rvQd)+'"></div>'
     +'</div>'
     +'<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px">'+items.length+' rate item'+(items.length!==1?'s':'')+' extracted — review and remove any incorrect rows before importing.</div>'
     +'<div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:7px">'
@@ -10384,6 +10389,8 @@ window._srImportFromReview=function(){
   const contactEmail=document.getElementById('sr-rv-contact-email')?.value.trim()||'';
   const contactPhone=document.getElementById('sr-rv-contact-phone')?.value.trim()||'';
   const tradeCat=document.getElementById('sr-rv-trade-cat')?.value||'';
+  const rvQt=parseFloat(document.getElementById('sr-rv-quote-total')?.value)||null;
+  const rvQd=document.getElementById('sr-rv-quote-date')?.value||null;
   const tbody=document.getElementById('sr-rv-tbody');
   const rowItems=[];
   if(tbody){
@@ -10393,7 +10400,7 @@ window._srImportFromReview=function(){
       const unit=(document.getElementById('sr-rv-unit-'+i)?.value||'hr').trim();
       const rate=parseFloat(document.getElementById('sr-rv-rate-'+i)?.value)||0;
       const notes=(document.getElementById('sr-rv-notes-'+i)?.value||'').trim();
-      if(desc)rowItems.push({id:uid(),description:desc,unit:unit,rate:rate,notes:notes});
+      if(desc)rowItems.push({id:uid(),description:desc,unit:unit,rate:rate,quote_total:rvQt,quote_date:rvQd,notes:notes});
     });
   }
   const all=_srGet();
@@ -10469,6 +10476,10 @@ window.showAddRateSheet=function(sid,rid){
       +'<div class="form-group"><label class="form-label">Unit</label><input class="form-input" id="srrk-unit" placeholder="hr, m, m2, m3, ea…" value="'+(it?esc(it.unit):'hr')+'"></div>'
       +'<div class="form-group"><label class="form-label">Rate ($)</label><input class="form-input" type="number" id="srrk-rate" placeholder="0.00" min="0" step="0.01" value="'+(it?it.rate:'')+'"></div>'
     +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+      +'<div class="form-group"><label class="form-label">Quote Total ($)</label><input class="form-input" type="number" id="srrk-quote-total" placeholder="0.00" min="0" step="0.01" value="'+(it&&it.quote_total?it.quote_total:'')+'"></div>'
+      +'<div class="form-group"><label class="form-label">Quote Date</label><input class="form-input" type="date" id="srrk-quote-date" value="'+(it&&it.quote_date?esc(it.quote_date):'')+'"></div>'
+    +'</div>'
     +'<div class="form-group"><label class="form-label">Notes</label><input class="form-input" id="srrk-notes" placeholder="Optional — e.g. incl. operator, ex GST" value="'+(it?esc(it.notes||''):'')+'"></div>',
   actions:'<button class="btn btn-outline" data-action="close-modal">Cancel</button>'
     +'<button class="btn btn-blue" data-action="save-sr-rate" data-sid="'+sid+'"'+(rid?' data-rid="'+rid+'"':'')+'>'+(it?'Update Rate':'Add Rate')+'</button>'
@@ -10536,11 +10547,13 @@ function _srBuildCatalogueList(){
       const bodyHTML=!open?'':'<div class="sr-acc-body">'
         +'<div style="margin-bottom:10px"><input class="form-input" id="sr-search-'+s.id+'" placeholder="Search rates…" value="'+esc(((window._srSearch)||{})[s.id]||'')+'" oninput="window.filterSRRates(\''+s.id+'\',this.value)" style="padding:6px 10px;font-size:.83rem;max-width:300px"></div>'
         +(items.length
-          ?'<table class="sr-rates-tbl"><thead><tr><th style="width:40%">Description</th><th>Unit</th><th>Rate (ex GST)</th><th style="width:30%">Notes</th><th style="width:48px"></th></tr></thead><tbody>'
+          ?'<table class="sr-rates-tbl"><thead><tr><th style="width:32%">Description</th><th>Unit</th><th>Rate (ex GST)</th><th>Quote Total</th><th>Date</th><th style="width:20%">Notes</th><th style="width:48px"></th></tr></thead><tbody>'
             +filteredItems.map(it=>'<tr>'
               +'<td>'+esc(it.description)+'</td>'
               +'<td style="color:var(--muted)">'+esc(it.unit)+'</td>'
               +'<td style="font-weight:600;font-variant-numeric:tabular-nums">$'+parseFloat(it.rate||0).toFixed(2)+'</td>'
+              +'<td style="font-variant-numeric:tabular-nums;color:var(--muted)">'+(it.quote_total?'$'+parseFloat(it.quote_total).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'')+'</td>'
+              +'<td style="color:var(--muted);font-size:.78rem;white-space:nowrap">'+(it.quote_date?esc(it.quote_date):'')+'</td>'
               +'<td style="color:var(--muted);font-size:.78rem">'+esc(it.notes||'')+'</td>'
               +'<td style="white-space:nowrap">'
                 +'<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();showAddRateSheet(\''+s.id+'\',\''+it.id+'\')" title="Edit">'+icon('edit')+'</button>'
@@ -14877,7 +14890,7 @@ if(action==='save-prod-record'){
     if(!aiFile&&!text){toast('Drop a file or paste some text first.','warning');return;}
     if(statusEl){statusEl.style.display='block';statusEl.innerHTML='<span style="display:inline-flex;align-items:center;gap:8px"><svg style="animation:spin 1s linear infinite;flex-shrink:0;width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Extracting with AI…</span>';}
     el.disabled=true;
-    const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty","confidence":number}]}\n\nFor confidence: 100=rate clearly stated, 75=rate stated but unit ambiguous, 50=rate inferred or partially legible, 25=estimated.\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
+    const promptText='Extract company details and rate items from this supplier rate schedule. Return ONLY valid JSON in this exact format (no markdown):\n\n{"company":"string","abn":"string or empty","contact_name":"string or empty","contact_email":"string or empty","contact_phone":"string or empty","trade_category":"one of: earthworks,civil,drainage,water,sewer,electrical,communications,concrete,landscaping,traffic,fencing,demolition,other","quote_total":number or null,"quote_date":"YYYY-MM-DD or empty","items":[{"description":"string","unit":"string","rate":number,"notes":"string or empty","confidence":number}]}\n\nquote_total: the total dollar amount of the entire quote/schedule if stated on the document (ex GST). null if not found.\nquote_date: the date the quote was issued, in YYYY-MM-DD format. Empty string if not found.\nFor confidence: 100=rate clearly stated, 75=rate stated but unit ambiguous, 50=rate inferred or partially legible, 25=estimated.\n\n'+(companyHint?'Company name: '+companyHint+'\n\n':'')+(text?'Rate schedule text:\n'+text:'');
     let msgContent;
     if(aiFile){
       if(aiFileType==='application/pdf'){
@@ -14957,7 +14970,9 @@ if(action==='save-sr-rate'){
     const sup=items.find(s=>s.id===sid);
     if(!sup){toast('Supplier not found.','warning');return;}
     if(!sup.items)sup.items=[];
-    const rateItem={id:rid||uid(),description:desc,unit:document.getElementById('srrk-unit')?.value.trim()||'hr',rate:parseFloat(document.getElementById('srrk-rate')?.value)||0,notes:document.getElementById('srrk-notes')?.value.trim()||''};
+    const qt=parseFloat(document.getElementById('srrk-quote-total')?.value)||0;
+    const qd=document.getElementById('srrk-quote-date')?.value||'';
+    const rateItem={id:rid||uid(),description:desc,unit:document.getElementById('srrk-unit')?.value.trim()||'hr',rate:parseFloat(document.getElementById('srrk-rate')?.value)||0,quote_total:qt||null,quote_date:qd||null,notes:document.getElementById('srrk-notes')?.value.trim()||''};
     if(rid){const i=sup.items.findIndex(x=>x.id===rid);if(i>=0)sup.items[i]=rateItem;else sup.items.push(rateItem);}
     else sup.items.push(rateItem);
     _srSave(items);closeModal();toast(rid?'Rate updated.':'Rate added.','success');renderCatalogue();return;
