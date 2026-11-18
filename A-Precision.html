@@ -854,6 +854,7 @@ const followUpDate=d=>{if(!d)return null;const dt=new Date(d);if(isNaN(dt))retur
 const followUpDays=d=>{const fu=followUpDate(d);if(!fu)return null;return Math.round((fu-new Date(today()))/(1000*60*60*24));};
 const followUpClass=d=>{const n=followUpDays(d);if(n===null)return'';if(n<3)return'days-red';if(n<7)return'days-orange';return'days-green';};
 const followUpLabel=d=>{const n=followUpDays(d);if(n===null)return'';if(n<0)return`${Math.abs(n)}d overdue`;if(n===0)return'Today';if(n===1)return'Tomorrow';return`in ${n} days`;};
+const followedUpAgo=ts=>{if(!ts)return'';const d=Math.floor((Date.now()-new Date(ts).getTime())/(1000*60*60*24));if(d<=0)return'today';if(d===1)return'1 day ago';return`${d} days ago`;};
 const truncate=(s,n=60)=>s&&s.length>n?s.slice(0,n)+'…':s||'';
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -1711,8 +1712,9 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
         ${due?`<span class="${dueCls}">${fmtDate(due)}<br><span style="font-size:.7rem;font-weight:400">${relDays(due)}</span></span>${n!==null&&n<0?`<br><span class="badge badge-red" style="font-size:.58rem;margin-top:2px">OVERDUE</span>`:''}`:
         `<span style="font-size:.75rem;color:var(--muted2)">No date<br><span style="color:var(--blue);font-size:.7rem">Set date</span></span>`}
       </td>
-      <td title="${due?'Follow up 10 days after submission due date':'Set a due date to schedule follow-up'}">
-        ${due?`<span class="${followUpClass(due)}">${fmtDate(followUpDate(due))}<br><span style="font-size:.7rem;font-weight:400">${followUpLabel(due)}</span></span>`:
+      <td title="${p.follow_up_notes?'Feedback logged — see Summary tab':due?'Follow up 10 days after submission due date':'Set a due date to schedule follow-up'}">
+        ${p.follow_up_notes?`<span class="days-green">✓ Followed up<br><span style="font-size:.7rem;font-weight:400">${followedUpAgo(p.follow_up_at||p.updated_at)}</span></span>`:
+        due?`<span class="${followUpClass(due)}">${fmtDate(followUpDate(due))}<br><span style="font-size:.7rem;font-weight:400">${followUpLabel(due)}</span></span>`:
         `<span style="font-size:.75rem;color:var(--muted2)">—</span>`}
       </td>
       <td class="aud" style="text-align:right;color:var(--muted)">${(p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15}%</td>
@@ -2314,15 +2316,33 @@ function renderTabSummary(p,id){
       `<div style="font-size:.77rem;color:var(--muted2)">No BOQ items yet. Build your estimate in the Draft Estimate tab.</div>`}
     </div>
 
-    <!-- Card 3: Progress -->
+    <!-- Card 3: Follow Up / Feedback -->
     <div class="card">
-      <div class="card-title">Completion Progress</div>
-      ${pb('BOQ Items Rated', boqRated, boqItems.length, boqItems.length>0&&boqRated===boqItems.length?'green':'')}
-      ${pb('Risks Reviewed', risksClosed, risks.length, risks.length>0&&risksClosed===risks.length?'green':'')}
-      ${pb('Quotes Received', quotesRecv, quotes.length, quotes.length>0&&quotesRecv===quotes.length?'green':'')}
-      <div class="prog-item">
-        <div class="prog-label-row"><span>Documents</span><span style="color:var(--text);font-weight:600">${docs.length}</span></div>
-        <div class="prog-track"><div class="prog-fill${docs.length>0?' green':''}" style="width:${Math.min(docs.length*20,100)}%"></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-title" style="margin:0">Follow Up / Feedback</div>
+        ${p.follow_up_notes?`<span class="badge badge-green" style="font-size:.6rem">Followed up ${esc(followedUpAgo(p.follow_up_at||p.updated_at))}</span>`:
+          p.submission_due_date?`<span class="badge" style="font-size:.6rem;background:${followUpDays(p.submission_due_date)<3?'var(--red-d);color:var(--red)':followUpDays(p.submission_due_date)<7?'rgba(249,115,22,.15);color:#F97316':'var(--green-d);color:var(--green)'}">Call ${esc(followUpLabel(p.submission_due_date))}</span>`:''}
+      </div>
+      <div style="font-size:.72rem;color:var(--muted2);margin-bottom:8px">Call the client ~10 days after submission. Log what they said so the estimating list stays current.</div>
+      <div id="fu-view-${id}">
+        ${p.follow_up_notes?`
+          <div style="font-size:.84rem;color:var(--text);white-space:pre-wrap;line-height:1.5;padding:10px;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.18);border-radius:7px;margin-bottom:8px">${esc(p.follow_up_notes)}</div>
+          <div style="font-size:.7rem;color:var(--muted2);margin-bottom:8px">${p.follow_up_at?`Logged ${fmtDate(p.follow_up_at)}`:''}</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" onclick="window._fuEdit('${id}')">${icon('edit')} Edit</button>
+            <button class="btn btn-ghost btn-sm" onclick="window._fuClear('${id}')" style="color:var(--red)">Clear</button>
+          </div>
+        `:`
+          <div style="font-size:.78rem;color:var(--muted2);padding:10px;border:1px dashed var(--border);border-radius:7px;margin-bottom:8px">No feedback logged yet.</div>
+          <button class="btn btn-blue btn-sm" onclick="window._fuEdit('${id}')">+ Log Follow Up</button>
+        `}
+      </div>
+      <div id="fu-edit-${id}" style="display:none">
+        <textarea class="form-input" id="fu-ta-${id}" rows="5" placeholder="What did the client say? (e.g. decision expected next week, still comparing quotes, want to meet, lost to competitor on price…)">${esc(p.follow_up_notes||'')}</textarea>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-blue btn-sm" onclick="window._fuSave('${id}')">Save</button>
+          <button class="btn btn-ghost btn-sm" onclick="window._fuCancel('${id}')">Cancel</button>
+        </div>
       </div>
     </div>
   </div>
@@ -11111,6 +11131,33 @@ window.quickSaveDue=function(projId,dateVal,context,targetId){
   toast(dateVal?`Due date set to ${fmtDate(dateVal)}`:'Due date removed','success');
   if(context==='list'){if(typeof filterProjects==='function')window.filterProjects();}
   else if(context==='detail'){navigate(window.location.hash.replace('#',''));}
+};
+
+/* ================================================================
+   FOLLOW UP / FEEDBACK NOTES
+================================================================ */
+window._fuEdit=function(id){const v=document.getElementById('fu-view-'+id),e=document.getElementById('fu-edit-'+id);if(v)v.style.display='none';if(e){e.style.display='block';document.getElementById('fu-ta-'+id)?.focus();}};
+window._fuCancel=function(id){const v=document.getElementById('fu-view-'+id),e=document.getElementById('fu-edit-'+id);if(e)e.style.display='none';if(v)v.style.display='block';};
+window._fuSave=function(id){
+  const p=DB.getProject(id);if(!p)return;
+  const txt=(document.getElementById('fu-ta-'+id)?.value||'').trim();
+  const wasEmpty=!(p.follow_up_notes||'').trim();
+  p.follow_up_notes=txt;
+  if(txt&&wasEmpty)p.follow_up_at=new Date().toISOString();
+  else if(!txt)p.follow_up_at=null;
+  if(!p.activity_log)p.activity_log=[];
+  p.activity_log.push({id:uid(),description:txt?'Follow-up logged: '+(txt.length>80?txt.slice(0,80)+'…':txt):'Follow-up notes cleared',created_at:new Date().toISOString(),type:'follow_up'});
+  DB.saveProject(p);
+  toast(txt?'Follow-up saved':'Follow-up cleared','success');
+  navigate(window.location.hash.replace('#',''));
+};
+window._fuClear=function(id){
+  if(!confirm('Clear follow-up notes?'))return;
+  const p=DB.getProject(id);if(!p)return;
+  p.follow_up_notes='';p.follow_up_at=null;
+  DB.saveProject(p);
+  toast('Follow-up cleared','success');
+  navigate(window.location.hash.replace('#',''));
 };
 
 /* ================================================================
