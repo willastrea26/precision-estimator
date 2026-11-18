@@ -1606,8 +1606,8 @@ function _projSectionHTML(label,rows,tbodyId,lc,accent){
       <table style="table-layout:fixed;width:100%">
         ${PROJ_COLGROUP}
         <thead><tr>
-          <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
-          <th>Status</th><th>Risk</th><th>Due Date</th><th>Follow Up</th><th style="text-align:right">LOW%</th><th style="text-align:right">Est. Value</th><th style="text-align:right">Projected</th>
+          <th>Project</th><th>Client</th><th>Location</th><th style="text-align:center">Type</th>
+          <th style="text-align:center">Status</th><th style="text-align:center">Risk</th><th>Due Date</th><th>Follow Up</th><th style="text-align:right">LOW%</th><th style="text-align:right">Est. Value</th><th style="text-align:right">Projected</th>
         </tr></thead>
         <tbody id="${tbodyId}">${renderProjectRows(rows,lc,true)}</tbody>
       </table>
@@ -1619,9 +1619,9 @@ function _projListHTML(ps,lc){
     return`<div class="tbl-wrap">
       <table id="proj-table">
         <thead><tr>
-          <th>Project</th><th>Client</th><th>Location</th><th>Type</th>
-          ${lc==='all'?'<th>Lifecycle</th>':''}
-          <th>Status</th><th>Risk</th><th>Due Date</th><th>Follow Up</th><th style="text-align:right">LOW%</th><th style="text-align:right">Est. Value</th><th style="text-align:right">Projected</th>
+          <th>Project</th><th>Client</th><th>Location</th><th style="text-align:center">Type</th>
+          ${lc==='all'?'<th style="text-align:center">Lifecycle</th>':''}
+          <th style="text-align:center">Status</th><th style="text-align:center">Risk</th><th>Due Date</th><th>Follow Up</th><th style="text-align:right">LOW%</th><th style="text-align:right">Est. Value</th><th style="text-align:right">Projected</th>
           ${lc!=='active'?'<th>Actions</th>':''}
         </tr></thead>
         <tbody id="proj-tbody">${renderProjectRows(ps,lc)}</tbody>
@@ -1704,10 +1704,10 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
       <td class="bold">${esc(p.name)}${p.package_number?`<span style="font-size:.7rem;color:var(--muted2);margin-left:6px">${esc(p.package_number)}</span>`:''}</td>
       <td>${esc(p.client)}</td>
       <td title="${esc(p.location)}" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.location?.length>30?p.location.slice(0,30)+'…':p.location||'')}</td>
-      <td><span class="badge badge-grey">${esc(p.project_type?.replace(/_/g,' '))}</span></td>
-      ${lc==='all'?`<td>${actionCell}</td>`:''}
-      <td onclick="event.stopPropagation();openStatusPicker(event,'${p.id}','list')" style="cursor:pointer" title="Click to change status"><span id="sb-${p.id}">${statusBadge(p.status)}</span></td>
-      <td>${riskBadge(p.risk_level)}</td>
+      <td style="text-align:center"><span class="badge badge-grey">${esc(p.project_type?.replace(/_/g,' '))}</span></td>
+      ${lc==='all'?`<td style="text-align:center">${actionCell}</td>`:''}
+      <td onclick="event.stopPropagation();openStatusPicker(event,'${p.id}','list')" style="cursor:pointer;text-align:center" title="Click to change status"><span id="sb-${p.id}">${statusBadge(p.status)}</span></td>
+      <td style="text-align:center">${riskBadge(p.risk_level)}</td>
       <td onclick="event.stopPropagation();openDuePicker(event,'${p.id}')" style="cursor:pointer" title="Click to edit due date">
         ${due?`<span class="${dueCls}">${fmtDate(due)}<br><span style="font-size:.7rem;font-weight:400">${relDays(due)}</span></span>${n!==null&&n<0?`<br><span class="badge badge-red" style="font-size:.58rem;margin-top:2px">OVERDUE</span>`:''}`:
         `<span style="font-size:.75rem;color:var(--muted2)">No date<br><span style="color:var(--blue);font-size:.7rem">Set date</span></span>`}
