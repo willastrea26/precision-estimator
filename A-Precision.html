@@ -11306,6 +11306,12 @@ window.applyStatusQuick=function(projId,newStatus,ctx){
   const p=DB.getProject(projId);if(!p)return;
   const oldStatus=p.status;
   if(oldStatus===newStatus)return;
+  if(newStatus==='lost'){
+    showStatusUpdateModal(projId);
+    const sel=document.getElementById('us-status');
+    if(sel){sel.value='lost';window.refreshStatusExtra(projId);}
+    return;
+  }
   p.status=newStatus;
   if(!p.activity_log)p.activity_log=[];
   p.activity_log.push({id:uid(),description:`Status changed: ${STATUS_LABELS[oldStatus]||oldStatus} → ${STATUS_LABELS[newStatus]||newStatus}`,created_at:new Date().toISOString(),type:'status_change',old_status:oldStatus,new_status:newStatus});
@@ -11361,7 +11367,7 @@ window.refreshStatusExtra=function(projId){
 /* ================================================================
    FINANCIAL PAGE
 ================================================================ */
-let _finPerfChart=null,_finDonutChart=null,_finTypeChart=null,_finMarginChart=null;
+let _finPerfChart=null,_finDonutChart=null,_finTypeChart=null,_finLostChart=null;
 let _finProjects=[],_finRange='6M';
 
 function renderFinancial(){
@@ -11496,14 +11502,16 @@ function renderFinancial(){
     </div>
   </div>
 
-  <!-- SECTION 4: MARGIN ANALYSIS -->
+  <!-- SECTION 4: WHY WE LOSE + TOP PROJECTS -->
   <div class="chart-card mb-4">
-    <div class="chart-head" style="margin-bottom:16px"><div class="title">Margin Analysis</div><div class="sub">Average margin and pricing across projects</div></div>
+    <div class="chart-head" style="margin-bottom:16px"><div class="title">Tender Outcomes</div><div class="sub">Why tenders are lost, and the biggest jobs on the books</div></div>
     <div class="grid-2">
       <div>
-        <div class="fin-section-title">Margin Distribution</div>
-        <div class="fin-section-sub">Projects by margin band</div>
-        <div style="height:200px"><canvas id="fin-margin-chart"></canvas></div>
+        <div class="fin-section-title">Why We Lose</div>
+        <div class="fin-section-sub">${(()=>{const lost=projects.filter(p=>p.status==='lost');const v=lost.reduce((s,p)=>s+(p.estimated_value||0),0);return lost.length?`${lost.length} lost tender${lost.length!==1?'s':''} · ${fmtAUD(v)} estimated value`:'Lost tenders by reason';})()}</div>
+        ${projects.some(p=>p.status==='lost')
+          ?`<div style="height:200px"><canvas id="fin-lost-chart"></canvas></div>`
+          :`<div class="empty-state" style="padding:40px 0"><div class="empty-sub">No lost tenders yet.</div></div>`}
       </div>
       <div>
         <div class="fin-section-title">Top 5 Highest Value Projects</div>
@@ -11626,14 +11634,34 @@ function _initFinCharts(projects,quotes){
     _finTypeChart=new Chart(tCanvas,{type:'bar',data:{labels:tEntries.map(([t])=>t.replace(/_/g,' ')),datasets:[{data:tEntries.map(([,v])=>v),backgroundColor:tEntries.map(([t])=>typeColors[t]+'CC'||'#64748BCC'),borderColor:tEntries.map(([t])=>typeColors[t]||'#64748B'),borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0D1525',borderColor:'#1A2840',borderWidth:1,titleColor:'#F1F5F9',bodyColor:'#8FA3BF',callbacks:{label:ctx=>` ${fmtAUD(ctx.raw)}`}}},scales:{x:{grid:{display:false},ticks:{color:'#8FA3BF',font:{size:10}}},y:{grid:{color:'rgba(26,40,64,.7)'},ticks:{color:'#8FA3BF',font:{size:10},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v}}}}});
   }
 
-  /* Margin distribution bar */
-  const mCanvas=document.getElementById('fin-margin-chart');
-  if(mCanvas){
-    const bands=['0-5%','5-10%','10-15%','15-20%','20%+'];
-    const bCounts=[0,0,0,0,0];
-    projects.forEach(p=>{const m=p.boq_margin!=null?p.boq_margin:15;if(m<5)bCounts[0]++;else if(m<10)bCounts[1]++;else if(m<15)bCounts[2]++;else if(m<20)bCounts[3]++;else bCounts[4]++;});
-    _finMarginChart=new Chart(mCanvas,{type:'bar',data:{labels:bands,datasets:[{data:bCounts,backgroundColor:'rgba(59,130,246,.7)',borderColor:'#3B82F6',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#0D1525',borderColor:'#1A2840',borderWidth:1,titleColor:'#F1F5F9',bodyColor:'#8FA3BF',callbacks:{label:ctx=>` ${ctx.raw} project${ctx.raw!==1?'s':''}`}}},scales:{x:{grid:{display:false},ticks:{color:'#8FA3BF',font:{size:10}}},y:{grid:{color:'rgba(26,40,64,.7)'},ticks:{color:'#8FA3BF',stepSize:1,font:{size:10}}}}}});
+  /* Why we lose — lost tenders by reason */
+  const lCanvas=document.getElementById('fin-lost-chart');
+  if(lCanvas){
+    const byReason={};
+    projects.filter(p=>p.status==='lost').forEach(p=>{
+      const r=projLostReason(p);
+      if(!byReason[r])byReason[r]={n:0,v:0};
+      byReason[r].n++;byReason[r].v+=p.estimated_value||0;
+    });
+    const rows=Object.entries(byReason).sort((a,b)=>(a[0]===LOST_UNRECORDED)-(b[0]===LOST_UNRECORDED)||b[1].n-a[1].n);
+    _finLostChart=new Chart(lCanvas,{type:'bar',data:{labels:rows.map(([r])=>r),datasets:[{data:rows.map(([,d])=>d.n),
+      backgroundColor:rows.map(([r])=>r===LOST_UNRECORDED?'rgba(100,116,139,.45)':'rgba(239,68,68,.6)'),
+      borderColor:rows.map(([r])=>r===LOST_UNRECORDED?'#64748B':'#EF4444'),borderWidth:1,borderRadius:4}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+        tooltip:{backgroundColor:'#0D1525',borderColor:'#1A2840',borderWidth:1,titleColor:'#F1F5F9',bodyColor:'#8FA3BF',
+          callbacks:{label:ctx=>{const d=rows[ctx.dataIndex][1];return ` ${d.n} tender${d.n!==1?'s':''} · ${fmtAUD(d.v)}`;}}}},
+        scales:{x:{grid:{color:'rgba(26,40,64,.7)'},ticks:{color:'#8FA3BF',stepSize:1,precision:0,font:{size:10}},beginAtZero:true},
+          y:{grid:{display:false},ticks:{color:'#C8D3E2',font:{size:11}}}}}});
   }
+}
+
+// Lost reason comes from the Update Status dialog; older losses only have it in the activity log note ("Reason: X. extra notes").
+const LOST_UNRECORDED='Not recorded';
+function projLostReason(p){
+  if(p.lost_reason)return p.lost_reason;
+  const ev=(p.activity_log||[]).filter(a=>a.type==='status_change'&&a.new_status==='lost'&&a.notes).pop();
+  const m=ev&&/^Reason:\s*([^.]+)/.exec(ev.notes);
+  return m?m[1].trim():LOST_UNRECORDED;
 }
 
 /* ================================================================
@@ -13711,6 +13739,7 @@ document.addEventListener('click',async function(e){
     }else if(newStatus==='lost'){
       const reason=document.getElementById('us-lost-reason')?.value||'';
       const lnotes=document.getElementById('us-lost-notes')?.value.trim()||'';
+      p.lost_reason=reason||null;p.lost_notes=lnotes||null;
       notes=`Reason: ${reason}${lnotes?'. '+lnotes:''}`;
     }else if(newStatus==='submitted'){
       const sd=document.getElementById('us-sub-date')?.value||'';
