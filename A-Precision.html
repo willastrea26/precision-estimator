@@ -11305,13 +11305,14 @@ window.applyStatusQuick=function(projId,newStatus,ctx){
   closeStatusPicker();
   const p=DB.getProject(projId);if(!p)return;
   const oldStatus=p.status;
-  if(oldStatus===newStatus)return;
+  // Lost always goes through the dialog, even if already lost, so a reason can be added or changed.
   if(newStatus==='lost'){
     showStatusUpdateModal(projId);
     const sel=document.getElementById('us-status');
     if(sel){sel.value='lost';window.refreshStatusExtra(projId);}
     return;
   }
+  if(oldStatus===newStatus)return;
   p.status=newStatus;
   if(!p.activity_log)p.activity_log=[];
   p.activity_log.push({id:uid(),description:`Status changed: ${STATUS_LABELS[oldStatus]||oldStatus} → ${STATUS_LABELS[newStatus]||newStatus}`,created_at:new Date().toISOString(),type:'status_change',old_status:oldStatus,new_status:newStatus});
