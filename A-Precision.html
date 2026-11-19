@@ -1587,10 +1587,9 @@ function _projGroupActive(ps){
     else if(PROJ_ESTIMATING_STATUSES.includes(p.status))estimating.push(p);
     else other.push(p);
   });
-  const newest=(a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0);
   active.sort(_projPkgSort);
-  estimating.sort(newest);
-  other.sort(newest);
+  estimating.sort(_projPkgSort);
+  other.sort(_projPkgSort);
   return{active,estimating,other};
 }
 const PROJ_COLGROUP='<colgroup><col style="width:16%"><col style="width:10%"><col style="width:13%"><col style="width:7%"><col style="width:9%"><col style="width:6%"><col style="width:9%"><col style="width:9%"><col style="width:5%"><col style="width:8%"><col style="width:8%"></colgroup>';
@@ -1679,7 +1678,13 @@ function renderProjects(){
   <div id="proj-list-container">${ps.length===0?`<div class="tbl-wrap"><div style="text-align:center;padding:48px 20px"><div class="empty-state" style="padding:0">${emptyMsg[lc]||emptyMsg.all}</div></div></div>`:_projListHTML(ps,lc)}</div>`;
   renderShell(content,'projects');
 }
-function _projPkgSort(a,b){const an=a.package_number||'';const bn=b.package_number||'';if(!an&&!bn)return 0;if(!an)return 1;if(!bn)return -1;return an.localeCompare(bn,undefined,{numeric:true,sensitivity:'base'});}
+// Highest package number first (e.g. 26.054 above 25.074); projects without one go last, newest first.
+function _projPkgSort(a,b){
+  const an=(a.package_number||'').trim(),bn=(b.package_number||'').trim();
+  if(!an&&!bn)return new Date(b.created_at||0)-new Date(a.created_at||0);
+  if(!an)return 1;if(!bn)return -1;
+  return bn.localeCompare(an,undefined,{numeric:true,sensitivity:'base'});
+}
 // Projected income: won work counts in full, lost or unbid work counts nothing, open tenders are weighted by win likelihood.
 const PROJ_WON_STATUSES=['awarded','in_progress','completed'];
 const PROJ_ZERO_STATUSES=['lost','not_submitted'];
