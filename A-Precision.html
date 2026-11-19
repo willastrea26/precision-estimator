@@ -1718,7 +1718,9 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
         `<span style="font-size:.75rem;color:var(--muted2)">—</span>`}
       </td>
       <td class="aud" style="text-align:right;color:var(--muted)">${(p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15}%</td>
-      <td class="aud" style="text-align:right">${fmtAUD(p.estimated_value)}</td>
+      ${(!PROJ_ACTIVE_STATUSES.includes(p.status)&&!PROJ_ESTIMATING_STATUSES.includes(p.status)&&p.awarded_value)
+        ?`<td class="aud" style="text-align:right" title="Awarded value">${fmtAUD(p.awarded_value)}</td>`
+        :`<td class="aud" style="text-align:right">${fmtAUD(p.estimated_value)}</td>`}
       <td class="aud" style="text-align:right;color:var(--green);font-weight:600">${fmtAUD(p.estimated_value!=null?p.estimated_value*((p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15)/100:null)}</td>
       ${lc!=='active'&&lc!=='all'?actionCell:''}
     </tr>`;
