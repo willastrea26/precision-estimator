@@ -1680,10 +1680,23 @@ function renderProjects(){
   renderShell(content,'projects');
 }
 function _projPkgSort(a,b){const an=a.package_number||'';const bn=b.package_number||'';if(!an&&!bn)return 0;if(!an)return 1;if(!bn)return -1;return an.localeCompare(bn,undefined,{numeric:true,sensitivity:'base'});}
+// Projected income: won work counts in full, lost or unbid work counts nothing, open tenders are weighted by win likelihood.
+const PROJ_WON_STATUSES=['awarded','in_progress','completed'];
+const PROJ_ZERO_STATUSES=['lost','not_submitted'];
+function projProjection(p){
+  if(PROJ_WON_STATUSES.includes(p.status)){
+    const base=p.awarded_value||p.estimated_value;
+    return{pct:100,value:base!=null?base:null};
+  }
+  if(PROJ_ZERO_STATUSES.includes(p.status))return{pct:0,value:0};
+  const pct=(p.win_probability!=null&&p.win_probability!=='')?+p.win_probability:15;
+  return{pct,value:p.estimated_value!=null?p.estimated_value*pct/100:null};
+}
 function renderProjectRows(ps,lc='active',keepOrder=false){
   if(!ps.length)return'';
   if(!keepOrder)ps=ps.slice().sort(_projPkgSort);
   return ps.map(p=>{
+    const proj=projProjection(p);
     const due=p.submission_due_date;
     const n=daysUntil(due);
     const dueCls=relDaysClass(due);
@@ -1717,11 +1730,11 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
         due?`<span class="${followUpClass(due)}">${fmtDate(followUpDate(due))}<br><span style="font-size:.7rem;font-weight:400">${followUpLabel(due)}</span></span>`:
         `<span style="font-size:.75rem;color:var(--muted2)">—</span>`}
       </td>
-      <td class="aud" style="text-align:right;color:var(--muted)">${(p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15}%</td>
+      <td class="aud" style="text-align:right;color:var(--muted)">${proj.pct}%</td>
       ${(!PROJ_ACTIVE_STATUSES.includes(p.status)&&!PROJ_ESTIMATING_STATUSES.includes(p.status)&&p.awarded_value)
         ?`<td class="aud" style="text-align:right" title="Awarded value">${fmtAUD(p.awarded_value)}</td>`
         :`<td class="aud" style="text-align:right">${fmtAUD(p.estimated_value)}</td>`}
-      <td class="aud" style="text-align:right;color:var(--green);font-weight:600">${fmtAUD(p.estimated_value!=null?p.estimated_value*((p.win_probability!=null&&p.win_probability!=='')?p.win_probability:15)/100:null)}</td>
+      <td class="aud" style="text-align:right;color:${proj.pct===0?'var(--muted2)':'var(--green)'};font-weight:600">${fmtAUD(proj.value)}</td>
       ${lc!=='active'&&lc!=='all'?actionCell:''}
     </tr>`;
   }).join('');
