@@ -1368,7 +1368,10 @@ function renderDashboard(){
   // Recent results: latest wins and losses, dated by when the project was marked awarded or lost.
   const resultAt=p=>{const want=p.status==='lost'?'lost':'awarded';const ev=(p.activity_log||[]).filter(a=>a.type==='status_change'&&a.new_status===want).pop();return ev?ev.created_at:(p.updated_at||p.created_at||'');};
   const decided=projects.filter(p=>p.status==='lost'||WON_STATUSES.includes(p.status));
-  const recentResults=decided.map(p=>({p,won:p.status!=='lost',at:resultAt(p)})).sort((a,b)=>new Date(b.at||0)-new Date(a.at||0)).slice(0,6);
+  // Old jobs were bulk back-dated on these days; their logged result date isn't when they were actually decided.
+  const RESULTS_BACKFILL_DAYS=['2026-11-19'];
+  const isBackfill=at=>!!at&&RESULTS_BACKFILL_DAYS.includes(_localISO(new Date(at)));
+  const recentResults=decided.map(p=>({p,won:p.status!=='lost',at:resultAt(p)})).filter(r=>!isBackfill(r.at)).sort((a,b)=>new Date(b.at||0)-new Date(a.at||0)).slice(0,6);
   const resWon=recentResults.filter(r=>r.won).length,resLost=recentResults.length-resWon;
   // Win rate over the last 12 months of decided tenders.
   const yearAgo=new Date();yearAgo.setFullYear(yearAgo.getFullYear()-1);
