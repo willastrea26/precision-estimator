@@ -1379,14 +1379,13 @@ function renderDashboard(){
   const won12=decided12.filter(p=>p.status!=='lost').length;
   const winRate=decided12.length?Math.round(won12/decided12.length*100):null;
   const receivedQ=quotes.filter(q=>q.status==='received');
-  const activeContacts=contacts.filter(c=>['active','preferred'].includes(c.status));
   const allRisks=projects.flatMap(p=>p.risks||[]);
   const highRiskProjects=new Set(allRisks.filter(r=>['high','extreme'].includes(riskRating(r.likelihood,r.consequence))&&r.status==='open').map(r=>r.project_id));
-  // Total rates across all three libraries: Rate Library + Supplier Rates (line items) + Productivity Library
-  const rateLibCount=DB.getRates().filter(r=>_getRateLc(r)==='active').length;
-  const supplierRateCount=_srGet().filter(s=>_srGetLc(s)==='active').reduce((n,s)=>n+((s.items||[]).length),0);
-  const prodCount=DB.getProductivity().filter(x=>_getProdLc(x)==='active').length;
-  const totalRates=rateLibCount+supplierRateCount+prodCount;
+  // Tenders currently out with the client, and value lost over the last 12 months.
+  const outNow=projects.filter(p=>['submitted','awaiting_decision'].includes(p.status));
+  const outVal=outNow.reduce((s,p)=>s+(p.estimated_value||0),0);
+  const lost12=decided12.filter(p=>p.status==='lost');
+  const lost12Val=lost12.reduce((s,p)=>s+(p.estimated_value||0),0);
   const bidsDue=projects.filter(p=>p.submission_due_date&&daysUntil(p.submission_due_date)>=0&&daysUntil(p.submission_due_date)<=14).sort((a,b)=>a.submission_due_date.localeCompare(b.submission_due_date));
   const compAlerts=sortCompDocs(DB.getCompliance().filter(d=>d.status!=='archived'&&!d.has_no_expiry&&d.expiry_date&&daysUntil(d.expiry_date)<=30));
   const recentProjects=[...projects].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,5);
@@ -1472,8 +1471,8 @@ function renderDashboard(){
   <div class="kpi-sm-grid mb-4">
     <div class="kpi-sm" style="cursor:pointer" onclick="navigate('financial')" title="Submitted tenders whose follow-up call is due, with no feedback logged yet. Click to see the list."><div class="kpi-sm-icon" style="background:${fuDueNow?'var(--red-d)':'var(--green-d)'};color:${fuDueNow?'var(--red)':'var(--green)'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><div><div class="kpi-sm-val" style="color:${fuDueNow?'var(--red)':'var(--text)'}">${fuDueNow}</div><div class="kpi-sm-lbl">Follow-ups Due${fuThisWeek?` · ${fuThisWeek} this week`:''}</div></div></div>
     <div class="kpi-sm" title="Won ÷ (won + lost) for tenders decided in the last 12 months"><div class="kpi-sm-icon" style="background:var(--green-d);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></div><div><div class="kpi-sm-val">${winRate!=null?winRate+'%':'—'}</div><div class="kpi-sm-lbl">Win Rate${decided12.length?` · ${won12} of ${decided12.length} (12 mo)`:' (12 mo)'}</div></div></div>
-    <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="kpi-sm-val">${activeContacts.length}</div><div class="kpi-sm-lbl">Active Contacts</div></div></div>
-    <div class="kpi-sm" title="Rate Library ${rateLibCount} · Supplier Rates ${supplierRateCount} · Productivity ${prodCount}"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><div><div class="kpi-sm-val">${totalRates.toLocaleString()}</div><div class="kpi-sm-lbl">Total Rates</div></div></div>
+    <div class="kpi-sm" title="Estimated value of tenders submitted or awaiting a decision"><div class="kpi-sm-icon" style="background:rgba(139,92,246,.15);color:#A78BFA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div><div class="kpi-sm-val aud">${fmtAUD(outVal)}</div><div class="kpi-sm-lbl">Submitted Value · ${outNow.length} tender${outNow.length!==1?'s':''} out</div></div></div>
+    <div class="kpi-sm" style="cursor:pointer" onclick="navigate('financial')" title="Estimated value of tenders lost in the last 12 months. Click for the Why We Lose breakdown."><div class="kpi-sm-icon" style="background:var(--red-d);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></div><div><div class="kpi-sm-val aud">${fmtAUD(lost12Val)}</div><div class="kpi-sm-lbl">Lost Value · ${lost12.length} tender${lost12.length!==1?'s':''} (12 mo)</div></div></div>
   </div>
 
   <div class="charts-row mb-4">
