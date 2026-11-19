@@ -11419,8 +11419,11 @@ function renderFinancial(){
     mTotNew+=mp.length;mTotSub+=mp.filter(p=>p.status==='submitted').length;mTotAwd+=ma.length;mTotLost+=ml2;mTotPipe+=mPipe;mTotAwdV+=mAV;
   }
 
-  /* ---- Top 5 projects by value ---- */
-  const top5=[...projects].sort((a,b)=>(b.estimated_value||0)-(a.estimated_value||0)).slice(0,5);
+  /* ---- Follow-ups due: submitted tenders not yet followed up, soonest first ---- */
+  const FU_STATUSES=['submitted','awaiting_decision'];
+  const fuOpen=projects.filter(p=>FU_STATUSES.includes(p.status)&&!(p.follow_up_notes||'').trim());
+  const fuDue=fuOpen.filter(p=>p.submission_due_date).sort((a,b)=>followUpDays(a.submission_due_date)-followUpDays(b.submission_due_date));
+  const fuNoDate=fuOpen.length-fuDue.length;
 
   /* ---- Margin bands ---- */
   const bands=['0-5%','5-10%','10-15%','15-20%','20%+'];
@@ -11505,7 +11508,7 @@ function renderFinancial(){
 
   <!-- SECTION 4: WHY WE LOSE + TOP PROJECTS -->
   <div class="chart-card mb-4">
-    <div class="chart-head" style="margin-bottom:16px"><div class="title">Tender Outcomes</div><div class="sub">Why tenders are lost, and the biggest jobs on the books</div></div>
+    <div class="chart-head" style="margin-bottom:16px"><div class="title">Tender Outcomes</div><div class="sub">Why tenders are lost, and who to chase next</div></div>
     <div class="grid-2">
       <div>
         <div class="fin-section-title">Why We Lose</div>
@@ -11515,24 +11518,23 @@ function renderFinancial(){
           :`<div class="empty-state" style="padding:40px 0"><div class="empty-sub">No lost tenders yet.</div></div>`}
       </div>
       <div>
-        <div class="fin-section-title">Top 5 Highest Value Projects</div>
-        <div class="fin-section-sub">Sorted by estimated value</div>
-        <div class="fin-tbl-wrap">
+        <div class="fin-section-title">Follow-ups Due</div>
+        <div class="fin-section-sub">Submitted tenders not yet followed up · soonest first · click to log feedback</div>
+        <div class="fin-tbl-wrap" style="max-height:260px;overflow-y:auto">
           <table>
-            <thead><tr><th>Project</th><th>Type</th><th>Status</th><th>Est. Value</th><th>Margin</th></tr></thead>
-            <tbody>${top5.length?top5.map(p=>{
-              const m=p.boq_margin!=null?p.boq_margin:15;
-              const mCol=m>=15?'var(--green)':m>=10?'var(--amber)':'var(--red)';
-              return`<tr style="cursor:pointer" onclick="navigate('project/${p.id}')">
-                <td class="bold" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</td>
-                <td><span class="badge badge-grey" style="font-size:.65rem">${esc(p.project_type||'—')}</span></td>
-                <td>${statusBadge(p.status)}</td>
-                <td class="aud" style="font-size:.8rem">${fmtAUD(p.estimated_value)}</td>
-                <td style="color:${mCol};font-weight:600;font-size:.82rem">${m}%</td>
-              </tr>`;}).join(''):`<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">No projects yet.</td></tr>`}
+            <thead><tr><th>Project</th><th>Client</th><th>Follow Up</th><th style="text-align:right">Est. Value</th></tr></thead>
+            <tbody>${fuDue.length?fuDue.map(p=>{
+              const d=p.submission_due_date;
+              return`<tr style="cursor:pointer" onclick="navigate('project/${p.id}')" title="Open project to log follow-up feedback">
+                <td class="bold" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}${p.package_number?`<span style="font-size:.68rem;color:var(--muted2);margin-left:6px;font-weight:400">${esc(p.package_number)}</span>`:''}</td>
+                <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.client||'—')}</td>
+                <td style="white-space:nowrap"><span class="${followUpClass(d)}">${fmtDate(followUpDate(d))}<span style="font-size:.7rem;font-weight:400;margin-left:6px">${followUpLabel(d)}</span></span></td>
+                <td class="aud" style="text-align:right;font-size:.8rem">${fmtAUD(p.estimated_value)}</td>
+              </tr>`;}).join(''):`<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--muted)">${fuOpen.length?'No follow-ups scheduled yet.':'Nothing to follow up — every submitted tender has feedback logged.'}</td></tr>`}
             </tbody>
           </table>
         </div>
+        ${fuNoDate?`<div style="font-size:.74rem;color:var(--amber);margin-top:8px">${fuNoDate} submitted tender${fuNoDate!==1?'s have':' has'} no due date, so ${fuNoDate!==1?'they':'it'} can't be scheduled. Set due dates on the Projects page.</div>`:''}
       </div>
     </div>
   </div>
