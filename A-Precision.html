@@ -2359,9 +2359,10 @@ function renderTabSummary(p,id){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div class="card-title" style="margin:0">Follow Up / Feedback</div>
         ${p.follow_up_notes?`<span class="badge badge-green" style="font-size:.6rem">Followed up ${esc(followedUpAgo(p.follow_up_at||p.updated_at))}</span>`:
-          p.submission_due_date?`<span class="badge" style="font-size:.6rem;background:${followUpDays(p.submission_due_date)<3?'var(--red-d);color:var(--red)':followUpDays(p.submission_due_date)<7?'rgba(249,115,22,.15);color:#F97316':'var(--green-d);color:var(--green)'}">Call ${esc(followUpLabel(p.submission_due_date))}</span>`:''}
+          p.submission_due_date&&p.status!=='lost'?`<span class="badge" style="font-size:.6rem;background:${followUpDays(p.submission_due_date)<3?'var(--red-d);color:var(--red)':followUpDays(p.submission_due_date)<7?'rgba(249,115,22,.15);color:#F97316':'var(--green-d);color:var(--green)'}">Call ${esc(followUpLabel(p.submission_due_date))}</span>`:''}
       </div>
       <div style="font-size:.72rem;color:var(--muted2);margin-bottom:8px">Call the client ~10 days after submission. Log what they said so the estimating list stays current.</div>
+      ${p.status==='lost'?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.8rem"><span class="badge badge-red">Lost</span><span style="color:var(--text)">${esc(projLostReason(p))}</span><button class="btn btn-ghost btn-xs" style="margin-left:auto" onclick="applyStatusQuick('${id}','lost','detail')">Change</button></div>`:''}
       <div id="fu-view-${id}">
         ${p.follow_up_notes?`
           <div style="font-size:.84rem;color:var(--text);white-space:pre-wrap;line-height:1.5;padding:10px;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.18);border-radius:7px;margin-bottom:8px">${esc(p.follow_up_notes)}</div>
@@ -11375,7 +11376,9 @@ window.refreshStatusExtra=function(projId){
   if(status==='awarded'){
     box.innerHTML=`<div class="form-group"><label class="form-label">Awarded Value ($AUD) *</label><input class="form-input" type="number" id="us-award-val" placeholder="Enter awarded contract value" step="any" min="0"></div>`;
   }else if(status==='lost'){
-    box.innerHTML=`<div class="form-group"><label class="form-label">Lost Reason</label><select class="form-input" id="us-lost-reason">${lostReasons.map(r=>`<option>${r}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Notes <span style="color:var(--muted2);font-weight:400">(optional)</span></label><textarea class="form-input" id="us-lost-notes" rows="2" placeholder="Additional context…"></textarea></div>`;
+    const lp=DB.getProject(projId)||{};
+    const curReason=lp.lost_reason||(projLostReason(lp)!==LOST_UNRECORDED?projLostReason(lp):'');
+    box.innerHTML=`<div class="form-group"><label class="form-label">Lost Reason</label><select class="form-input" id="us-lost-reason">${lostReasons.map(r=>`<option${r===curReason?' selected':''}>${r}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Feedback Notes <span style="color:var(--muted2);font-weight:400">(same as the Follow Up / Feedback box)</span></label><textarea class="form-input" id="us-lost-notes" rows="4" placeholder="What did the client say? e.g. came in 12% above the winning bid">${esc(lp.follow_up_notes||lp.lost_notes||'')}</textarea></div>`;
   }else if(status==='submitted'){
     box.innerHTML=`<div class="form-group"><label class="form-label">Submission Date</label><input class="form-input" type="date" id="us-sub-date" value="${todayStr}"></div>`;
   }else{
@@ -13760,7 +13763,12 @@ document.addEventListener('click',async function(e){
     }else if(newStatus==='lost'){
       const reason=document.getElementById('us-lost-reason')?.value||'';
       const lnotes=document.getElementById('us-lost-notes')?.value.trim()||'';
-      p.lost_reason=reason||null;p.lost_notes=lnotes||null;
+      p.lost_reason=reason||null;
+      // Lost notes and follow-up feedback are one field.
+      const hadNotes=!!(p.follow_up_notes||'').trim();
+      p.follow_up_notes=lnotes;
+      if(lnotes&&!hadNotes)p.follow_up_at=new Date().toISOString();
+      else if(!lnotes)p.follow_up_at=null;
       notes=`Reason: ${reason}${lnotes?'. '+lnotes:''}`;
     }else if(newStatus==='submitted'){
       const sd=document.getElementById('us-sub-date')?.value||'';
