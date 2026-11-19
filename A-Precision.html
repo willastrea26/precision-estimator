@@ -1707,7 +1707,7 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
       <td style="text-align:center"><span class="badge badge-grey">${esc(p.project_type?.replace(/_/g,' '))}</span></td>
       ${lc==='all'?`<td style="text-align:center">${actionCell}</td>`:''}
       <td onclick="event.stopPropagation();openStatusPicker(event,'${p.id}','list')" style="cursor:pointer;text-align:center" title="Click to change status"><span id="sb-${p.id}">${statusBadge(p.status)}</span></td>
-      <td style="text-align:center">${riskBadge(p.risk_level)}</td>
+      <td onclick="event.stopPropagation();openRiskPicker(event,'${p.id}','list')" style="cursor:pointer;text-align:center" title="Click to change risk"><span id="rb-${p.id}">${riskBadge(p.risk_level)}</span></td>
       <td onclick="event.stopPropagation();openDuePicker(event,'${p.id}')" style="cursor:pointer" title="Click to edit due date">
         ${due?`<span class="${dueCls}">${fmtDate(due)}<br><span style="font-size:.7rem;font-weight:400">${relDays(due)}</span></span>${n!==null&&n<0?`<br><span class="badge badge-red" style="font-size:.58rem;margin-top:2px">OVERDUE</span>`:''}`:
         `<span style="font-size:.75rem;color:var(--muted2)">No date<br><span style="color:var(--blue);font-size:.7rem">Set date</span></span>`}
@@ -11230,16 +11230,33 @@ window._saveFieldQ=function(projId,field,value){
   navigate(window.location.hash.replace('#',''));
 };
 
-window.openRiskPicker=function(e,projId){
+window.openRiskPicker=function(e,projId,ctx){
   e.stopPropagation();
-  _closeFP();closeStatusPicker();document.getElementById('_dpop')?.remove();
+  _closeFP();closeStatusPicker();document.getElementById('_dpop')?.remove();document.getElementById('_rp')?.remove();
   const rect=e.currentTarget.getBoundingClientRect();
   const pick=document.createElement('div');
   pick.id='_rp';pick.className='status-picker';
-  pick.style.cssText=`top:${rect.bottom+4}px;left:${rect.left}px`;
-  pick.innerHTML=RISK_LEVELS.map(r=>`<div class="status-picker-item" onclick="_saveFieldQ('${projId}','risk_level','${r.v}');document.getElementById('_rp')?.remove()"><span class="badge ${r.cls}" style="display:block;width:100%;text-align:center">${r.l}</span></div>`).join('');
+  const spaceBelow=window.innerHeight-rect.bottom;
+  if(spaceBelow<200&&rect.top>200)pick.style.cssText=`bottom:${window.innerHeight-rect.top+4}px;left:${rect.left}px`;
+  else pick.style.cssText=`top:${rect.bottom+4}px;left:${rect.left}px`;
+  pick.innerHTML=RISK_LEVELS.map(r=>`<div class="status-picker-item" onclick="applyRiskQuick('${projId}','${r.v}','${ctx||'detail'}')"><span class="badge ${r.cls}" style="display:block;width:100%;text-align:center">${r.l}</span></div>`).join('');
   document.body.appendChild(pick);
   setTimeout(()=>document.addEventListener('click',()=>document.getElementById('_rp')?.remove(),{once:true,capture:true}),0);
+};
+window.applyRiskQuick=function(projId,level,ctx){
+  document.getElementById('_rp')?.remove();
+  const p=DB.getProject(projId);if(!p)return;
+  const old=p.risk_level;
+  if(old===level)return;
+  p.risk_level=level;
+  if(!p.activity_log)p.activity_log=[];
+  p.activity_log.push({id:uid(),description:`Risk changed: ${old||'none'} → ${level}`,created_at:new Date().toISOString(),type:'field_update'});
+  DB.saveProject(p);
+  toast(`Risk updated to ${level}`,'success');
+  const el=document.getElementById('rb-'+projId);
+  if(el)el.innerHTML=riskBadge(level);
+  if(ctx==='list'){if(typeof filterProjects==='function')window.filterProjects();}
+  else navigate(window.location.hash.replace('#',''));
 };
 
 /* ================================================================
