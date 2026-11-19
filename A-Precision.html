@@ -1361,13 +1361,20 @@ function renderDashboard(){
   const WON_STATUSES=['awarded','in_progress','completed'];
   const wonProjects=projects.filter(p=>WON_STATUSES.includes(p.status));
   const awarded=wonProjects.reduce((s,p)=>s+(p.awarded_value||p.estimated_value||0),0);
-  const overdueQ=quotes.filter(q=>q.status==='overdue'||(q.status!=='received'&&q.due_date&&q.due_date<todayStr));
+  // Follow-ups due now: submitted tenders with no feedback logged whose follow-up date has arrived.
+  const fuPending=projects.filter(p=>['submitted','awaiting_decision'].includes(p.status)&&!(p.follow_up_notes||'').trim()&&p.submission_due_date);
+  const fuDueNow=fuPending.filter(p=>followUpDays(p.submission_due_date)<=0).length;
+  const fuThisWeek=fuPending.filter(p=>{const n=followUpDays(p.submission_due_date);return n>0&&n<=7;}).length;
   // Recent results: latest wins and losses, dated by when the project was marked awarded or lost.
   const resultAt=p=>{const want=p.status==='lost'?'lost':'awarded';const ev=(p.activity_log||[]).filter(a=>a.type==='status_change'&&a.new_status===want).pop();return ev?ev.created_at:(p.updated_at||p.created_at||'');};
   const decided=projects.filter(p=>p.status==='lost'||WON_STATUSES.includes(p.status));
   const recentResults=decided.map(p=>({p,won:p.status!=='lost',at:resultAt(p)})).sort((a,b)=>new Date(b.at||0)-new Date(a.at||0)).slice(0,6);
   const resWon=recentResults.filter(r=>r.won).length,resLost=recentResults.length-resWon;
-  const awaitingQ=quotes.filter(q=>q.status==='awaiting');
+  // Win rate over the last 12 months of decided tenders.
+  const yearAgo=new Date();yearAgo.setFullYear(yearAgo.getFullYear()-1);
+  const decided12=decided.filter(p=>new Date(resultAt(p)||0)>=yearAgo);
+  const won12=decided12.filter(p=>p.status!=='lost').length;
+  const winRate=decided12.length?Math.round(won12/decided12.length*100):null;
   const receivedQ=quotes.filter(q=>q.status==='received');
   const activeContacts=contacts.filter(c=>['active','preferred'].includes(c.status));
   const allRisks=projects.flatMap(p=>p.risks||[]);
@@ -1460,8 +1467,8 @@ function renderDashboard(){
   </div>
 
   <div class="kpi-sm-grid mb-4">
-    <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--amber-d);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div><div class="kpi-sm-val">${awaitingQ.length}</div><div class="kpi-sm-lbl">Awaiting Response</div></div></div>
-    <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--red-d);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div><div class="kpi-sm-val">${overdueQ.length}</div><div class="kpi-sm-lbl">Overdue Quotes</div></div></div>
+    <div class="kpi-sm" style="cursor:pointer" onclick="navigate('financial')" title="Submitted tenders whose follow-up call is due, with no feedback logged yet. Click to see the list."><div class="kpi-sm-icon" style="background:${fuDueNow?'var(--red-d)':'var(--green-d)'};color:${fuDueNow?'var(--red)':'var(--green)'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><div><div class="kpi-sm-val" style="color:${fuDueNow?'var(--red)':'var(--text)'}">${fuDueNow}</div><div class="kpi-sm-lbl">Follow-ups Due${fuThisWeek?` · ${fuThisWeek} this week`:''}</div></div></div>
+    <div class="kpi-sm" title="Won ÷ (won + lost) for tenders decided in the last 12 months"><div class="kpi-sm-icon" style="background:var(--green-d);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></div><div><div class="kpi-sm-val">${winRate!=null?winRate+'%':'—'}</div><div class="kpi-sm-lbl">Win Rate${decided12.length?` · ${won12} of ${decided12.length} (12 mo)`:' (12 mo)'}</div></div></div>
     <div class="kpi-sm"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="kpi-sm-val">${activeContacts.length}</div><div class="kpi-sm-lbl">Active Contacts</div></div></div>
     <div class="kpi-sm" title="Rate Library ${rateLibCount} · Supplier Rates ${supplierRateCount} · Productivity ${prodCount}"><div class="kpi-sm-icon" style="background:var(--blue-d);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><div><div class="kpi-sm-val">${totalRates.toLocaleString()}</div><div class="kpi-sm-lbl">Total Rates</div></div></div>
   </div>
