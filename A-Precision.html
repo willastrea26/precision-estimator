@@ -11412,21 +11412,6 @@ function renderFinancial(){
     mTotNew+=mp.length;mTotSub+=mp.filter(p=>p.status==='submitted').length;mTotAwd+=ma.length;mTotLost+=ml2;mTotPipe+=mPipe;mTotAwdV+=mAV;
   }
 
-  /* ---- Quote summary ---- */
-  const recQ=quotes.filter(q=>['received','accepted'].includes(q.status));
-  const totalQVRec=recQ.reduce((s,q)=>s+(q.quoted_amount||0),0);
-  const activeQProjIds=new Set(quotes.filter(q=>!['received','accepted','declined'].includes(q.status)).map(q=>q.project_id));
-  const totalQVReq=projects.filter(p=>activeQProjIds.has(p.id)).reduce((s,p)=>s+(p.estimated_value||0),0);
-  const tradeMap={};
-  quotes.forEach(q=>{
-    const t=q.trade_package||'Other';
-    if(!tradeMap[t])tradeMap[t]={sent:0,recv:0,val:0,over:0};
-    tradeMap[t].sent++;
-    if(['received','accepted'].includes(q.status)){tradeMap[t].recv++;tradeMap[t].val+=q.quoted_amount||0;}
-    if(q.due_date&&q.due_date<todayStr&&!['received','accepted','declined'].includes(q.status))tradeMap[t].over++;
-  });
-  const tradeRows=Object.entries(tradeMap).sort((a,b)=>b[1].val-a[1].val).slice(0,10);
-
   /* ---- Top 5 projects by value ---- */
   const top5=[...projects].sort((a,b)=>(b.estimated_value||0)-(a.estimated_value||0)).slice(0,5);
 
@@ -11541,41 +11526,6 @@ function renderFinancial(){
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- SECTION 5: QUOTE FINANCIAL SUMMARY -->
-  <div class="panel-card mb-4">
-    <div class="panel-title">Quote Activity & Value<div style="margin-left:auto;font-size:.72rem;font-weight:400;color:var(--muted2);text-transform:none;letter-spacing:0">Supplier quote requests and received values</div></div>
-    <div class="fin-stat-grid">
-      <div class="fin-stat">
-        <div class="fin-stat-val aud">${fmtAUD(totalQVReq)}</div>
-        <div class="fin-stat-lbl">Quote Value Requested</div>
-      </div>
-      <div class="fin-stat">
-        <div class="fin-stat-val aud" style="color:var(--green)">${fmtAUD(totalQVRec)}</div>
-        <div class="fin-stat-lbl">Quote Value Received</div>
-      </div>
-      <div class="fin-stat">
-        <div class="fin-stat-val">${recQ.length}</div>
-        <div class="fin-stat-lbl">Quotes Received</div>
-      </div>
-    </div>
-    ${tradeRows.length?`
-    <div class="fin-section-title" style="margin-bottom:8px">Quote Value by Trade Package</div>
-    <div class="fin-tbl-wrap">
-      <table>
-        <thead><tr><th>Trade Package</th><th>Sent</th><th>Received</th><th>Total Value Received</th><th>Avg Value</th><th>Overdue</th></tr></thead>
-        <tbody>${tradeRows.map(([trade,d])=>`<tr>
-          <td class="bold">${esc(trade)}</td>
-          <td style="color:var(--muted)">${d.sent}</td>
-          <td style="color:var(--green)">${d.recv}</td>
-          <td class="aud">${fmtAUD(d.val)}</td>
-          <td class="aud">${d.recv?fmtAUD(d.val/d.recv):'—'}</td>
-          <td style="color:${d.over>0?'var(--red)':'var(--muted)'};font-weight:${d.over>0?'700':'400'}">${d.over||0}</td>
-        </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`:`<div class="empty-state" style="padding:20px 0"><div class="empty-sub">No quote data available yet.</div></div>`}
   </div>
 
   <!-- SECTION 6: MONTHLY SUMMARY TABLE -->
