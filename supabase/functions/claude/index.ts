@@ -15,8 +15,11 @@
 // =====================================================================
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+// Read per request so a changed secret takes effect without waiting for the worker to restart.
 // Pasted secrets often carry stray whitespace, line breaks or quote marks.
-const API_KEY = (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+function apiKey(): string {
+  return (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+}
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://gcdkxapepawiixyusjnu.supabase.co";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "sb_publishable_tb77mPEA7LCKq4cQNT2W9Q_BKZtBi7P";
 const MAX_TOKENS_CAP = 16000;
@@ -52,6 +55,7 @@ async function isSignedInUser(req: Request): Promise<boolean> {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return fail("Use POST.", 405);
+  const API_KEY = apiKey();
   if (!API_KEY) return fail("AI is not set up yet: the ANTHROPIC_API_KEY secret is missing in Supabase.", 500);
   if (!(await isSignedInUser(req))) return fail("Please sign in again to use AI features.", 401);
 
