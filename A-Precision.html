@@ -928,6 +928,15 @@ function _sbUp(table,row){
     });
 }
 function _sbUpsertArr(table,arr){arr.forEach(row=>_sbUp(table,row));}
+// All Claude calls go through the "claude" Edge Function, which holds the API key server-side.
+// Takes the same init object as a direct Anthropic fetch and returns Anthropic's response unchanged.
+async function _aiFetch(init){
+  const{data:{session}}=await _sb.auth.getSession();
+  if(!session)throw new Error('Please sign in again to use AI features.');
+  return fetch(_SB_URL+'/functions/v1/claude',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':_SB_KEY},
+    body:init.body});
+}
 function _sbDel(table,id){
   if(!_c.userId)return;
   _sb.from(table).delete().eq('id',id)
@@ -7342,11 +7351,8 @@ function _refBoqCtx(){
 }
 
 async function _aiCall(content){
-  const key=DB.getSettings().ai_key||'';
-  if(!key)throw new Error('No API key — add it in Settings → AI Integration.');
   const sys=(_pip&&_pip.sys)?_pip.sys:_buildAISys('mixed',[]);
-  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-opus-4-5',max_tokens:8192,system:sys,messages:[{role:'user',content}]})});
+  const r=await _aiFetch({method:'POST',body:JSON.stringify({model:'claude-opus-4-5',max_tokens:8192,system:sys,messages:[{role:'user',content}]})});
   if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error?.message||`API error ${r.status}`);}
   const d=await r.json();const text=d.content?.[0]?.text||'';
   const m=text.match(/\{[\s\S]*\}/);if(!m)throw new Error('AI returned no JSON. Raw: '+text.slice(0,300));
@@ -9540,8 +9546,6 @@ function _prodAILoad(file){
 }
 window._prodAIRun=async function(){
   if(!_prodAIImg){toast('Add a screenshot first.','warning');return;}
-  const key=DB.getSettings().ai_key||'';
-  if(!key){toast('No API key — add it in Settings → AI Integration.','error');return;}
   const go=document.getElementById('prod-ai-go');if(go){go.disabled=true;go.textContent='✦ Reading…';}
   const prompt='You are transcribing a screenshot of a crew / plant / labour rate schedule from a civil construction estimating spreadsheet. Accuracy matters — transcribe, do not calculate.\n\n'
     +'STEP 1 — Identify the columns from the header row. Typical headers: Description, Unit (Hr/Shift/Day), then one or two rate columns (e.g. "Actual SOR" and "Reduced SOR"), Qty, and Total. Note which column is which.\n'
@@ -9560,8 +9564,7 @@ window._prodAIRun=async function(){
     +'Also give activity_name = a short summary of the crew (e.g. "Civil crew"), and notes = null unless there is a genuinely useful note.\n\n'
     +'Return ONLY JSON: {"activity_name":"string","unit":"string or null","crew_items":[{"name":"string","unit":"string","rate":0,"reduced_rate":null,"quantity":1,"total":null}],"notes":"string or null"}';
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:2048,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:_prodAIImg.mime,data:_prodAIImg.b64}},{type:'text',text:prompt}]}]})});
+    const resp=await _aiFetch({method:'POST',body:JSON.stringify({model:'claude-opus-4-5',max_tokens:2048,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:_prodAIImg.mime,data:_prodAIImg.b64}},{type:'text',text:prompt}]}]})});
     if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||('API error '+resp.status));}
     const data=await resp.json();const raw=data.content?.[0]?.text||'';
     const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error('No data read from the image.');
@@ -10372,8 +10375,6 @@ window._rlImportRates=function(){
   renderRateLibrary();
 };
 window.showRateLibraryAISheet=function(){
-  const key=DB.getSettings().ai_key;
-  if(!key){toast('Add your AI API key in Settings first.','warning');return;}
   window._rlAIFile=null;window._rlAIFileType=null;window._rlAIFileName=null;
   showModal({wide:true,title:'AI Analyse — Rate Schedule',body:
     '<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Drop a PDF or image of a rate schedule. The AI will extract items and sort them into the correct categories automatically.</p>'
@@ -10496,8 +10497,6 @@ window._srImportFromReview=function(){
   renderCatalogue();
 };
 window.showCatalogueAISheet=function(){
-  const key=DB.getSettings().ai_key;
-  if(!key){toast('Add your AI API key in Settings first.','warning');return;}
   window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
   showModal({wide:true,title:'AI Extract — Rate Schedule',body:
     '<p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Drop a PDF or image of a rate schedule, or paste the text below. The AI will extract company details and line items.</p>'
@@ -10968,7 +10967,6 @@ window._lockSettingsZone=function(){
 
 function renderSettings(){
   const s=DB.getSettings();
-  const hasKey=!!(s.ai_key&&s.ai_key.length>10);
   const content=`
   <div class="page-header"><div><div class="page-title">Settings</div><div class="page-sub">Manage your account and preferences</div></div></div>
   <div class="grid-2">
@@ -10990,13 +10988,9 @@ function renderSettings(){
     <div>
       <div class="card mb-4">
         <div class="card-title">AI Integration</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-          <span style="font-size:.83rem">Anthropic API:</span>
-          ${hasKey?`<span class="badge badge-green">✓ Connected</span>`:`<span class="badge badge-grey">Not configured</span>`}
-        </div>
-        <div class="form-group"><label class="form-label">Anthropic API Key</label><input class="form-input" type="password" id="s-aikey" value="${esc(s.ai_key||'')}" placeholder="sk-ant-…"></div>
-        <div class="form-hint mb-3">Used for AI Package Analyser and Quote Email Drafter. Get your key at console.anthropic.com</div>
-        <button class="btn btn-blue btn-sm" data-action="save-ai-key">Save API Key</button><div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Models in use</div><div style="display:flex;flex-direction:column;gap:5px;font-size:.83rem"><div>AI Package Analyser &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-opus-4-5</code></div><div>Quote Analysis &amp; Email Drafter &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-sonnet-4-5</code></div><div>Supplier Rate Extraction &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-haiku-4-5</code></div></div></div>
+        <div style="font-size:.83rem;color:var(--muted);margin-bottom:6px">AI features run through your Supabase project. The Anthropic API key is stored there as a secret, so nobody needs to enter a key in the app.</div>
+        <div class="form-hint">To change the key: Supabase Dashboard → Edge Functions → Secrets → <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.78rem">ANTHROPIC_API_KEY</code></div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"><div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Models in use</div><div style="display:flex;flex-direction:column;gap:5px;font-size:.83rem"><div>AI Package Analyser &amp; photo tools &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-opus-4-5</code></div><div>Quote Email Drafter &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-sonnet-4-5</code></div><div>Rate, BOQ &amp; document extraction &rarr; <code style="background:var(--s3);padding:1px 5px;border-radius:4px;font-size:.8rem">claude-sonnet-4-6</code></div></div></div>
       </div>
       <div class="card mb-4">
         <div class="card-title">App Password</div>
@@ -12220,7 +12214,7 @@ function _spParseFilenameDate(name){
 async function _spReverseGeocodeCoords(lat,lng){
   try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,{headers:{'Accept-Language':'en-AU,en;q=0.8'}});const d=await r.json();if(d.address){const a=d.address;return[a.suburb||a.city_district||a.town||a.city||a.village,a.state_district||a.state].filter(Boolean).join(', ');}return`${lat.toFixed(4)}, ${lng.toFixed(4)}`;}catch{return`${lat.toFixed(4)}, ${lng.toFixed(4)}`;}
 }
-async function _spExtractMeta(file,apiKey,fromCamera){
+async function _spExtractMeta(file,fromCamera){
   const r={date:null,time:null,source:null,gpsLat:null,gpsLng:null,device:null,locationName:null};
   // Method 1: EXIF via exifr (simple pick list — same approach that worked originally)
   try{
@@ -12234,8 +12228,8 @@ async function _spExtractMeta(file,apiKey,fromCamera){
   }catch{}
   // Camera capture: the photo was just taken, so "now" is a reliable fallback if EXIF is stripped
   if(!r.date&&fromCamera){const now=new Date();r.date=_localISO(now);r.time=now.toTimeString().slice(0,8);r.source='camera';}
-  // Method 2: AI vision (only if no date and key available)
-  if(!r.date&&apiKey){try{const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(file);});const mime=file.type||'image/jpeg';const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':apiKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:80,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:'Look at this photo. If there is a date/time stamp visible in the image extract it and return ONLY JSON: {"date":"YYYY-MM-DD","time":"HH:MM:SS","location":"location if visible or null"}. If no date stamp visible return: {"date":null}'}]}]})});if(resp.ok){const data=await resp.json();const text=data.content?.[0]?.text||'';const m=text.match(/\{[\s\S]*\}/);if(m){const parsed=JSON.parse(m[0]);if(parsed.date){r.date=parsed.date;r.time=parsed.time||null;r.source='ai';}}}}catch{}}
+  // Method 2: AI vision (only if no date yet)
+  if(!r.date){try{const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(file);});const mime=file.type||'image/jpeg';const resp=await _aiFetch({method:'POST',body:JSON.stringify({model:'claude-opus-4-5',max_tokens:80,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:'Look at this photo. If there is a date/time stamp visible in the image extract it and return ONLY JSON: {"date":"YYYY-MM-DD","time":"HH:MM:SS","location":"location if visible or null"}. If no date stamp visible return: {"date":null}'}]}]})});if(resp.ok){const data=await resp.json();const text=data.content?.[0]?.text||'';const m=text.match(/\{[\s\S]*\}/);if(m){const parsed=JSON.parse(m[0]);if(parsed.date){r.date=parsed.date;r.time=parsed.time||null;r.source='ai';}}}}catch{}}
   // Method 3: filename
   if(!r.date){const fd=_spParseFilenameDate(file.name);if(fd){r.date=fd;r.source='filename';}}
   return r;
@@ -12276,10 +12270,9 @@ window.spPreviewFiles=async function(fileList,fromCamera){
   if(btn){btn.style.display='block';btn.textContent=`Upload ${_spPendingFiles.length} Photo${_spPendingFiles.length!==1?'s':''}`;}
   if(list)list.innerHTML=_spPendingFiles.map((item,i)=>_spFileRowHTML(item,i)).join('');
   // Extract metadata for newly added files only
-  const apiKey=DB.getSettings().ai_key||'';
   await Promise.all(newFiles.map(async(item,j)=>{
     const i=startIdx+j;
-    const meta=await _spExtractMeta(item.file,apiKey,fromCamera);
+    const meta=await _spExtractMeta(item.file,fromCamera);
     item.meta=meta;
     if(meta.gpsLat!=null&&meta.gpsLng!=null&&!meta.locationName){meta.locationName=await _spReverseGeocodeCoords(meta.gpsLat,meta.gpsLng);}
     const row=document.getElementById(`sp-fr-${i}`);if(row)row.outerHTML=_spFileRowHTML(item,i);
@@ -12331,7 +12324,6 @@ function _spRenderLB(){
   const p=_spLB.photos[_spLB.idx];if(!p)return;
   const lb=document.createElement('div');lb.id='sp-lightbox';lb.className='sp-lb';
   const col=_spProjColor(p.projectId);
-  const apiKey=DB.getSettings().ai_key;
   lb.innerHTML=`
     <div class="sp-lb-top">
       <span class="badge" style="background:${col}33;color:${col};border:1px solid ${col}55;font-size:.7rem">${esc(p.projectName||'—')}</span>
@@ -12355,7 +12347,7 @@ function _spRenderLB(){
         ${p.caption?`<span id="sp-lb-cap" style="font-size:.8rem;color:rgba(255,255,255,.7);font-style:italic">${esc(p.caption)}</span>`:`<span id="sp-lb-cap" style="font-size:.78rem;color:rgba(255,255,255,.3);font-style:italic">No caption</span>`}
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        ${apiKey?`<button class="sp-act-btn" id="sp-gen-cap-btn" onclick="window.spGenCaption('${p.id}')">✨ Caption</button>`:''}
+        <button class="sp-act-btn" id="sp-gen-cap-btn" onclick="window.spGenCaption('${p.id}')">✨ Caption</button>
         <button class="sp-act-btn" onclick="window.spDownloadPhoto('${p.id}')">${icon('download')}</button>
         <button class="sp-act-btn" onclick="window.spEditPhoto('${p.id}')" title="Edit">${icon('edit')}</button>
         <button class="sp-act-btn" onclick="window.spDeletePhoto('${p.id}')" style="color:var(--red)">${icon('trash')}</button>
@@ -12378,12 +12370,10 @@ window.spGenCaption=async function(photoId){
   if(btn){btn.disabled=true;btn.textContent='Generating…';}
   try{
     const photo=_spLB.photos.find(p=>p.id===photoId);if(!photo)throw new Error('Photo not found');
-    const key=DB.getSettings().ai_key||'';if(!key)throw new Error('No API key — add it in Settings');
     const imgResp=await fetch(photo.url);if(!imgResp.ok)throw new Error('Could not fetch photo');
     const imgBlob=await imgResp.blob();const mimeType=imgBlob.type||'image/jpeg';
     const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.onerror=rej;fr.readAsDataURL(imgBlob);});
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:150,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:'You are a civil construction site inspector. Describe what you see in this site photo in 1-2 sentences using civil construction terminology. Focus on: what activity is happening, what materials or plant are visible, approximate stage of work, and any visible safety observations. Be concise and professional.'}]}]})});
+    const resp=await _aiFetch({method:'POST',body:JSON.stringify({model:'claude-opus-4-5',max_tokens:150,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mimeType,data:b64}},{type:'text',text:'You are a civil construction site inspector. Describe what you see in this site photo in 1-2 sentences using civil construction terminology. Focus on: what activity is happening, what materials or plant are visible, approximate stage of work, and any visible safety observations. Be concise and professional.'}]}]})});
     if(!resp.ok)throw new Error('API error '+resp.status);
     const data=await resp.json();
     const caption=data.content?.[0]?.text?.trim()||'';
@@ -13171,8 +13161,6 @@ function _aiEnrichResults(results, projId){
 }
 
 async function analyseWithClaude(text,filename,projId){
-  const key=DB.getSettings().ai_key||'';
-  if(!key) throw new Error('No Anthropic API key configured. Go to Settings → AI Integration to add your key.');
   const truncated=text.length>44000?text.slice(0,44000)+'\n[...truncated for length...]':text;
 
   // Brief productivity library context
@@ -13234,14 +13222,8 @@ Document: "${filename}"
 Content:
 ${truncated}`;
 
-  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+  const resp=await _aiFetch({
     method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'x-api-key':key,
-      'anthropic-version':'2023-06-01',
-      'anthropic-dangerous-direct-browser-access':'true'
-    },
     body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:prompt}]})
   });
   if(!resp.ok){
@@ -13579,8 +13561,6 @@ async function generateEmailWithClaude(qid,type,tone){
   const user=Auth.getUser();
   const userName=settings.name||user?.name||user?.email||'The Estimator';
   const company=settings.company||'A Civil';
-  const key=settings.ai_key||'';
-  if(!key) throw new Error('No API key configured. Add it in Settings → AI Integration.');
   const toneDesc=tone==='brief'?'short and direct — 3 to 5 sentences max':tone==='detailed'?'comprehensive with full scope breakdown and clear next steps':'professional and concise — standard Australian construction industry style';
   const daysOver=q.due_date?Math.abs(daysUntil(q.due_date)):null;
   let prompt;
@@ -13638,9 +13618,8 @@ RULES:
 Return ONLY valid JSON (no markdown): {"subject":"...","body":"..."}
 The body must use \\n for line breaks.`;
   }
-  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+  const resp=await _aiFetch({
     method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:1024,messages:[{role:'user',content:prompt}]})
   });
   if(!resp.ok){let m='Claude API error '+resp.status;try{const j=await resp.json();m=j.error?.message||m;}catch{}throw new Error(m);}
@@ -14264,8 +14243,6 @@ document.addEventListener('click',async function(e){
   }
   if(action==='ai-extract-boq'){
     const id=el.dataset.id;
-    const key=(DB.getSettings()||{}).ai_key||'';
-    if(!key){toast('Add your AI API key in Settings first.','warning');return;}
     const textVal=(document.getElementById('ai-boq-text')?.value||'').trim();
     if(!window._boqAIFile&&!textVal){toast('Please attach a file or paste some text first.','warning');return;}
     const btn=document.querySelector('[data-action="ai-extract-boq"]');
@@ -14295,7 +14272,7 @@ Rules:
     }else{
       msgContent=[{type:'text',text:textVal}];
     }
-    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,system:sysPrompt,messages:[{role:'user',content:msgContent}]})})
+    _aiFetch({method:'POST',body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,system:sysPrompt,messages:[{role:'user',content:msgContent}]})})
     .then(r=>r.json()).then(data=>{
       const raw=data?.content?.[0]?.text||'';
       let parsed;
@@ -14986,7 +14963,6 @@ if(action==='save-prod-record'){
   /* ---- CONTACTS ---- */
   if(action==='add-contact'){showContactSheet('');return;}
   if(action==='ai-extract-sr'){
-    const key=DB.getSettings().ai_key;if(!key){toast('No AI key set in Settings.','warning');return;}
     const text=document.getElementById('ai-sr-text')?.value.trim();
     const companyHint=document.getElementById('ai-sr-company')?.value.trim();
     const statusEl=document.getElementById('ai-sr-status');
@@ -15006,7 +14982,7 @@ if(action==='save-prod-record'){
     }else{
       msgContent=promptText;
     }
-    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:msgContent}]})})
+    _aiFetch({method:'POST',body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:msgContent}]})})
     .then(r=>r.json()).then(data=>{
       el.disabled=false;window._srAIFile=null;window._srAIFileType=null;window._srAIFileName=null;
       if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
@@ -15019,7 +14995,6 @@ if(action==='save-prod-record'){
     return;
   }
 if(action==='ai-extract-rl'){
-    const key=DB.getSettings().ai_key;if(!key){toast('No AI key set in Settings.','warning');return;}
     const text=document.getElementById('ai-rl-text')?.value.trim();
     const statusEl=document.getElementById('ai-rl-status');
     const aiFile=window._rlAIFile;
@@ -15038,7 +15013,7 @@ if(action==='ai-extract-rl'){
     }else{
       msgContent=promptText;
     }
-    fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:msgContent}]})})
+    _aiFetch({method:'POST',body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,messages:[{role:'user',content:msgContent}]})})
     .then(r=>r.json()).then(function(data){
       el.disabled=false;window._rlAIFile=null;window._rlAIFileType=null;window._rlAIFileName=null;
       if(data.error){if(statusEl){statusEl.style.background='rgba(239,68,68,.07)';statusEl.style.borderColor='rgba(239,68,68,.2)';statusEl.style.color='var(--red)';statusEl.textContent='Error: '+data.error.message;}return;}
@@ -15397,11 +15372,6 @@ if(action==='save-contact'){
     s.margin=parseFloat(document.getElementById('s-margin')?.value)||15;
     DB.saveSettings(s);toast('Settings saved.','success');return;
   }
-  if(action==='save-ai-key'){
-    const s=DB.getSettings();
-    s.ai_key=document.getElementById('s-aikey')?.value.trim();
-    DB.saveSettings(s);toast('API key saved.','success');renderSettings();return;
-  }
   if(action==='export-data'){
     const data={projects:DB.getProjects(),rates:DB.getRates(),productivity:DB.getProductivity(),contacts:DB.getContacts(),quotes:DB.getQuotes(),settings:DB.getSettings()};
     const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(data,null,2));a.download='APrecision_Export_'+today()+'.json';a.click();
@@ -15472,9 +15442,9 @@ window.addEventListener('load',function(){
         const ok=await _sbLoad();
         if(ok){
           // First-time user with no Supabase data but has localStorage data → offer migration
-            // Restore API key if not already saved
-          if(!_c.settings.ai_key){
-            _c.settings.ai_key='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';
+          // AI now runs through the "claude" Edge Function; clear any key left in saved settings.
+          if(_c.settings.ai_key){
+            _c.settings.ai_key='';
             DB.saveSettings(_c.settings);
           }
           if(!DB.isSeeded()&&(localStorage.getItem('ap_projects')||localStorage.getItem('ap_rates'))){
