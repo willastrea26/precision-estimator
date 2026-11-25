@@ -9,13 +9,15 @@
 // Secret required (Dashboard > Edge Functions > Secrets):
 //   ANTHROPIC_API_KEY   an Anthropic API key (sk-ant-...)
 //
-// SUPABASE_URL and SUPABASE_ANON_KEY are provided by Supabase automatically.
+// SUPABASE_URL and SUPABASE_ANON_KEY are normally provided by Supabase; the
+// fallbacks are the project's public URL and publishable key (not secrets),
+// for projects on the newer key format where SUPABASE_ANON_KEY isn't set.
 // =====================================================================
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://gcdkxapepawiixyusjnu.supabase.co";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "sb_publishable_tb77mPEA7LCKq4cQNT2W9Q_BKZtBi7P";
 const MAX_TOKENS_CAP = 16000;
 
 const cors = {
