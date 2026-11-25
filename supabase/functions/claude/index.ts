@@ -15,7 +15,8 @@
 // =====================================================================
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+// Pasted secrets often carry stray whitespace, line breaks or quote marks.
+const API_KEY = (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://gcdkxapepawiixyusjnu.supabase.co";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "sb_publishable_tb77mPEA7LCKq4cQNT2W9Q_BKZtBi7P";
 const MAX_TOKENS_CAP = 16000;
@@ -77,6 +78,12 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify(body),
     });
+    // Anthropic rejected the key: show a fingerprint (never the key) so it can be compared with the console.
+    if (upstream.status === 401) {
+      await upstream.text().catch(() => "");
+      const prefix = API_KEY.startsWith("sk-ant-api") ? "sk-ant-api…" : API_KEY.startsWith("sk-ant-admin") ? "sk-ant-admin… (an Admin key, which can't call Claude)" : "an unexpected start (not sk-ant-api…)";
+      return fail(`Anthropic rejected the API key stored in Supabase. The stored key starts with ${prefix}, ends …${API_KEY.slice(-4)} and is ${API_KEY.length} characters long. Compare the ending with the key in console.anthropic.com → API Keys.`, 401);
+    }
     return new Response(upstream.body, {
       status: upstream.status,
       headers: { ...cors, "Content-Type": "application/json" },
