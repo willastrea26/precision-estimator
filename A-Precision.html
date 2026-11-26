@@ -1770,7 +1770,9 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
         fuD?`<span class="${followUpClass(fuD)}">${fmtDate(followUpDate(fuD))}<br><span style="font-size:.7rem;font-weight:400">${followUpLabel(fuD)}</span></span>`:
         `<span style="font-size:.75rem;color:var(--muted2)">—</span>`}
       </td>
-      <td class="aud" style="text-align:right;color:var(--muted)">${proj.pct}%</td>
+      ${PROJ_WON_STATUSES.includes(p.status)||PROJ_ZERO_STATUSES.includes(p.status)
+        ?`<td class="aud" style="text-align:right;color:var(--muted)" title="Set by status: won jobs count 100%, lost or unbid jobs 0%">${proj.pct}%</td>`
+        :`<td class="aud" onclick="event.stopPropagation();openWinPicker(event,'${p.id}')" style="text-align:right;color:var(--muted);cursor:pointer" title="Click to change likelihood of win"><span style="border-bottom:1px dashed rgba(143,163,191,.45)">${proj.pct}%</span></td>`}
       ${(!PROJ_ACTIVE_STATUSES.includes(p.status)&&!PROJ_ESTIMATING_STATUSES.includes(p.status)&&p.awarded_value)
         ?`<td class="aud" style="text-align:right" title="Awarded value">${fmtAUD(p.awarded_value)}</td>`
         :`<td class="aud" style="text-align:right">${fmtAUD(p.estimated_value)}</td>`}
@@ -11333,6 +11335,46 @@ window.applyRiskQuick=function(projId,level,ctx){
   else navigate(window.location.hash.replace('#',''));
 };
 
+// Likelihood of win (LOW%) quick picker: preset percentages plus a custom value.
+const WIN_PRESETS=[5,10,15,20,25,30,40,50,60,75];
+window.openWinPicker=function(e,projId){
+  e.stopPropagation();
+  _closeFP();closeStatusPicker();document.getElementById('_rp')?.remove();document.getElementById('_wp')?.remove();
+  const p=DB.getProject(projId);if(!p)return;
+  const cur=(p.win_probability!=null&&p.win_probability!=='')?+p.win_probability:15;
+  const rect=e.currentTarget.getBoundingClientRect();
+  const pick=document.createElement('div');
+  pick.id='_wp';pick.className='status-picker';pick.style.minWidth='220px';
+  const left=Math.max(8,Math.min(rect.right-220,window.innerWidth-228));
+  if(window.innerHeight-rect.bottom<230&&rect.top>230)pick.style.cssText+=`;bottom:${window.innerHeight-rect.top+4}px;left:${left}px`;
+  else pick.style.cssText+=`;top:${rect.bottom+4}px;left:${left}px`;
+  pick.onclick=ev=>ev.stopPropagation();
+  pick.innerHTML=`<div style="font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;padding:4px 6px 8px">Likelihood of win</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:0 4px 8px">${WIN_PRESETS.map(v=>`<button type="button" onclick="applyWinQuick('${projId}',${v})" style="padding:6px 0;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:600;border:1px solid ${v===cur?'rgba(59,130,246,.6)':'var(--border)'};background:${v===cur?'rgba(59,130,246,.18)':'transparent'};color:${v===cur?'#93C5FD':'var(--text)'}">${v}%</button>`).join('')}</div>
+    <div style="display:flex;gap:6px;align-items:center;padding:0 4px 4px">
+      <input type="number" id="_wp_inp" class="form-input" min="0" max="100" step="1" value="${cur}" style="padding:5px 8px;font-size:.82rem" onkeydown="if(event.key==='Enter')applyWinQuick('${projId}',this.value)">
+      <span style="color:var(--muted)">%</span>
+      <button class="btn btn-blue btn-sm" onclick="applyWinQuick('${projId}',document.getElementById('_wp_inp').value)">Set</button>
+    </div>`;
+  document.body.appendChild(pick);
+  setTimeout(()=>document.addEventListener('click',()=>document.getElementById('_wp')?.remove(),{once:true}),0);
+};
+window.applyWinQuick=function(projId,val){
+  const pct=Math.round(parseFloat(val));
+  if(!Number.isFinite(pct)||pct<0||pct>100){toast('Enter a percentage between 0 and 100.','warning');return;}
+  document.getElementById('_wp')?.remove();
+  const p=DB.getProject(projId);if(!p)return;
+  const old=(p.win_probability!=null&&p.win_probability!=='')?+p.win_probability:15;
+  p.win_probability=pct;
+  if(pct!==old){
+    if(!p.activity_log)p.activity_log=[];
+    p.activity_log.push({id:uid(),description:`Likelihood of win changed: ${old}% → ${pct}%`,created_at:new Date().toISOString(),type:'field_update'});
+  }
+  DB.saveProject(p);
+  toast(`Likelihood of win set to ${pct}%`,'success');
+  if(typeof filterProjects==='function')window.filterProjects();
+};
+
 /* ================================================================
    STATUS PICKER  (quick inline + dialog)
 ================================================================ */
@@ -11353,7 +11395,7 @@ function openStatusPicker(e,projId,ctx){
   document.body.appendChild(pick);
   setTimeout(()=>document.addEventListener('click',closeStatusPicker,{once:true,capture:true}),0);
 }
-function closeStatusPicker(){const el=document.getElementById('_sp');if(el)el.remove();}
+function closeStatusPicker(){const el=document.getElementById('_sp');if(el)el.remove();document.getElementById('_wp')?.remove();}
 
 window.applyStatusQuick=function(projId,newStatus,ctx){
   closeStatusPicker();
