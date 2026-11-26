@@ -745,6 +745,10 @@ select.tr-in{text-align:left;cursor:pointer;-webkit-appearance:none;appearance:n
 /* Due date inline picker popover */
 .due-pop{position:fixed;z-index:9998;background:var(--s2);border:1px solid var(--bh);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.55);padding:14px 16px;min-width:240px}
 .due-pop-label{font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.due-pop-tabs{display:flex;gap:2px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:3px;margin-bottom:10px}
+.due-pop-tabs button{flex:1;background:none;border:none;color:var(--muted);font-size:.76rem;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer}
+.due-pop-tabs button.on{background:rgba(59,130,246,.18);color:#93C5FD;box-shadow:inset 0 0 0 1px rgba(59,130,246,.45)}
+.due-pop-other{font-size:.72rem;color:var(--muted2);margin-bottom:8px}
 
 /* AI ANALYSER */
 .ai-upload-zone{border:2px dashed var(--border);border-radius:10px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:16px;position:relative}
@@ -850,6 +854,8 @@ const relDays=d=>{const n=daysUntil(d);if(n===null)return'';if(n<0)return`${Math
 const relDaysClass=d=>{const n=daysUntil(d);if(n===null)return'';if(n<0||n===0)return'days-red';if(n<3)return'days-red';if(n<7)return'days-orange';if(n<14)return'days-amber';return''};
 // Follow-up = submission due date + 10 days. Countdown colour: green = plenty of time, orange = getting close, red = imminent/overdue.
 const FOLLOWUP_OFFSET=10;
+// Follow-up counts from the actual submission date when recorded, otherwise from the due date.
+const fuBase=p=>p.submission_date||p.submission_due_date||null;
 const followUpDate=d=>{if(!d)return null;const dt=new Date(d);if(isNaN(dt))return null;dt.setDate(dt.getDate()+FOLLOWUP_OFFSET);return dt;};
 const followUpDays=d=>{const fu=followUpDate(d);if(!fu)return null;return Math.round((fu-new Date(today()))/(1000*60*60*24));};
 const followUpClass=d=>{const n=followUpDays(d);if(n===null)return'';if(n<3)return'days-red';if(n<7)return'days-orange';return'days-green';};
@@ -1371,9 +1377,9 @@ function renderDashboard(){
   const wonProjects=projects.filter(p=>WON_STATUSES.includes(p.status));
   const awarded=wonProjects.reduce((s,p)=>s+(p.awarded_value||p.estimated_value||0),0);
   // Follow-ups due now: submitted tenders with no feedback logged whose follow-up date has arrived.
-  const fuPending=projects.filter(p=>['submitted','awaiting_decision'].includes(p.status)&&!(p.follow_up_notes||'').trim()&&p.submission_due_date);
-  const fuDueNow=fuPending.filter(p=>followUpDays(p.submission_due_date)<=0).length;
-  const fuThisWeek=fuPending.filter(p=>{const n=followUpDays(p.submission_due_date);return n>0&&n<=7;}).length;
+  const fuPending=projects.filter(p=>['submitted','awaiting_decision'].includes(p.status)&&!(p.follow_up_notes||'').trim()&&fuBase(p));
+  const fuDueNow=fuPending.filter(p=>followUpDays(fuBase(p))<=0).length;
+  const fuThisWeek=fuPending.filter(p=>{const n=followUpDays(fuBase(p));return n>0&&n<=7;}).length;
   // Recent results: latest wins and losses, dated by when the project was marked awarded or lost.
   const resultAt=p=>{const want=p.status==='lost'?'lost':'awarded';const ev=(p.activity_log||[]).filter(a=>a.type==='status_change'&&a.new_status===want).pop();return ev?ev.created_at:(p.updated_at||p.created_at||'');};
   const decided=projects.filter(p=>p.status==='lost'||WON_STATUSES.includes(p.status));
@@ -1633,7 +1639,7 @@ function _projSectionHTML(label,rows,tbodyId,lc,accent){
         ${PROJ_COLGROUP}
         <thead><tr>
           <th>Project</th><th>Client</th><th>Location</th><th style="text-align:center">Type</th>
-          <th style="text-align:center">Status</th><th style="text-align:center">Risk</th><th>Due Date</th><th>Follow Up</th><th style="text-align:right">LOW%</th><th style="text-align:right">Est. Value</th><th style="text-align:right">Projected</th>
+          <th style="text-align:center">Status</th><th style="text-align:center">Risk</th><th>${label==='Estimating'?'Due / Submitted':'Due Date'}</th><th>Follow Up</th><th style="text-align:right">LOW%</th><th style="text-align:right">Est. Value</th><th style="text-align:right">Projected</th>
         </tr></thead>
         <tbody id="${tbodyId}">${renderProjectRows(rows,lc,true)}</tbody>
       </table>
@@ -1730,6 +1736,7 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
   return ps.map(p=>{
     const proj=projProjection(p);
     const due=p.submission_due_date;
+    const fuD=fuBase(p);
     const n=daysUntil(due);
     const dueCls=relDaysClass(due);
     const isDeleted=p.lifecycle_status==='deleted';
@@ -1753,13 +1760,14 @@ function renderProjectRows(ps,lc='active',keepOrder=false){
       ${lc==='all'?`<td style="text-align:center">${actionCell}</td>`:''}
       <td onclick="event.stopPropagation();openStatusPicker(event,'${p.id}','list')" style="cursor:pointer;text-align:center" title="Click to change status"><span id="sb-${p.id}">${statusBadge(p.status)}</span></td>
       <td onclick="event.stopPropagation();openRiskPicker(event,'${p.id}','list')" style="cursor:pointer;text-align:center" title="Click to change risk"><span id="rb-${p.id}">${riskBadge(p.risk_level)}</span></td>
-      <td onclick="event.stopPropagation();openDuePicker(event,'${p.id}')" style="cursor:pointer" title="Click to edit due date">
-        ${due?`<span class="${dueCls}">${fmtDate(due)}<br><span style="font-size:.7rem;font-weight:400">${relDays(due)}</span></span>${n!==null&&n<0?`<br><span class="badge badge-red" style="font-size:.58rem;margin-top:2px">OVERDUE</span>`:''}`:
+      <td onclick="event.stopPropagation();openDuePicker(event,'${p.id}')" style="cursor:pointer" title="Click to set the due date or the submitted date">
+        ${p.submission_date?`<span style="color:var(--text)">${fmtDate(p.submission_date)}<br><span style="font-size:.7rem;color:#A78BFA">Submitted</span></span>`:
+        due?`<span class="${dueCls}">${fmtDate(due)}<br><span style="font-size:.7rem;font-weight:400">${relDays(due)}</span></span>${n!==null&&n<0?`<br><span class="badge badge-red" style="font-size:.58rem;margin-top:2px">OVERDUE</span>`:''}`:
         `<span style="font-size:.75rem;color:var(--muted2)">No date<br><span style="color:var(--blue);font-size:.7rem">Set date</span></span>`}
       </td>
-      <td title="${p.follow_up_notes?'Feedback logged — see Summary tab':due?'Follow up 10 days after submission due date':'Set a due date to schedule follow-up'}">
+      <td title="${p.follow_up_notes?'Feedback logged — see Summary tab':fuD?'Follow up 10 days after '+(p.submission_date?'submission':'the due date'):'Set a due or submitted date to schedule follow-up'}">
         ${p.follow_up_notes?`<span class="days-green">✓ Followed up<br><span style="font-size:.7rem;font-weight:400">${followedUpAgo(p.follow_up_at||p.updated_at)}</span></span>`:
-        due?`<span class="${followUpClass(due)}">${fmtDate(followUpDate(due))}<br><span style="font-size:.7rem;font-weight:400">${followUpLabel(due)}</span></span>`:
+        fuD?`<span class="${followUpClass(fuD)}">${fmtDate(followUpDate(fuD))}<br><span style="font-size:.7rem;font-weight:400">${followUpLabel(fuD)}</span></span>`:
         `<span style="font-size:.75rem;color:var(--muted2)">—</span>`}
       </td>
       <td class="aud" style="text-align:right;color:var(--muted)">${proj.pct}%</td>
@@ -2368,7 +2376,7 @@ function renderTabSummary(p,id){
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div class="card-title" style="margin:0">Follow Up / Feedback</div>
         ${p.follow_up_notes?`<span class="badge badge-green" style="font-size:.6rem">Followed up ${esc(followedUpAgo(p.follow_up_at||p.updated_at))}</span>`:
-          p.submission_due_date&&p.status!=='lost'?`<span class="badge" style="font-size:.6rem;background:${followUpDays(p.submission_due_date)<3?'var(--red-d);color:var(--red)':followUpDays(p.submission_due_date)<7?'rgba(249,115,22,.15);color:#F97316':'var(--green-d);color:var(--green)'}">Call ${esc(followUpLabel(p.submission_due_date))}</span>`:''}
+          fuBase(p)&&p.status!=='lost'?`<span class="badge" style="font-size:.6rem;background:${followUpDays(fuBase(p))<3?'var(--red-d);color:var(--red)':followUpDays(fuBase(p))<7?'rgba(249,115,22,.15);color:#F97316':'var(--green-d);color:var(--green)'}">Call ${esc(followUpLabel(fuBase(p)))}</span>`:''}
       </div>
       <div style="font-size:.72rem;color:var(--muted2);margin-bottom:8px">Call the client ~10 days after submission. Log what they said so the estimating list stays current.</div>
       ${p.status==='lost'?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:.8rem"><span class="badge badge-red">Lost</span><span style="color:var(--text)">${esc(projLostReason(p))}</span><button class="btn btn-ghost btn-xs" style="margin-left:auto" onclick="applyStatusQuick('${id}','lost','detail')">Change</button></div>`:''}
@@ -11108,18 +11116,51 @@ window.calcRiskRating=function(){
 /* ================================================================
    DUE DATE PICKER  (inline popover, no API key)
 ================================================================ */
-function _duePop(id,inputId,projId,context,targetId){
+// One popover sets either date: the tender's due date, or the date it was actually submitted.
+// Opens on Submitted for tenders already out, so missing submission dates can be back-filled.
+function _duePop(id,inputId,projId,context,targetId,mode){
   const p=DB.getProject(projId);if(!p)return;
-  return`<div class="due-pop" id="${id}">
-    <div class="due-pop-label">Submission Due Date</div>
-    <input type="date" class="form-input" id="${inputId}" value="${p.submission_due_date||''}" style="margin-bottom:8px">
+  if(!mode)mode=(p.submission_date||['submitted','awaiting_decision'].includes(p.status))?'sub':'due';
+  const cur=mode==='sub'?p.submission_date:p.submission_due_date;
+  const other=mode==='sub'?(p.submission_due_date?'Due date: '+fmtDate(p.submission_due_date):'No due date set'):(p.submission_date?'Submitted: '+fmtDate(p.submission_date):'Not submitted yet');
+  const save=v=>`quickSaveDate('${projId}','${mode}',${v},'${context}','${targetId||''}')`;
+  const tab=(m,lbl)=>`<button type="button" class="${m===mode?'on':''}" onclick="_duePopMode('${id}','${inputId}','${projId}','${context}','${targetId||''}','${m}')">${lbl}</button>`;
+  return`<div class="due-pop" id="${id}" onclick="event.stopPropagation()">
+    <div class="due-pop-tabs">${tab('due','Due date')}${tab('sub','Submitted')}</div>
+    <input type="date" class="form-input" id="${inputId}" value="${cur||''}" style="margin-bottom:6px">
+    <div class="due-pop-other">${other}</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-blue btn-sm" onclick="quickSaveDue('${projId}',document.getElementById('${inputId}').value,'${context}','${targetId||''}')">Update</button>
-      ${p.submission_due_date?`<button class="btn btn-ghost btn-sm" style="color:var(--red);font-size:.72rem" onclick="if(confirm('Remove due date from this project?'))quickSaveDue('${projId}','','${context}','${targetId||''}')">Remove</button>`:''}
+      <button class="btn btn-blue btn-sm" onclick="${save(`document.getElementById('${inputId}').value`)}">Update</button>
+      ${cur?`<button class="btn btn-ghost btn-sm" style="color:var(--red);font-size:.72rem" onclick="${save("''")}">Remove</button>`:''}
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('${id}')?.remove()">Cancel</button>
     </div>
   </div>`;
 }
+window._duePopMode=function(id,inputId,projId,context,targetId,mode){
+  const old=document.getElementById(id);if(!old)return;
+  const el=document.createElement('div');
+  el.innerHTML=_duePop(id,inputId,projId,context,targetId,mode);
+  const pop=el.firstElementChild;pop.style.cssText=old.style.cssText;
+  old.replaceWith(pop);
+  document.getElementById(inputId)?.focus();
+};
+window.quickSaveDate=function(projId,mode,dateVal,context,targetId){
+  if(mode==='due'){quickSaveDue(projId,dateVal,context,targetId);return;}
+  document.getElementById('_dp')?.remove();document.getElementById('_dpop')?.remove();
+  const p=DB.getProject(projId);if(!p)return;
+  if(dateVal&&dateVal>today()&&!confirm(`The submitted date (${fmtDate(dateVal)}) is in the future. Are you sure?`))return;
+  const oldDate=p.submission_date;
+  if(!dateVal&&oldDate&&!confirm('Remove the submitted date from this project?'))return;
+  p.submission_date=dateVal||null;
+  if(dateVal!==oldDate){
+    if(!p.activity_log)p.activity_log=[];
+    p.activity_log.push({id:uid(),description:dateVal?`Submitted date set to ${fmtDate(dateVal)}`:'Submitted date removed',created_at:new Date().toISOString(),type:'date_change'});
+  }
+  DB.saveProject(p);
+  toast(dateVal?`Submitted date set to ${fmtDate(dateVal)}`:'Submitted date removed','success');
+  if(context==='list'){if(typeof filterProjects==='function')window.filterProjects();}
+  else if(context==='detail'){navigate(window.location.hash.replace('#',''));}
+};
 
 window.openDuePicker=function(e,projId){
   e.stopPropagation();
@@ -11152,7 +11193,7 @@ window.openDuePopover=function(e,projId,targetId){
 window.quickSaveDue=function(projId,dateVal,context,targetId){
   document.getElementById('_dp')?.remove();document.getElementById('_dpop')?.remove();
   const p=DB.getProject(projId);if(!p)return;
-  if(dateVal&&dateVal<today()&&!confirm(`The submission date (${fmtDate(dateVal)}) is in the past. Are you sure?`))return;
+  if(dateVal&&dateVal<today()&&!confirm(`The due date (${fmtDate(dateVal)}) is in the past. Are you sure?`))return;
   const oldDate=p.submission_due_date;
   if(!dateVal&&oldDate&&!confirm('Remove due date from this project?'))return;
   p.submission_due_date=dateVal||null;
@@ -11327,6 +11368,7 @@ window.applyStatusQuick=function(projId,newStatus,ctx){
   }
   if(oldStatus===newStatus)return;
   p.status=newStatus;
+  if(newStatus==='submitted'&&!p.submission_date)p.submission_date=today();
   if(!p.activity_log)p.activity_log=[];
   p.activity_log.push({id:uid(),description:`Status changed: ${STATUS_LABELS[oldStatus]||oldStatus} → ${STATUS_LABELS[newStatus]||newStatus}`,created_at:new Date().toISOString(),type:'status_change',old_status:oldStatus,new_status:newStatus});
   DB.saveProject(p);
@@ -11374,7 +11416,7 @@ window.refreshStatusExtra=function(projId){
     const curReason=lp.lost_reason||(projLostReason(lp)!==LOST_UNRECORDED?projLostReason(lp):'');
     box.innerHTML=`<div class="form-group"><label class="form-label">Lost Reason</label><select class="form-input" id="us-lost-reason">${lostReasons.map(r=>`<option${r===curReason?' selected':''}>${r}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">Feedback Notes <span style="color:var(--muted2);font-weight:400">(same as the Follow Up / Feedback box)</span></label><textarea class="form-input" id="us-lost-notes" rows="4" placeholder="What did the client say? e.g. came in 12% above the winning bid">${esc(lp.follow_up_notes||lp.lost_notes||'')}</textarea></div>`;
   }else if(status==='submitted'){
-    box.innerHTML=`<div class="form-group"><label class="form-label">Submission Date</label><input class="form-input" type="date" id="us-sub-date" value="${todayStr}"></div>`;
+    box.innerHTML=`<div class="form-group"><label class="form-label">Submission Date</label><input class="form-input" type="date" id="us-sub-date" value="${(DB.getProject(projId)||{}).submission_date||todayStr}"></div>`;
   }else{
     box.innerHTML=`<div class="form-group"><label class="form-label">Notes <span style="color:var(--muted2);font-weight:400">(optional)</span></label><textarea class="form-input" id="us-notes" rows="2" placeholder="Reason for status change…"></textarea></div>`;
   }
@@ -11437,7 +11479,7 @@ function renderFinancial(){
   /* ---- Follow-ups due: submitted tenders not yet followed up, soonest first ---- */
   const FU_STATUSES=['submitted','awaiting_decision'];
   const fuOpen=projects.filter(p=>FU_STATUSES.includes(p.status)&&!(p.follow_up_notes||'').trim());
-  const fuDue=fuOpen.filter(p=>p.submission_due_date).sort((a,b)=>followUpDays(a.submission_due_date)-followUpDays(b.submission_due_date));
+  const fuDue=fuOpen.filter(p=>fuBase(p)).sort((a,b)=>followUpDays(fuBase(a))-followUpDays(fuBase(b)));
   const fuNoDate=fuOpen.length-fuDue.length;
 
   /* ---- Margin bands ---- */
@@ -11539,7 +11581,7 @@ function renderFinancial(){
           <table>
             <thead><tr><th>Project</th><th>Client</th><th>Follow Up</th><th style="text-align:right">Est. Value</th></tr></thead>
             <tbody>${fuDue.length?fuDue.map(p=>{
-              const d=p.submission_due_date;
+              const d=fuBase(p);
               return`<tr style="cursor:pointer" onclick="navigate('project/${p.id}')" title="Open project to log follow-up feedback">
                 <td class="bold" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}${p.package_number?`<span style="font-size:.68rem;color:var(--muted2);margin-left:6px;font-weight:400">${esc(p.package_number)}</span>`:''}</td>
                 <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.client||'—')}</td>
@@ -11549,7 +11591,7 @@ function renderFinancial(){
             </tbody>
           </table>
         </div>
-        ${fuNoDate?`<div style="font-size:.74rem;color:var(--amber);margin-top:8px">${fuNoDate} submitted tender${fuNoDate!==1?'s have':' has'} no due date, so ${fuNoDate!==1?'they':'it'} can't be scheduled. Set due dates on the Projects page.</div>`:''}
+        ${fuNoDate?`<div style="font-size:.74rem;color:var(--amber);margin-top:8px">${fuNoDate} submitted tender${fuNoDate!==1?'s have':' has'} no due or submitted date, so ${fuNoDate!==1?'they':'it'} can't be scheduled. Set dates on the Projects page.</div>`:''}
       </div>
     </div>
   </div>
